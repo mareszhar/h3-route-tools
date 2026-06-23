@@ -6,14 +6,14 @@ Every backend exposes the exact same API and reuses the exact same business logi
 
 ## The matrix
 
-| Target         | Backend                        | Client                                                   | Validation                             | Type-safe client                     |
-| -------------- | ------------------------------ | -------------------------------------------------------- | -------------------------------------- | ------------------------------------ |
-| `elysia`       | standalone (Bun) `:3001`       | [Eden Treaty](https://elysiajs.com/eden/treaty/overview) | valibot via Standard Schema            | route-inferred, errors type-narrowed |
-| `h3`           | standalone (Bun) `:3002`       | shared typed-fetch                                       | valibot via `readValidatedBody`        | shared valibot types                 |
-| `hono`         | standalone (Bun) `:3003`       | [`hc`](https://hono.dev/docs/guides/rpc) RPC             | valibot via `@hono/standard-validator` | route-inferred                       |
-| `nitro/h3`     | **file-based routing** `:3004` | shared typed-fetch (live server)                         | valibot via `readValidatedBody`        | shared valibot types                 |
-| `nitro/hono`   | server entry mount `:3005`     | `hc` RPC                                                 | (delegated to the Hono app)            | route-inferred                       |
-| `nitro/elysia` | server entry mount `:3006`     | Eden Treaty                                              | (delegated to the Elysia app)          | route-inferred                       |
+| Target | Backend | Client | Validation | Type-safe client |
+| --- | --- | --- | --- | --- |
+| `elysia` | standalone (Bun) `:3001` | [Eden Treaty](https://elysiajs.com/eden/treaty/overview) | valibot via Standard Schema | route-inferred, errors type-narrowed |
+| `h3` | standalone (Bun) `:3002` | shared typed-fetch | valibot via `readValidatedBody` | shared valibot types |
+| `hono` | standalone (Bun) `:3003` | [`hc`](https://hono.dev/docs/guides/rpc) RPC | valibot via `@hono/standard-validator` | route-inferred |
+| `nitro/h3` | **file-based routing** `:3004` | shared typed-fetch (live server) | valibot via `readValidatedBody` | shared valibot types |
+| `nitro/hono` | server entry mount `:3005` | `hc` RPC | (delegated to the Hono app) | route-inferred |
+| `nitro/elysia` | server entry mount `:3006` | Eden Treaty | (delegated to the Elysia app) | route-inferred |
 
 The three **Nitro** targets reflect the [docs' claim](https://nitro.build/) that "Elysia, h3, Hono — anything that speaks web standards works with Nitro":
 
@@ -22,16 +22,16 @@ The three **Nitro** targets reflect the [docs' claim](https://nitro.build/) that
 
 ## The API
 
-| Feature                                          | Endpoint                                                     |
-| ------------------------------------------------ | ------------------------------------------------------------ |
-| Liveness                                         | `GET /health`                                                |
-| List — filter + sort + **cursor pagination**     | `GET /fruits?search=&tag=&minRipeness=&sort=&limit=&cursor=` |
-| Read one (404 if missing)                        | `GET /fruits/:id`                                            |
-| Create (validated, **auth**) → 201               | `POST /fruits`                                               |
-| Partial update (validated, auth, 404)            | `PATCH /fruits/:id`                                          |
-| Delete (auth) → 204                              | `DELETE /fruits/:id`                                         |
-| Checkout — business logic + **409 out-of-stock** | `POST /checkout`                                             |
-| **Server-Sent Events** ripeness ticker           | `GET /fruits/:id/ripen`                                      |
+| Feature | Endpoint |
+| --- | --- |
+| Liveness | `GET /health` |
+| List — filter + sort + **cursor pagination** | `GET /fruits?search=&tag=&minRipeness=&sort=&limit=&cursor=` |
+| Read one (404 if missing) | `GET /fruits/:id` |
+| Create (validated, **auth**) → 201 | `POST /fruits` |
+| Partial update (validated, auth, 404) | `PATCH /fruits/:id` |
+| Delete (auth) → 204 | `DELETE /fruits/:id` |
+| Checkout — business logic + **409 out-of-stock** | `POST /checkout` |
+| **Server-Sent Events** ripeness ticker | `GET /fruits/:id/ripen` |
 
 Every backend also shares: request **logging/timing**, an **`x-orchard-key`** guard on writes (default key `let-me-in-please`), valibot validation → **422**, and a uniform error envelope `{ "error": code, "message": string }`.
 
@@ -89,14 +89,14 @@ curl -N :3001/fruits/kiwi/ripen           # watch the SSE stream
 
 ## Scripts (root)
 
-| Script                      | Does                                                 |
-| --------------------------- | ---------------------------------------------------- |
-| `bun run dev`               | `turbo run dev` across packages                      |
-| `bun run build`             | build (Nitro targets)                                |
-| `bun run lint` / `lint:fix` | ESLint (antfu)                                       |
-| `bun run typecheck`         | `tsc` per package (Nitro runs `nitro prepare` first) |
-| `bun run validate` / `val`  | lint + typecheck + test                              |
-| `bun run upi`               | interactive dependency updates                       |
+| Script | Does |
+| --- | --- |
+| `bun run dev` | `turbo run dev` across packages |
+| `bun run build` | build (Nitro targets) |
+| `bun run lint` / `lint:fix` | ESLint (antfu) |
+| `bun run typecheck` | `tsc` per package (Nitro runs `nitro prepare` first) |
+| `bun run validate` / `val` | lint + typecheck + test |
+| `bun run upi` | interactive dependency updates |
 
 ## Tooling notes
 

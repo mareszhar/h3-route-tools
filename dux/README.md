@@ -2,17 +2,13 @@
 
 This is the dux maintainer area inside the **h3-route-tools** fork.
 
-**dux** (`@mszr/h3-dux`) is a DX/UX-first reimagining of [`h3-route-tools`](https://github.com/sandros94/h3-route-tools).
-It keeps h3 and Nitro exactly as they are, inherits the upstream library's engine — the accumulating typed route
-builder, Standard Schema validation, the fetchdts-style client, Nitro codegen, OpenAPI — and rebuilds the
-authoring surface around one question: *what would feel most delightful to use?*
+**dux** (`@mszr/h3-dux`) is a DX/UX-first reimagining of [`h3-route-tools`](https://github.com/sandros94/h3-route-tools). It keeps h3 and Nitro exactly as they are, inherits the upstream library's engine — the accumulating typed route builder, Standard Schema validation, the fetchdts-style client, Nitro codegen, OpenAPI — and rebuilds the authoring surface around one question: *what would feel most delightful to use?*
 
 ## Repo context
 
 - This repository is a fork of [`sandros94/h3-route-tools`](https://github.com/sandros94/h3-route-tools).
 - `main` mirrors upstream untouched; we develop on the `dux` branch.
-- All our work lives under this folder, `dux/`. The upstream sources outside it stay as-is, so rebasing and
-  mirroring upstream changes stays trivial.
+- All our work lives under this folder, `dux/`. The upstream sources outside it stay as-is, so rebasing and mirroring upstream changes stays trivial.
 
 ## What's here
 

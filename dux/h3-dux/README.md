@@ -2,31 +2,21 @@
 
 **End-to-end type-safe routes for [h3](https://h3.dev) v2 and [Nitro](https://nitro.build) v3 — DX first.**
 
-h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros94/h3-route-tools). It keeps
-everything that already makes h3-route-tools great — an accumulating typed route builder whose `typeof app` is
-the single source of truth, [Standard Schema](https://standardschema.dev) validation, a
-[fetchdts](https://github.com/unjs/fetchdts)-style typed client, Nitro file-based codegen, and OpenAPI — and
-reshapes the authoring surface around one question: *what would feel most delightful to use?*
+h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros94/h3-route-tools). It keeps everything that already makes h3-route-tools great — an accumulating typed route builder whose `typeof app` is the single source of truth, [Standard Schema](https://standardschema.dev) validation, a [fetchdts](https://github.com/unjs/fetchdts)-style typed client, Nitro file-based codegen, and OpenAPI — and reshapes the authoring surface around one question: *what would feel most delightful to use?*
 
 ## Highlights
 
-🪞 **Server and client read as counterparts** — `createServer()` builds the routes; `createClient<typeof app>()`
-consumes them. Same verbs on both sides (`app.get` ↔ `api.get`), so a route and its call site mirror each other.
+🪞 **Server and client read as counterparts** — `createServer()` builds the routes; `createClient<typeof app>()` consumes them. Same verbs on both sides (`app.get` ↔ `api.get`), so a route and its call site mirror each other.
 
-🎯 **Responses are inferred, not asserted** — the handler's return *is* the client's type. No `request<Receipt>(…)`
-to drift out of sync. Opt into runtime response validation by declaring `validate.response`.
+🎯 **Responses are inferred, not asserted** — the handler's return *is* the client's type. No `request<Receipt>(…)` to drift out of sync. Opt into runtime response validation by declaring `validate.response`.
 
-🔗 **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`{ params: { id } }`),
-whichever reads best at the call site.
+🔗 **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`{ params: { id } }`), whichever reads best at the call site.
 
-📡 **Typed SSE** — `sse(schema)` makes a streaming endpoint return an `AsyncGenerator<T>` on the client, not a
-hand-parsed `text/event-stream`.
+📡 **Typed SSE** — `sse(schema)` makes a streaming endpoint return an `AsyncGenerator<T>` on the client, not a hand-parsed `text/event-stream`.
 
-🚦 **Validation you control** — eager and sequential by default (params → query → body, short-circuit); flip
-`eager: false` for deliberate, on-demand validation via `event.valid('body')`.
+🚦 **Validation you control** — eager and sequential by default (params → query → body, short-circuit); flip `eager: false` for deliberate, on-demand validation via `event.valid('body')`.
 
-🔓 **Auth is not a concept here** — a protected route is `middleware: [...]`; an authenticated call is a header.
-Nothing app-specific leaks into the kit.
+🔓 **Auth is not a concept here** — a protected route is `middleware: [...]`; an authenticated call is a header. Nothing app-specific leaks into the kit.
 
 ## Install
 
@@ -41,7 +31,7 @@ npm install @mszr/h3-dux h3
 One package, three entrypoints. The root is the standalone server + client; the others mirror upstream.
 
 | Entrypoint | What it is |
-|---|---|
+| --- | --- |
 | `@mszr/h3-dux` | `createServer`, `createClient`, `defineRoute`, `sse`, schema/validation helpers, the typed-fetch types |
 | `@mszr/h3-dux/nitro` | the Nitro module for file-based routes (`modules: ['@mszr/h3-dux/nitro']`) |
 | `@mszr/h3-dux/codegen` | the route-types / OpenAPI codegen used by the Nitro module and CLI |
@@ -89,21 +79,15 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 ## The one hard contract
 
-**h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is
-something h3/Nitro already understand, and it tracks upstream `h3-route-tools` closely so improvements flow both
-ways. Inside that envelope, the ergonomics are ours to reimagine.
+**h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is something h3/Nitro already understand, and it tracks upstream `h3-route-tools` closely so improvements flow both ways. Inside that envelope, the ergonomics are ours to reimagine.
 
 ## Status
 
-All five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring
-(with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation
-modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged. Per-delta contracts and how each
-landed: [the spec](../docs/dux-spec.md).
+All five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged. Per-delta contracts and how each landed: [the spec](../docs/dux-spec.md).
 
 ## Development
 
-This published package is the front door, not the workspace. Build, lint, test, and release commands live in the
-dux maintainer workspace one level up — see [`dux/`](..) and its [README](../README.md).
+This published package is the front door, not the workspace. Build, lint, test, and release commands live in the dux maintainer workspace one level up — see [`dux/`](..) and its [README](../README.md).
 
 ## Docs
 
