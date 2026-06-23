@@ -19,7 +19,8 @@
     "**/playwright-report/**",
     "**/test-results/**",
     "**/.pgdata/**",
-    "**/drizzle/**"
+    "**/drizzle/**",
+    "dux/**"
   ],
 
   "rules": {

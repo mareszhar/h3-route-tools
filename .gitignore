@@ -1,18 +1,18 @@
-# .gitignore v1.6.0
-# https://gist.github.com/Sandros94/7f3dc1539c8f5905c495aa1bb417589c
-
-# Dependencies
+# Modules
 node_modules
+.npm-cache
+.pnpm-store
+**/.yarn/cache
+**/.yarn/*state*
+packs
 
-# Temp directories
-.temp
+# Artifacts
+dist
+.turbo
 *.tmp*
 .cache
 .eslintcache
-
-# Build output
-dist
-tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Nuxt
 .nitro
@@ -22,13 +22,6 @@ tsconfig.tsbuildinfo
 .vercel_build_output
 .build-*
 .netlify
-
-# PNPM
-.pnpm-store
-
-# Yarn
-**/.yarn/cache
-**/.yarn/*state*
 
 # Local env files
 .env

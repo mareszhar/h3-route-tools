@@ -4,7 +4,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "dux/**"
   pull_request:
+    paths-ignore:
+      - "dux/**"
 
 permissions:
   contents: read

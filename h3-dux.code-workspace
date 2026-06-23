@@ -1,0 +1,17 @@
+{
+  "folders": [
+    {
+      "name": "🌟 H3-ROUTE-TOOLS (ROOT)",
+      "path": ".",
+    },
+    {
+      "name": "🌈 DUX (PACKAGE)",
+      "path": "dux",
+    },
+  ],
+  "settings": {
+    "files.exclude": {
+      "dux": true,
+    },
+  },
+}
