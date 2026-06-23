@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+# dux commit guard: lint staged dux changes before Git records the commit.
+# Installed via `git config core.hooksPath dux/.githooks` (see scripts/install-git-hooks.mjs).
+repo_root="$(git rev-parse --show-toplevel)"
+dux_root="$repo_root/dux"
+if [ ! -d "$dux_root" ]; then
+  exit 0
+fi
+
+should_lint=0
+while IFS= read -r path; do
+  case "$path" in
+    dux/*)
+      should_lint=1
+      break
+      ;;
+  esac
+done <<EOF
+$(git diff --cached --name-only)
+EOF
+
+if [ "$should_lint" -ne 1 ]; then
+  exit 0
+fi
+
+echo "[dux pre-commit] running bun run lint"
+(cd "$dux_root" && bun run lint)

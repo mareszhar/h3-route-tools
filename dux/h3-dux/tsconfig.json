@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "h3-route-tools": ["../../src/index.ts"],
+      "h3-route-tools/nitro": ["../../src/nitro.ts"],
+      "h3-route-tools/codegen": ["../../src/codegen.ts"]
+    },
+    "types": ["@types/node"]
+  },
+  "include": ["src"]
+}
