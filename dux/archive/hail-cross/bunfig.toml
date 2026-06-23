@@ -1,0 +1,4 @@
+# Use the hoisted node_modules layout so Node-based tools (e.g. Nitro's dev
+# worker) can resolve transitive dependencies like `unstorage`.
+[install]
+linker = "hoisted"

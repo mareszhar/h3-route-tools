@@ -1,0 +1,72 @@
+### 🍊 Orchard — manual endpoint tests (VS Code REST Client / JetBrains HTTP)
+### Point @port at whichever target is running:
+###   elysia 3001 · h3 3002 · hono 3003 · nitro-h3 3004 · nitro-hono 3005 · nitro-elysia 3006
+
+@port = 3001
+@host = http://localhost:{{port}}
+@key = let-me-in-please
+
+### Liveness
+GET {{host}}/health
+
+### List — filter + sort + cursor pagination
+GET {{host}}/fruits?sort=price&limit=2
+
+### List — next page (paste a nextCursor from the previous response)
+GET {{host}}/fruits?sort=price&limit=2&cursor=orange
+
+### List — filter by tag and ripeness
+GET {{host}}/fruits?tag=vitamin-c&minRipeness=50
+
+### Read one
+GET {{host}}/fruits/apple
+
+### Read one — 404
+GET {{host}}/fruits/dragonfruit
+
+### Create — 401 (no key)
+POST {{host}}/fruits
+Content-Type: application/json
+
+{ "name": "Mango", "emoji": "🥭", "color": "orange", "tags": ["sweet"], "pricePerKg": 5, "stockKg": 12 }
+
+### Create — 201
+POST {{host}}/fruits
+Content-Type: application/json
+x-orchard-key: {{key}}
+
+{ "name": "Mango", "emoji": "🥭", "color": "orange", "tags": ["sweet", "tropical"], "pricePerKg": 5, "stockKg": 12 }
+
+### Create — 422 (validation)
+POST {{host}}/fruits
+Content-Type: application/json
+x-orchard-key: {{key}}
+
+{ "name": "" }
+
+### Update — ripen the mango
+PATCH {{host}}/fruits/mango
+Content-Type: application/json
+x-orchard-key: {{key}}
+
+{ "ripeness": 95 }
+
+### Checkout — 200
+POST {{host}}/checkout
+Content-Type: application/json
+
+{ "items": [{ "id": "kiwi", "kg": 2 }, { "id": "apple", "kg": 1 }] }
+
+### Checkout — 409 (out of stock)
+POST {{host}}/checkout
+Content-Type: application/json
+
+{ "items": [{ "id": "kiwi", "kg": 9999 }] }
+
+### Server-Sent Events — watch a fruit ripen
+GET {{host}}/fruits/banana/ripen
+Accept: text/event-stream
+
+### Delete — 204
+DELETE {{host}}/fruits/mango
+x-orchard-key: {{key}}

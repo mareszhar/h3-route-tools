@@ -1,0 +1,7 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["routes", "app.ts", "nitro.config.ts", ".nitro/types"]
+}

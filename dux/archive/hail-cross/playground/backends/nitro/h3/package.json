@@ -1,0 +1,22 @@
+{
+  "name": "@orchard/backend-nitro-h3",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "PORT=3004 nitro dev",
+    "build": "nitro build",
+    "prepare": "nitro prepare",
+    "start": "PORT=3004 node .output/server/index.mjs",
+    "typecheck": "nitro prepare && tsc --noEmit"
+  },
+  "dependencies": {
+    "@orchard/domain": "workspace:*",
+    "h3": "^2.0.1-rc.22",
+    "valibot": "^1.4.1"
+  },
+  "devDependencies": {
+    "nitro": "^3.0.0-beta",
+    "typescript": "^6.0.3"
+  }
+}

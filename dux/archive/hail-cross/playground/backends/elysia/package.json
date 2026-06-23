@@ -1,0 +1,22 @@
+{
+  "name": "@orchard/backend-elysia",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/app.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orchard/domain": "workspace:*",
+    "elysia": "^1.4.29",
+    "valibot": "^1.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
