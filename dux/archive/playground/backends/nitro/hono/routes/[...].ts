@@ -1,6 +1,6 @@
-import { app } from "@orchard/backend-hono";
-import { defineHandler } from "h3";
+import { app } from '@orchard/backend-hono'
+import { defineHandler } from 'h3'
 
 // Catch-all route: hand every request to the modular Hono app and return its
 // response verbatim (so the app's own 404s/errors are preserved).
-export default defineHandler((event) => app.fetch(event.req));
+export default defineHandler(event => app.fetch(event.req))

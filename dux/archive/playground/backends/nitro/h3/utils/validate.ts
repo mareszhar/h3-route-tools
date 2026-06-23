@@ -1,4 +1,4 @@
-import { HTTPError } from "h3";
+import { HTTPError } from 'h3'
 
 /**
  * Shared options for h3's validated readers. Valibot schemas are Standard
@@ -9,7 +9,7 @@ export const validationOptions = {
   onError: (result: { issues?: ReadonlyArray<{ message?: string }> }) =>
     new HTTPError({
       status: 422,
-      message: result.issues?.[0]?.message ?? "Request failed validation",
-      data: { error: "validation" },
+      message: result.issues?.[0]?.message ?? 'Request failed validation',
+      data: { error: 'validation' },
     }),
-};
+}

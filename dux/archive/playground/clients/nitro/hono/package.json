@@ -1,8 +1,8 @@
 {
   "name": "@orchard/client-nitro-hono",
+  "type": "module",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "bun src/index.ts",
     "start": "bun src/index.ts",

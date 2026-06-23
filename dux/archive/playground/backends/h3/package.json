@@ -1,8 +1,8 @@
 {
   "name": "@orchard/backend-h3",
+  "type": "module",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "exports": {
     ".": "./src/app.ts"
   },

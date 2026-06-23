@@ -1,5 +1,5 @@
-import type { Middleware } from "h3";
-import { OrchardError } from "@orchard/domain";
+import type { Middleware } from 'h3'
+import { OrchardError } from '@orchard/domain'
 
 /**
  * Outermost middleware: catches anything thrown downstream and renders the
@@ -8,18 +8,20 @@ import { OrchardError } from "@orchard/domain";
  */
 export const errorBoundary: Middleware = async (event, next) => {
   try {
-    return await next();
-  } catch (err) {
-    if (err instanceof OrchardError) return Response.json(err.toBody(), { status: err.status });
+    return await next()
+  }
+  catch (err) {
+    if (err instanceof OrchardError)
+      return Response.json(err.toBody(), { status: err.status })
 
-    const e = err as { status?: number; data?: { error?: string }; message?: string };
-    const status = e.status ?? 500;
+    const e = err as { status?: number, data?: { error?: string }, message?: string }
+    const status = e.status ?? 500
     return Response.json(
       {
-        error: e.data?.error ?? (status === 422 ? "validation" : "internal"),
-        message: e.message ?? "Something bruised in the orchard 🍂",
+        error: e.data?.error ?? (status === 422 ? 'validation' : 'internal'),
+        message: e.message ?? 'Something bruised in the orchard 🍂',
       },
-      { status }
-    );
+      { status },
+    )
   }
-};
+}

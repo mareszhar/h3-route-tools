@@ -55,8 +55,7 @@ was. It is the source of the concrete schemas the spec snippets use, and the fut
 It is a **frozen reference, not a live build target.** Its own toolchain config was hoisted up to `dux/` (so the
 config lives in one place), and every member `tsconfig` was repointed to the hoisted `tsconfig.base.json`. It is
 *not* listed in the workspace `workspaces`, so `bun install` stays lean and we never build six bleeding-edge
-backends to work on the package, and it is **excluded from our ESLint** (`archive/**`) so its original
-upstream/ox formatting is preserved rather than churned into our house style. Re-wiring it into turbo and lint
+backends to work on the package, and it is **excluded from our ESLint** (`archive/**`) so its original formatting is preserved rather than churned into our house style. Re-wiring it into turbo and lint
 later is a one-line change (add its globs back, drop the ignore) — the seams are intact.
 
 ---

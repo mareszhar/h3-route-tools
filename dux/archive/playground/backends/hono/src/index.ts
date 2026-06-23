@@ -1,8 +1,8 @@
-import { PORTS } from "@orchard/domain";
-import { app } from "./app.ts";
+import { PORTS } from '@orchard/domain'
+import { app } from './app.ts'
 
-const port = Number(process.env.PORT ?? PORTS.hono);
+const port = Number(process.env.PORT ?? PORTS.hono)
 
-console.log(`🍯 Hono Orchard → http://localhost:${port}`);
+console.log(`🍯 Hono Orchard → http://localhost:${port}`)
 
-export default { port, fetch: app.fetch };
+export default { port, fetch: app.fetch }
