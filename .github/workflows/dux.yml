@@ -1,7 +1,7 @@
 name: dux
 
-# Lint + typecheck the dux workspace (@mszr/h3-dux). Scoped to dux/** so it only
-# runs when our files change; the outer ci.yml ignores dux via the ox config.
+# Validate the dux workspace (@mszr/h3-dux). Scoped to dux/** so it only runs
+# when our files change; the outer ci.yml treats dux as a separate workspace.
 on:
   push:
     branches: [dux]
@@ -19,7 +19,7 @@ jobs:
       run:
         working-directory: dux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -34,3 +34,6 @@ jobs:
 
       - name: Typecheck package
         run: bun run sdk:typecheck
+
+      - name: Test package
+        run: bun run sdk:test
