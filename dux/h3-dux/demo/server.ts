@@ -19,8 +19,8 @@ const orchard = createOrchard()
 export const app = createServer()
   // Plain h3 middleware — chainable via .use(). (Logs to stderr so it stays out
   // of the trip's stdout.)
-  .use((event, next) => {
-    console.error(`  [orchard] ${event.req.method} ${new URL(event.req.url).pathname}`)
+  .use((e, next) => {
+    console.error(`  [orchard] ${e.req.method} ${new URL(e.req.url).pathname}`)
     return next()
   })
   // Response inferred from the return — no schema, no annotation.
