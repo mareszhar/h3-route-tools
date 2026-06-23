@@ -7,4 +7,13 @@ export default defineConfig({
   serverDir: './',
   compatibilityDate: '2026-06-23',
   experimental: { openAPI: true },
+  typescript: {
+    generatedTypesDir: '.nitro/types',
+    generateTsConfig: true,
+    tsConfig: {
+      compilerOptions: {
+        noEmit: true,
+      },
+    },
+  },
 })
