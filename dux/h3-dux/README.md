@@ -50,14 +50,24 @@ One package, three entrypoints. The root is the standalone server + client; the 
 
 ```ts
 // server.ts — the routes are the schema
-import { createServer } from '@mszr/h3-dux'
-import * as v from 'valibot'
+import { createServer, sse } from '@mszr/h3-dux'
+import { NewFruitSchema, RipenTickSchema } from '@orchard/domain'
 
 export const app = createServer()
-  .route({
-    route: '/fruits/:id',
-    params: v.object({ id: v.string() }),
-    get: { handler: e => orchard.get(e.context.params.id) }, // response inferred → Fruit
+  // `:id` typed from the pattern, response inferred from the return — zero ceremony.
+  .get('/fruits/:id', { handler: e => orchard.get(e.context.params.id) })
+  // validate.body → e.context.body is typed AND validated; status sets the success code.
+  .post('/fruits', {
+    status: 201,
+    validate: { body: NewFruitSchema },
+    handler: e => orchard.create(e.context.body),
+  })
+  // sse() makes this a typed stream on the client.
+  .get('/fruits/:id/ripen', {
+    validate: { response: sse(RipenTickSchema) },
+    handler: async function* (e) {
+      for (const tick of orchard.ripen(e.context.params.id)) yield tick
+    },
   })
 
 export type App = typeof app
@@ -69,8 +79,12 @@ import { createClient } from '@mszr/h3-dux'
 import type { App } from './server'
 
 const api = createClient<App>({ baseURL })
-const res = await api('/fruits/:id', { method: 'get', params: { id: 'mango' } })
-const fruit = await res.json() // typed: Fruit (wire shape)
+
+const fruit = await (await api.get(`/fruits/${id}`)).json() // Fruit (wire shape)
+const created = await api.post('/fruits', { body: mango }) // body checked against NewFruitSchema
+
+for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator<RipenTick>
+  console.log(tick.ripeness)
 ```
 
 ## The one hard contract
@@ -81,9 +95,10 @@ ways. Inside that envelope, the ergonomics are ours to reimagine.
 
 ## Status
 
-Today h3-dux re-exports the **entire** `h3-route-tools` surface plus the `createServer` / `createClient` counterpart
-names. The DX deltas — per-verb authoring, client verb sugar, path interpolation, typed SSE, and validation modes —
-are specified and on the roadmap. See [the spec](../docs/dux-spec.md) for each contract and its status.
+All five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring
+(with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation
+modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged. Per-delta contracts and how each
+landed: [the spec](../docs/dux-spec.md).
 
 ## Development
 

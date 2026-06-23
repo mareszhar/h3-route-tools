@@ -4,7 +4,11 @@
     "paths": {
       "h3-route-tools": ["../../src/index.ts"],
       "h3-route-tools/nitro": ["../../src/nitro.ts"],
-      "h3-route-tools/codegen": ["../../src/codegen.ts"]
+      "h3-route-tools/codegen": ["../../src/codegen.ts"],
+      "@mszr/h3-dux": ["./src/index.ts"],
+      "@mszr/h3-dux/nitro": ["./src/nitro.ts"],
+      "@mszr/h3-dux/codegen": ["./src/codegen.ts"],
+      "@test": ["./src/test-support/index.ts"]
     },
     "types": ["@types/node"]
   },

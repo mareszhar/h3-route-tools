@@ -21,6 +21,7 @@
         "h3-route-tools": "^0.0.1",
       },
       "devDependencies": {
+        "@mszr/selenita": "^0.2.2",
         "@standard-schema/spec": "^1.1.0",
         "@types/node": "^25",
         "h3": "^2.0.1-rc.22",
@@ -41,6 +42,30 @@
         "nitro",
         "typescript",
       ],
+    },
+    "h3-dux/demo": {
+      "name": "@orchard/demo",
+      "dependencies": {
+        "@mszr/h3-dux": "workspace:*",
+        "h3": "^2.0.1-rc.22",
+        "srvx": "^0.11.15",
+        "valibot": "^1.4.1",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.0",
+        "typescript": "^6.0.3",
+      },
+    },
+    "h3-dux/demo/nitro": {
+      "name": "@orchard/demo-nitro",
+      "dependencies": {
+        "@mszr/h3-dux": "workspace:*",
+        "valibot": "^1.4.1",
+      },
+      "devDependencies": {
+        "nitro": "^3.0.260610-beta",
+        "typescript": "^6.0.3",
+      },
     },
   },
   "packages": {
@@ -120,7 +145,13 @@
 
     "@mszr/h3-dux": ["@mszr/h3-dux@workspace:h3-dux"],
 
+    "@mszr/selenita": ["@mszr/selenita@0.2.2", "", { "peerDependencies": { "typescript": ">=6.0.0", "vitest": ">=1.0.0" }, "optionalPeers": ["vitest"] }, "sha512-AG5E9yCMZ3kGEV02bHwpYBLw4cZr2SIrMWp5+dN2k66HB7J/9wdiu0MyATc3Ze2ziOpT3OHq3YUeyQCb8eHqZQ=="],
+
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.5", "", { "dependencies": { "@tybys/wasm-util": "^0.10.2" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-AWPoBRJ9tsnVhor4sjO7rkni+7p+2IAEFj6cx06UgP10jkQHqay/36uRV/bFkgrh18D9vb4cr8Q0Pthskgzy+Q=="],
+
+    "@orchard/demo": ["@orchard/demo@workspace:h3-dux/demo"],
+
+    "@orchard/demo-nitro": ["@orchard/demo-nitro@workspace:h3-dux/demo/nitro"],
 
     "@ota-meshi/ast-token-store": ["@ota-meshi/ast-token-store@0.3.0", "", {}, "sha512-XRO0zi2NIUKq2lUk3T1ecFSld1fMWRKE6naRFGkgkdeosx7IslyUKNv5Dcb5PJTja9tHJoFu0v/7yEpAkrkrTg=="],
 

@@ -1,0 +1,21 @@
+{
+  "name": "@orchard/demo",
+  "type": "module",
+  "private": true,
+  "description": "Orchard — the h3-dux standalone (h3-only) showcase.",
+  "scripts": {
+    "trip": "bun main.ts",
+    "serve": "bun serve.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mszr/h3-dux": "workspace:*",
+    "h3": "^2.0.1-rc.22",
+    "srvx": "^0.11.15",
+    "valibot": "^1.4.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^6.0.3"
+  }
+}

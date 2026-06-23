@@ -144,8 +144,8 @@ inferred once) and read everywhere.
 
 | Plane | Inherited from h3-route-tools | Added by h3-dux |
 |---|---|---|
-| Server | `H3Typed`, `.route()`, `validate`, `onValidationError` | `createServer`, `app.get/post/…`, validation modes |
-| Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE return |
+| Server | `H3Typed`, `.route()`, `validate`, `onValidationError` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming |
+| Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator` |
 | Nitro | `defineRouteHandler`, module, codegen, OpenAPI | (none yet — re-exported as-is) |
 
 ---
@@ -157,14 +157,14 @@ status view.
 
 | # | Delta | Status |
 |---|---|---|
-| 1 | Per-verb **server** authoring — `app.get(path, opts)` over `.route({ route, get })`, preserving accumulation | ☐ planned |
-| 2 | Per-verb **client** sugar — `api.get(path, opts)` over `createClient`; bare `api(path, { method })` stays | ☐ planned |
-| 3 | Client **path-param interpolation** — `api.get(\`/fruits/${id}\`)` beside the keyed `params` form | ☐ planned |
-| 4 | **Typed SSE** — `sse(schema)` brands `validate.response`; client returns `AsyncGenerator<T>` | ☐ planned |
-| 5 | **Validation modes** — eager-sequential default; `eager: false` → manual via `event.valid('scope')` | ☐ planned |
+| 1 | Per-verb **server** authoring — `app.get(path, opts)` over `.route({ route, get })`, preserving accumulation (+ response & param inference) | ☑ done |
+| 2 | Per-verb **client** sugar — `api.get(path, opts)` over `createClient`; bare `api(path, { method })` stays | ☑ done |
+| 3 | Client **path-param interpolation** — `api.get(\`/fruits/${id}\`)` beside the keyed `params` form | ☑ done |
+| 4 | **Typed SSE** — `sse(schema)` brands `validate.response`; client returns `AsyncGenerator<T>` | ☑ done |
+| 5 | **Validation modes** — eager-sequential default; `eager: false` → manual via `event.valid('scope')` | ☑ done |
 
-Today the package re-exports the full upstream surface plus the `createServer` / `createClient` counterpart names
-([dux-spec.md](./dux-spec.md) tracks each delta from `planned` to `done`).
+All five are implemented, each with runtime, type, and editor-DX tests. The package also re-exports the full
+upstream surface unchanged. Per-delta contracts and how they landed: [dux-spec.md](./dux-spec.md).
 
 ---
 

@@ -137,7 +137,7 @@ The few edits we made outside `dux/`, each minimal and reversible, so the fork s
 We do **not** touch upstream `src/`, `test/`, `playgrounds/`, the root `package.json`, or `pnpm-workspace.yaml`
 (`dux/` already falls outside its globs).
 
-> **Git hooks.** `scripts/install-git-hooks.mjs` (run by `bun install`'s postinstall) points
+> **Git hooks.** `scripts/install-git-hooks.ts` (run by `bun install`'s postinstall) points
 > `core.hooksPath → dux/.githooks`. On the `dux` branch this supersedes the outer `simple-git-hooks`; the dux
 > hook lints staged `dux/` changes and no-ops for commits that don't touch `dux/`. That trade is deliberate — the
 > `dux` branch is our working branch, where our lint rules apply.

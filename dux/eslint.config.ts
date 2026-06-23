@@ -40,11 +40,13 @@ export default antfu(
     },
   },
   {
-    // Our maintainer scripts log progress and touch the global `process`.
-    files: ['scripts/**'],
+    // Maintainer scripts and runnable demos log progress, use top-level await,
+    // and touch the global `process` — all intentional there.
+    files: ['scripts/**', 'h3-dux/demo/**'],
     rules: {
       'no-console': 'off',
       'node/prefer-global/process': 'off',
+      'antfu/no-top-level-await': 'off',
     },
   },
 )

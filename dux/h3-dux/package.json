@@ -48,8 +48,8 @@
     "build": "obuild",
     "stub": "obuild --stub",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest"
+    "test": "vitest run --typecheck --passWithNoTests",
+    "test:watch": "vitest --typecheck"
   },
   "peerDependencies": {
     "h3": "^1.15.4 || >=2.0.1-rc.22 || ^2.0.1",
@@ -69,6 +69,7 @@
     "h3-route-tools": "^0.0.1"
   },
   "devDependencies": {
+    "@mszr/selenita": "^0.2.2",
     "@standard-schema/spec": "^1.1.0",
     "@types/node": "^25",
     "h3": "^2.0.1-rc.22",

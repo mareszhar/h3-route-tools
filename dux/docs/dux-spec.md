@@ -13,26 +13,42 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 
 ## Implementation status
 
-| # | Delta | Touches | Status |
+| # | Delta | Where (in `h3-dux/src/`) | Status |
 |---|---|---|---|
-| 1 | Per-verb server authoring | the accumulating builder (`h3-typed.ts`) | ☐ planned |
-| 2 | Per-verb client sugar | the typed fetch (`typed-fetch.ts`) | ☐ planned |
-| 3 | Path-param interpolation | client call-option types (`typed-fetch.ts`) | ☐ planned |
-| 4 | Typed SSE | the `stream` slot + client return derivation | ☐ planned |
-| 5 | Validation modes | the request-validation pipeline (`route-handler.ts`) | ☐ planned |
+| 1 | Per-verb server authoring (+ response & param inference) | `server.ts`, `internal/route-types.ts` | ☑ done |
+| 2 | Per-verb client sugar | `client.ts` | ☑ done |
+| 3 | Path-param interpolation | `client.ts` | ☑ done |
+| 4 | Typed SSE | `sse.ts`, `server.ts`, `client.ts` | ☑ done |
+| 5 | Validation modes (`event.context` + `event.valid`) | `server.ts`, `internal/route-types.ts` | ☑ done |
 
 ## Roadmap
-
-Sequenced so each step is independently testable. 2 and 3 are additive and cheap; 1, 4, 5 reach into the builder
-and the validation pipeline.
 
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Workspace + scaffold: package re-exports upstream + `createServer`/`createClient`; docs | ☑ done |
-| 1 | Client verb sugar (2) + path interpolation (3) — additive, no builder changes | ☐ |
-| 2 | Server verb authoring (1) — `app.get` over `.route`, accumulation preserved | ☐ |
-| 3 | Validation modes (5) — eager-sequential default + `eager: false` manual | ☐ |
-| 4 | Typed SSE (4) — `sse()` brand + client `AsyncGenerator` return | ☐ |
+| 1 | Client verb sugar (2) + path interpolation (3) | ☑ done |
+| 2 | Server verb authoring (1) — `app.get`, accumulation preserved, response + param inference | ☑ done |
+| 3 | Validation modes (5) — eager default + `eager: false` manual | ☑ done |
+| 4 | Typed SSE (4) — `sse()` brand + client `AsyncGenerator` return | ☑ done |
+
+Every delta ships with three test planes (runtime `*.test.ts`, type `*.test-d.ts`, editor-DX `*.dx.test.ts`),
+driven by the shared Orchard fixture in `src/test-support/`.
+
+## How it landed (the realities)
+
+The contracts below are intact; a few implementation decisions are worth recording because they shaped the code:
+
+- **`createServer` is a wrapper, not an `H3` subclass.** h3's `H3` already owns `app.get(path, handler)`, so a
+  subclass would clash. `DuxServer` holds an inner `H3Typed` (exposed as `app`), delegates each verb to
+  `.route(...)`, and exposes `fetch`/`request`/`use`. `createClient` reads its accumulated routes off a phantom
+  `'~duxRoutes'` marker (falling back to upstream's `NormalizeRoutes`).
+- **A small slice of upstream's per-method types is vendored** (`internal/route-types.ts`, `internal/serialize.ts`)
+  because they aren't public exports — the same vendor-and-mark tier the workspace spec describes.
+- **Two inferences came for free and are now first-class** (delta 1): response inference (a method with no
+  `validate.response` contributes the handler's return to the contract) and param inference (`:params` typed from
+  the pattern, no schema needed). Both are detailed in [§6](#6-response--param-inference).
+- **SSE uses a `DuxCall` handle** (delta 4): the verb methods return a value that is `await`-able (JSON path) and
+  `for await`-able (SSE path); the type picks which, and only the consumed path fetches.
 
 ---
 
@@ -77,7 +93,7 @@ export type App = typeof app // ← the single source of truth for the client
 `H3Typed<MergePair<Routes, RouteRecord<…>>>` and accumulation is untouched. `opts` is the existing per-method def
 (`validate`, `middleware` → route-level, `meta`, `status`, `handler`) — the only new surface is the call shape.
 
-**Status:** ☐ planned.
+**Status:** ☑ done.
 
 ---
 
@@ -105,7 +121,7 @@ onto it: `api.get = (route, opts) => api(route, { ...opts, method: 'get' })`, ty
 `TypedFetch`'s `method`-keyed options per verb. No change to `createTypedFetch`'s core generics — the verb methods
 are a typed facade over the same call.
 
-**Status:** ☐ planned.
+**Status:** ☑ done.
 
 ---
 
@@ -128,7 +144,7 @@ to `typed-fetch.ts`'s route-key resolution (the runtime already interpolates `pa
 is purely type-level — widen `keyof R & string` to include the template-literal spellings and recover the matched
 endpoint from either.
 
-**Status:** ☐ planned.
+**Status:** ☑ done.
 
 ---
 
@@ -159,15 +175,16 @@ for await (const tick of api.get(`/fruits/${id}/ripen`))
   console.log(tick.ripeness) // tick: RipenTick
 ```
 
-**Proposed approach.** `sse(schema)` (shipped today as a typed pass-through that attaches an `EventStream<T>`
-brand — see `src/index.ts`) routes through the existing `stream.response` slot so the server skips value-validating
-the stream object while still validating each yielded chunk. On the client, detect the `EventStream` brand in the
-response-type derivation (`ResponseOf<E>` in `typed-fetch.ts`) and return `AsyncGenerator<T>` parsed from
-`text/event-stream` instead of `TypedResponse<T>`. Reuse the SSE-parsing loop already written in the Orchard
-client (`archive/packages/domain/src/client.ts`). Stay inside fetchdts' `response` vocabulary so an official
-streaming type realigns cheaply.
+**Approach (delivered).** `sse(schema)` (`src/sse.ts`) attaches a runtime + type `EventStream<T>` brand to the
+schema. The contract (`DuxEndpoint.response`) preserves that brand, so the client's `VerbReturn` resolves the
+endpoint to `AsyncGenerator<T>` instead of `Promise<TypedResponse>`. On the server, `mount` detects the brand,
+drops the response from what upstream value-validates, and streams the handler's async generator via h3's
+`createEventStream` — validating each yield against the schema before pushing it. On the client, the verb methods
+return a **`DuxCall`** handle: `await` runs the JSON fetch, `for await` runs the SSE fetch (`accept:
+text/event-stream`, parsed by `parseEventStream`); only the consumed path fires. Stays inside fetchdts' `response`
+vocabulary so an official streaming type realigns cheaply.
 
-**Status:** ☐ planned.
+**Status:** ☑ done.
 
 ---
 
@@ -206,27 +223,66 @@ app.post('/import', {
 })
 ```
 
-**Proposed approach.** The eager pipeline already exists in `runRequestValidation` (`route-handler.ts`), which
-validates params, then query, then headers, then body in order — formalize that as the documented contract and
-keep the short-circuit. Add an `eager?: boolean` flag to the `MethodValidate` block (default `true`). When
-`false`, skip the auto-run and expose `event.valid(scope)` — a per-scope validator that runs the matching
-`validate*` function on first call, caches the result on `event.context`, and returns it (subsequent calls and any
-`event.context.<scope>` read return the cache). In eager mode, `event.valid(scope)` returns the already-cached
-value, so the accessor is mode-agnostic. **`event.validated` is not part of this surface** (conventions §4).
+**Approach (delivered).** `mount` (`src/server.ts`) reads `validate.eager` (default `true`). In **eager** mode it
+hands the schemas to upstream's pipeline (params → query → headers → body, short-circuiting) and mirrors the
+validated query onto `event.context.query` and the validated body onto `event.context.body`. In **manual** mode
+(`eager: false`) only params (and response) reach upstream; `event.valid(scope)` validates query/body/headers on
+demand via the Standard Schema validator, caching onto `event.context[scope]` (so a re-read or a second `valid()`
+returns the cache). In eager mode `event.valid(scope)` just reads the already-validated value, so the accessor is
+mode-agnostic. The scopes `valid()` accepts are exactly those with a declared schema. **`event.validated` is not
+part of this surface** (conventions §4); upstream's accessor stays available underneath for diffing.
 
-**Status:** ☐ planned.
+**Status:** ☑ done.
+
+---
+
+## 6. Response & param inference
+
+Two delights that fell out of owning the server contract (part of delta 1). Both make a route read with *zero*
+ceremony, and both are pure type-level — the runtime is unchanged.
+
+**Why.** Declaring a response schema just to type the client (`request<Receipt>` by hand, or a `validate.response`
+you don't otherwise need) is the boilerplate principle 2 forbids. And a `/fruits/:id` route already *says* it has
+a string `id` — making you restate that in a schema is repetition.
+
+**Usage.**
+
+```ts
+// Response inferred from the handler return — the client sees `{ status: 'ripe'; at: string }`.
+app.get('/health', { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) })
+
+// `:id` typed as string from the pattern — no params schema needed.
+app.get('/fruits/:id', { handler: e => orchard.get(e.context.params.id) })
+
+// Opt into either when you want it: a schema validates AND types (and coerces).
+app.get('/fruits/:id', {
+  params: v.object({ id: v.pipe(v.string(), v.toNumber()) }), // e.context.params.id: number
+  validate: { response: FruitSchema }, // runtime-validated + schema-typed
+  handler: e => orchard.get(e.context.params.id),
+})
+```
+
+**Approach (delivered).** In `DuxEndpoint` (`internal/route-types.ts`): `response` falls back to the captured
+handler-return type `Ret` when `InferMethodResponse<V>` is `unknown` (no `validate.response`); `params` resolves to
+the schema's output if a `params` schema is given, else to `RouteParams<Route>` — a type that reads `:param` names
+straight from the route literal. Declaring a schema always wins (it adds runtime validation and coercion). `Ret` is
+captured without `const`, so the inferred response is the plain shape you return (literals still come from an
+explicit `as const`).
+
+**Status:** ☑ done.
 
 ---
 
 ## Open decisions
 
-Small calls to settle as the deltas land; recorded here so they aren't re-litigated each time.
+Settled as the deltas landed; kept here so they aren't re-litigated.
 
-- **`event.context` mirroring.** We standardize on `event.context.<scope>` (h3 core direction) for the neutral
-  read and `event.valid()` for the deliberate one. Whether to also keep upstream's `event.validated` as an
-  internal alias is an implementation detail of delta 5, not a public contract.
-- **Validation-error envelope.** Default stays upstream's `400` / `500` + `issues`; a `422` envelope is a userland
-  `onValidationError` ([dux-conventions.md §7](./dux-conventions.md#7-validation-errors)). If the Orchard
-  reference shows a recurring envelope worth promoting to a documented default, revisit here.
-- **Verb coverage.** Deltas 1–2 cover the callable verbs (`get/post/put/patch/delete/head/options`); `trace` and
-  `connect` stay `.route()`-only, matching upstream's `CallableMethod`.
+- **`event.context` vs `event.validated`** — *settled.* `event.context.<scope>` is the neutral read and
+  `event.valid()` the deliberate one; `event.validated` is not part of the dux surface (upstream's accessor stays
+  underneath for diffing).
+- **Validation-error envelope** — *settled (default).* Request failures are `400` (eager, via upstream) or `422`
+  (manual `valid()`); response failures `500`; all carry `issues`. A custom envelope is a userland
+  `onValidationError` ([dux-conventions.md §7](./dux-conventions.md#7-validation-errors)). Worth revisiting only if
+  the demo shows a recurring shape to promote.
+- **Verb coverage** — *settled.* The callable verbs (`get/post/put/patch/delete/head/options`) get verb methods;
+  `trace`/`connect` stay on the underlying `app.app.route()`, matching upstream's `CallableMethod`.
