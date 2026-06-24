@@ -65,7 +65,7 @@ The canon. When two pull against each other, the earlier one wins.
 
 2. **Boilerplate is an active harm.** Every repeated shape the library could erase and doesn't is a failure. DRY runs both ways: erase repetition in userland (`request<T>` asserted by hand, manual SSE parsing) *and* keep one source of truth per concept inside h3-dux, so a fix lands once and every surface inherits it.
 
-3. **Errors at the cursor, not the console.** The type system is the first safety layer: valid TypeScript should mean a valid request. When something is wrong, the error lands on the offending piece — the bad field, the undeclared body, the wrong method — with a message you can act on.
+3. **Errors at the cursor, not the console.** The type system is the first safety layer: valid TypeScript should mean a valid request. When something is wrong, the error lands on the offending piece — the bad field, the undeclared body, the wrong method — with a message you can act on. And the type must not *lie* about runtime: a call that can fail returns a value whose type says so, so the failure is handled at the cursor instead of surfacing later as an unhandled throw. A value typed `Fruit` that can actually reject is the cursor lying to you.
 
 4. **Self-documenting.** Names match mental models; types are as narrow as they can be without becoming hard to use. `createServer` and `createClient` read as counterparts because they are. Comments explain *why*; the code explains the *what*.
 
@@ -76,6 +76,8 @@ The canon. When two pull against each other, the earlier one wins.
 7. **Plane separation is a lint rule.** The server, client, and Nitro planes keep their boundaries because the linter checks them, not because we remember to. "A Nitro import leaked into the client" is a build error.
 
 8. **Elegance is a requirement.** The implementation reads with the clarity the API projects. If a piece can't be explained simply, it isn't done.
+
+9. **Power is opt-in; the simple path never pays for it.** Simplicity is the ultimate sophistication. Supporting a powerful case — typed errors, response kinds, composition, typed context — must never add ceremony to the case that doesn't need it. A route that declares no errors, a handler that returns plain JSON, a one-file app: each stays exactly as small as it was. New capability arrives as something you reach for when the moment calls for it, never as a tax levied by default. "*Now supported*" must not make "*not needed*" any harder.
 
 ---
 
@@ -109,15 +111,33 @@ Everything flows from **one contract per route** — the `validate` block plus t
 
 | Plane | Inherited from h3-route-tools | Added by h3-dux |
 | --- | --- | --- |
-| Server | `H3Typed`, `.route()`, `validate`, `onValidationError` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming |
-| Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator` |
-| Nitro | `defineRouteHandler`, module, codegen, OpenAPI | (none yet — re-exported as-is) |
+| Server | `H3Typed`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed event-context middleware, `event.error()`** |
+| Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator`, **honest `{ data, error }` surface, `.orThrow()`/`.raw()`, typed error channel, interceptors** |
+| Contract | per-method `Endpoint`, status→schema response map, `errors` | **the normalized kernel: plain shapes, per-status responses, response kinds** |
+| Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **generated kernel route map (no hand-written `Routes`), deltas in file routes, filename→param inference** |
+
+### 4.4 The contract kernel
+
+The contract each route accumulates is, today, schema-shaped: `typeof app` carries the literal valibot/zod types, and every surface that reads it (the client, diagnostics, Nitro, OpenAPI) re-derives the plain shape it actually needs. That re-derivation is where the inferred types turn intricate, where schema internals leak into diagnostics, and where the response collapses to a single type and loses its per-status structure.
+
+The next evolution normalizes that contract once, at accumulation time, into a **kernel** every plane consumes verbatim:
+
+```
+EndpointContract
+  request   { params, query, headers, body }     ← plain, resolved shapes (no schema generics)
+  responses { [status]: { body, kind } }          ← per-status; kind = json|text|empty|sse|binary
+  success   the 2xx status this endpoint answers with
+```
+
+One normalized contract, read identically by the client (success → `data`, non-2xx → typed `error`), by diagnostics (plain shapes, no `ObjectSchema<…>` to print), by composition (merge kernels, prefix paths), by Nitro codegen (emit the kernel per file route), and by OpenAPI (the kernel *is* the spec). This is the spine of Generation 2 ([§5](#5-the-deltas)): every later delta is a producer or consumer of the kernel, which is why they compose instead of colliding. The schema is still the source of truth — the kernel is its resolved, public projection, computed once.
 
 ---
 
 ## 5. The deltas
 
-The work that makes h3-dux more than a rename. Each is a contract in [dux-spec.md](./dux-spec.md); this is the status view.
+The work that makes h3-dux more than a rename. Each is a contract in [dux-spec.md](./dux-spec.md); this is the status view, in two generations.
+
+### Generation 1 — the authoring surface (shipped)
 
 | # | Delta | Status |
 | --- | --- | --- |
@@ -127,7 +147,25 @@ The work that makes h3-dux more than a rename. Each is a contract in [dux-spec.m
 | 4 | **Typed SSE** — `sse(schema)` brands `validate.response`; client returns `AsyncGenerator<T>` | ☑ done |
 | 5 | **Validation modes** — eager-sequential default; `eager: false` → manual via `event.valid('scope')` | ☑ done |
 
-All five are implemented, each with runtime, type, and editor-DX tests. The package also re-exports the full upstream surface unchanged. Per-delta contracts and how they landed: [dux-spec.md](./dux-spec.md).
+All five are implemented, each with runtime, type, and editor-DX tests. The package also re-exports the full upstream surface unchanged.
+
+### Generation 2 — honesty, errors, scale (the next evolution)
+
+Generation 1 made authoring delightful and reached *Hono-level* end-to-end safety. Generation 2 is what takes h3-dux *past* Hono and Elysia: an honest client, a typed error channel, composition that scales, typed event context, and the Nitro file-routing moat made real — all resting on the contract kernel ([§4.4](#44-the-contract-kernel)). Ordered by dependency and phase, not by raw value.
+
+| # | Delta | Phase | Status |
+| --- | --- | --- | --- |
+| 6 | **Cleaner inference + diagnostics-as-contract** — disjoint overloads, drop the `O`/`NoExcess` machinery, flatten schema leakage; lock the message as a Selenita contract | 5 | ☐ planned |
+| 7 | **The contract kernel** — normalize each endpoint into plain, per-status, kind-tagged shapes at accumulation time ([§4.4](#44-the-contract-kernel)) | 6 | ☐ planned |
+| 8 | **The honest client** — `{ data, error }` by default; `.orThrow()` and `.raw()` on the call handle; `DuxError = HTTP \| transport` | 6 | ☐ planned |
+| 9 | **Typed error contracts** — preserve status→schema; `errors: { 409: … }`; `event.error(status, data)`; one envelope, standardized on `422` | 6 | ☐ planned |
+| 10 | **Response kinds** — model `json/text/empty/sse/binary`, `204`/`HEAD`/`OPTIONS`, native `Response`; harden the SSE parser | 7 | ☐ planned |
+| 11 | **Delta-aware composition** — `createRouter`/`defineRoutes` carrying the deltas, `createServer().mount(prefix, sub)`, `.register` accumulation, duplicate-route diagnostics | 8 | ☐ planned |
+| 12 | **Typed event-context augmentation** — `defineMiddleware` declares what it adds to `event.context`; downstream handlers see it typed (decoupled from auth) | 8 | ☐ planned |
+| 13 | **Nitro deltas via codegen** — generate the kernel route map (no hand-written `Routes`); bring the deltas to file routes; filename→param inference | 9 | ☐ planned |
+| 14 | **Symmetry extras** — OpenAPI from the standalone `createServer`; client interceptors / `signal` / timeout / retry | 10 | ☐ planned |
+
+Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
 
 ---
 
@@ -135,9 +173,9 @@ All five are implemented, each with runtime, type, and editor-DX tests. The pack
 
 A garden's wall is a promise: opting into h3-dux never locks you out of something h3 or Nitro can do — h3-dux is a superset, and any escape hatch is the upstream surface we already re-export.
 
-- **In scope:** typed server authoring, the derived client, typed SSE, validation control, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
-- **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific.
-- **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points in `archive/`, not targets.
+- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed event-context augmentation**, **OpenAPI from the standalone app**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
+- **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific. Typed event context (delta 12) is the *typing primitive* that lets any middleware — auth or otherwise — publish what it adds to `event.context`; it is deliberately decoupled from auth, which stays an app concern.
+- **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points and competitive bars in `archive/` — we study what they do best and adopt it the dux way (or better) — but they are not compatibility targets.
 
 ---
 

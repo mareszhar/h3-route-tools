@@ -83,7 +83,9 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 ## Status
 
-All five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged. Per-delta contracts and how each landed: [the spec](../docs/dux-spec.md).
+**Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
+
+**Generation 2** — the next evolution is specced and phased (deltas 6–14): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds, delta-aware composition, typed event-context middleware, and the Nitro file-routing moat made real. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
 
 ## Development
 

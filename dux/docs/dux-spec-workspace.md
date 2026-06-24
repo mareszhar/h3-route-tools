@@ -10,6 +10,8 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sy
 | W1 | Test foundations: vitest planes, selenita wiring, Orchard fixtures | ☐ |
 | W2 | Per-delta suites land with each delta (1–5) | ☐ |
 | W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☐ |
+| W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6), type-perf plane (100/500/1000 routes) | ☐ |
+| W5 | Nitro codegen harness: the generated kernel route map (`#h3-dux/routes`) regenerates and typechecks (delta 13) | ☐ |
 
 ---
 
@@ -62,6 +64,8 @@ It is a **frozen reference, not a live build target.** Its own toolchain config 
 
 Three planes — **server**, **client**, **nitro** — plus the schema/validation helpers they share. The law (principle 7): the client plane never imports the nitro plane, and neither imports node-only internals the other doesn't need. Today the package is mostly re-exports, so the boundary is thin; as the deltas land, each plane gets its own module and the boundary becomes ESLint `no-restricted-imports` rules in `eslint.config.ts`. A boundary violation is a build error, not a review note.
 
+The **contract kernel** (`internal/contract.ts`, delta 7) is the one *type* module every plane is allowed to import — it is the single source of truth all planes derive from, and it carries no runtime, no node-only deps, no plane allegiance. Server, client, codegen, and OpenAPI read the kernel; they do not read each other. Keeping the cross-plane dependency funnelled through one type-only module is what lets a projection fix land everywhere without widening the boundary.
+
 ---
 
 ## 5. Testing
@@ -70,11 +74,25 @@ One runner (Vitest), three assertion planes, one fixture set. No delta is "done"
 
 | Plane | Suffix | Asserts | Tool |
 | --- | --- | --- | --- |
-| Runtime | `*.test.ts` | routing, validation, SSE streaming, error envelopes | Vitest |
-| Type shapes | `*.test-d.ts` | inferred response types, the accumulated `typeof app`, client narrowing | Vitest `--typecheck` |
+| Runtime | `*.test.ts` | routing, validation, SSE streaming, error envelopes, `{ data, error }` / `.orThrow()` / `.raw()` | Vitest |
+| Type shapes | `*.test-d.ts` | inferred response types, the accumulated `typeof app`, client narrowing, typed `error` discrimination, merged context | Vitest `--typecheck` |
 | Editor DX | `*.dx.test.ts` | completions and diagnostics land on the intended cursor with the intended message | [selenita](https://github.com/mareszhar/selenita) on Vitest |
 
 `vitest run --typecheck` locks all three. Tests collocate beside the code they exercise; the Orchard schemas in `archive/` are the shared fixture. A **parity** check pins that h3-dux's inherited behavior still matches `h3-route-tools` for the routes both express — when upstream moves, parity fails before a user does.
+
+### Diagnostics are a contract, not an accident (Generation 2)
+
+The editor-DX plane is the bar that the rest of the field doesn't test (delta 6) — so it is promoted from "an error exists" to a **quality contract**. `expect(errors).toHaveError(/not assignable/)` proves a failure fires, not that it helps; the contract asserts the message a human reads:
+
+- **exactly one** diagnostic (not the doubled "Overload 1 of 2 … 2 of 2");
+- it **names the offending field** (`stockKg`);
+- it says **missing / required**;
+- it **lands on** the `body` literal, not the call;
+- the hover stays a **readable public type** (no `ObjectSchema<…>` wall);
+- it holds **across `forModes`** (source and built `.d.mts` behave alike, via Selenita's mode matrix);
+- `toHaveCompletionParity` pins completions between modes.
+
+Because every Generation-2 delta adds generic complexity, the diagnostic contract is also a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor. A new **type-performance** plane sanity-checks editor responsiveness at 100 / 500 / 1000 routes, so the kernel's flattening keeps large apps fast (Hono's RPC types have documented IDE-scaling costs; this is where we prove we don't inherit them).
 
 ---
 
