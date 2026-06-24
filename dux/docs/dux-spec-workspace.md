@@ -10,7 +10,7 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sy
 | W1 | Test foundations: vitest planes, selenita wiring, Orchard fixtures | ☐ |
 | W2 | Per-delta suites land with each delta (1–5) | ☐ |
 | W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☐ |
-| W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6), type-perf plane (100/500/1000 routes) | ☐ |
+| W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6) ☑ source mode; `forModes` parity + type-perf plane (100/500/1000 routes) ☐ | ◑ |
 | W5 | Nitro codegen harness: the generated kernel route map (`#h3-dux/routes`) regenerates and typechecks (delta 13) | ☐ |
 
 ---

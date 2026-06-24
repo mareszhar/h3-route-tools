@@ -155,7 +155,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 
 | # | Delta | Phase | Status |
 | --- | --- | --- | --- |
-| 6 | **Cleaner inference + diagnostics-as-contract** — disjoint overloads, drop the `O`/`NoExcess` machinery, flatten schema leakage; lock the message as a Selenita contract | 5 | ☐ planned |
+| 6 | **Cleaner inference + diagnostics-as-contract** — one call signature, drop the `O`/`NoExcess` machinery, flatten schema leakage; lock the message as a Selenita contract | 5 | ☑ done |
 | 7 | **The contract kernel** — normalize each endpoint into plain, per-status, kind-tagged shapes at accumulation time ([§4.4](#44-the-contract-kernel)) | 6 | ☐ planned |
 | 8 | **The honest client** — `{ data, error }` by default; `.orThrow()` and `.raw()` on the call handle; `DuxError = HTTP \| transport` | 6 | ☐ planned |
 | 9 | **Typed error contracts** — preserve status→schema; `errors: { 409: … }`; `event.error(status, data)`; one envelope, standardized on `422` | 6 | ☐ planned |

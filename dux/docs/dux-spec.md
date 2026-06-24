@@ -18,7 +18,7 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 3 | Path-param interpolation | `client.ts` | ☑ done |
 | 4 | Typed SSE | `sse.ts`, `server.ts`, `client.ts` | ☑ done |
 | 5 | Validation modes (`event.context` + `event.valid`) | `server.ts`, `internal/route-types.ts` | ☑ done |
-| 6 | Cleaner inference + diagnostics-as-contract | `client.ts`, `client.dx.test.ts` | ☐ planned |
+| 6 | Cleaner inference + diagnostics-as-contract | `client.ts`, `client.dx.test.ts` | ☑ done |
 | 7 | The contract kernel | `internal/contract.ts` (new) | ☐ planned |
 | 8 | The honest client (`{ data, error }`, `.orThrow()`, `.raw()`) | `client.ts`, `sse.ts` | ☐ planned |
 | 9 | Typed error contracts (`errors`, `event.error`, 422) | `internal/contract.ts`, `server.ts`, `client.ts` | ☐ planned |
@@ -39,7 +39,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by 
 | 2 | Server verb authoring (1) — `app.get`, accumulation preserved, response + param inference | ☑ done |
 | 3 | Validation modes (5) — eager default + `eager: false` manual | ☑ done |
 | 4 | Typed SSE (4) — `sse()` brand + client `AsyncGenerator` return | ☑ done |
-| 5 | Cleaner inference + diagnostics-as-contract (6) — disjoint overloads, drop `O`/`NoExcess`, Selenita contract | ☐ |
+| 5 | Cleaner inference + diagnostics-as-contract (6) — single signature, drop `O`/`NoExcess`, Selenita contract | ☑ done (source mode; `forModes`/perf pending W4) |
 | 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☐ |
 | 7 | Response fidelity — response kinds + SSE hardening (10) | ☐ |
 | 8 | Scale — delta-aware composition (11) + typed event context (12) | ☐ |
@@ -248,22 +248,30 @@ Design covenant for all of Generation 2 (principle 9): every delta is **opt-in p
 2. **`O & NoExcess<O, …>` anchors the expected type to a giant intersection** ([client.ts:98](../h3-dux/src/client.ts:98)), so the readable `body: { … }` shape is buried behind the generic soup.
 3. **Schema internals leak** because `QueryHeaderOption<E>` is a deferred generic over the full `DuxEndpoint<ObjectSchema<…>>` ([client.ts:37](../h3-dux/src/client.ts:37)), printed unresolved.
 
-**Usage (the contract is the *message*).** Deleting `stockKg: 3` from a `POST /fruits` body yields, at the `body` literal, one diagnostic close to:
+**Usage (the contract is the *message*).** Dropping a required field from a `POST /fruits` body yields, at the body literal, a single diagnostic:
 
 ```text
-Property 'stockKg' is missing in type '{ name: string; emoji: string; pricePerKg: number }'
-but required in type '{ name: string; emoji: string; pricePerKg: number; stockKg: number }'.
+Type '{ name: string; emoji: string; pricePerKg: number; }' is missing the following
+properties from type '{ name: string; emoji: string; color: string; tags: string[];
+pricePerKg: number; stockKg: number; }': color, tags, stockKg
 ```
 
-**Proposed approach.**
+**Approach (delivered).** Three causes, each fixed inside the client types ([client.ts](../h3-dux/src/client.ts)) — no upstream change:
 
-- **Make the interpolation overload param-only.** Filter `VerbTemplates` to patterns where `PathTemplate<P> !== P`, so a static route matches the literal overload alone. Halves the message.
-- **Drop the `O` generic; delete `NoExcess`.** Upstream captures `O` to recover the method from `O["method"]` — but a verb *fixes* the method (`api.post` is the method; the return depends only on `R`, `M`, `Route`, never `O`). Type the options parameter as the concrete `VerbOptions<E>` directly: native fresh-object-literal excess checking returns (so `{ body, bogus }` flags `bogus` natively) and the intersection vanishes from the printed type. This is a *deletion*, not a patch — the whole `O`/`NoExcess` apparatus only ever served the bare `api(path, { method })` form.
-- **Flatten the leak.** Resolve each endpoint into a plain `{ params; query; body; headers; response }` view before building options — the input-side twin of the vendored `Serialize`. This is the **kernel down-payment** (delta 7 generalizes it): valibot guts stop printing.
+- **Collapse the two overloads into one signature.** The doubling came from a literal and an interpolation overload, both attempted, both failing. A *single* call signature handles both addressing styles, with `WithParams = IsPattern<R, M, Route>` deciding whether `params` apply. With one signature TypeScript drops the `No overload matches this call` framing entirely and reports the direct error — a strictly better result than merely making two overloads disjoint.
+- **Drop the `O` generic; delete `NoExcess`.** A verb *fixes* the method (`api.post` is the method; the return depends only on `R`, `M`, `Route`, never `O`). Typing the options parameter as the concrete `VerbOptions<E>` restores native fresh-object-literal excess checking (so `{ body, bogus }` flags `bogus` with code `2353`) and removes the intersection from the printed type. A deletion, not a patch.
+- **Flatten the leak.** `VerbOptions` extracts each slot with an inline `infer` (`E extends { body: infer B } ? …`) and `Prettify`s the whole — so a diagnostic prints `{ name: string; … }`, never `QueryHeaderOption<DuxEndpoint<{ body: Omit<ObjectSchema<…>> }>>`. This is the client-side **kernel down-payment** (delta 7 generalizes it).
 
-**Lock it as a Selenita *contract*, not an accident.** Today the DX test only asserts an error exists — `expect(errors).toHaveError(/not assignable/)` ([client.dx.test.ts:30](../h3-dux/src/client.dx.test.ts:30)). The contract asserts quality: **exactly one** diagnostic (not two overloads), it **names** `stockKg`, it says **missing/required**, it **lands on** `body`, and the hover stays a readable public type **across `forModes`** (source vs built `.d.mts`). No one in this space tests diagnostic quality — making it a contract is itself differentiating ([dux-spec-workspace.md §5](./dux-spec-workspace.md#5-testing)).
+Two wins fell out of the single signature, both beyond the original plan:
 
-**Status:** ☐ planned (phase 5). Client-types-only, low risk.
+- **A typo'd route names the valid routes.** `api.post('/health', …)` reports `not assignable to '"/fruits" | "/checkout" | "/import"'` instead of the whole accumulated route map. The route parameter is `Route extends VerbRoutes<R, M> ? Route : CleanPatterns<R, M>`: a valid literal *or* interpolated path is accepted as itself; anything else (a typo, or the empty string mid-type) falls back to the literal patterns — which is also exactly what the completion dropdown should show. `CleanPatterns` forces the union to evaluate via `extends infer U`, so it prints as literals, and keeping the interpolation forms *out* of the completion type stops a `${string}` template from subsuming `/fruits/:id` out of the dropdown.
+- **A missing required `params` option reads `Expected 2 arguments, but got 1`**, not `Argument of type … is not assignable to never`.
+
+**Locked as a Selenita contract.** The DX suite ([client.dx.test.ts](../h3-dux/src/client.dx.test.ts)) was promoted from "an error exists" to quality assertions: **exactly one** diagnostic (`toHaveErrorCount(1)`), the right TypeScript code (`2739`/`2322`/`2353`/`2554`), the offending field **named**, the message saying **missing**, the route error **naming the valid routes** — and a **leak guard** (`expectNoLeak`) that fails if any message contains `ObjectSchema`/`SchemaWithPipe`/`DuxEndpoint`/`No overload`/`Overload N`. Completion parity (`/fruits/:id` survives the dropdown) and a readable verb hover are asserted too. The full set of diagnostics was first captured empirically with a Selenita probe, then locked. No one else in this space tests diagnostic quality — making it a contract is itself differentiating ([dux-spec-workspace.md §5](./dux-spec-workspace.md#5-testing)).
+
+**Server-side inspection.** The authoring plane was probed too and is already clean: `event.context` completes `body`/`params`/`query`, `event.context.body` completes its fields, `event.valid('…')` completes only the declared scopes, and a wrong handler return names the missing response fields with no schema leak. Two minor residuals are deferred (not blockers, no leak): an unknown key inside `validate` is silently accepted (the `V extends AnyMethodValidate` bound is loose), and the handler-return mismatch prints a `Ret & Response` intersection rather than the response shape alone. Both are candidates for a later polish pass.
+
+**Status:** ☑ done (source mode). The remaining hardening — `forModes` parity (source vs built `.d.mts`) and the type-perf plane at 100/500/1000 routes — is tracked under workspace phase W4.
 
 ---
 
@@ -388,7 +396,7 @@ export const app = createServer()
 
 ## 12. Typed event-context augmentation
 
-**Why.** `middleware: [...]` is plain h3 passthrough: if `requireKey` sets `event.context.user`, downstream handlers need a manual cast. This is the gap the request named directly — "no typed, well-standardized event context augmentation." It is a *typing* primitive, decoupled from auth, which stays an app concern (vision §6). Parity with Hono `Variables` / Elysia `derive`·`decorate` ([dux-conventions.md §13](./dux-conventions.md#13-typed-event-context)).
+**Why.** `middleware: [...]` is plain h3 passthrough: if `requireKey` sets `event.context.user`, downstream handlers need a manual cast. There is no typed, standardized way for middleware to augment the event context. It is a *typing* primitive, decoupled from auth, which stays an app concern (vision §6). Parity with Hono `Variables` / Elysia `derive`·`decorate` ([dux-conventions.md §13](./dux-conventions.md#13-typed-event-context)).
 
 **Usage.**
 

@@ -17,35 +17,33 @@ import { DuxCall, parseEventStream } from './sse.ts'
 
 type Prettify<T> = { [K in keyof T]: T[K] }
 
-/** Any key on `O` absent from `Expected` becomes `never` → an excess-property error. */
-type NoExcess<O, Expected> = { [K in Exclude<keyof O, keyof Expected>]: never }
-
 /** True when `T` has at least one required key (so the options argument is mandatory). */
 type HasRequired<T> = Partial<T> extends T ? false : true
 
 /** `params` is required when the route declares named params, optional otherwise. */
-type ParamsOption<E> = E extends { params: infer P }
-  ? [keyof P] extends [never]
-      ? { params?: P }
-      : string extends keyof P
-        ? { params?: P }
-        : { params: P }
-  : object
+type ParamsOption<P> = [keyof P] extends [never]
+  ? { params?: P }
+  : string extends keyof P
+    ? { params?: P }
+    : { params: P }
 
-type BodyOption<E> = E extends { body: infer B } ? (unknown extends B ? object : { body: B }) : object
-
-interface QueryHeaderOption<E> {
-  query?: E extends { query: infer Q } ? Q : never
-  headers?: E extends { headers: infer H } ? H : never
-}
+/** Present only when the endpoint declares a body. */
+type BodyOption<B> = unknown extends B ? object : { body: B }
 
 /**
- * The call options for a verb+endpoint — upstream's `EndpointOptions` minus
- * `method`. When the route was interpolated the params already live in the path,
- * so `WithParams` is `false` and the `params` key is dropped.
+ * The call options for a verb+endpoint, resolved to **plain shapes**. Every slot
+ * is extracted with an `infer` and the whole thing flattened with `Prettify`, so
+ * neither the signature nor a diagnostic ever prints the underlying endpoint or
+ * schema generics (`DuxEndpoint<…>`, `ObjectSchema<…>`) — only `{ body: { … } }`.
+ * This is the client-side projection the contract kernel generalizes (delta 7).
+ * When the route was interpolated the params already live in the path, so
+ * `WithParams` is `false` and `params` is dropped.
  */
 type VerbOptions<E, WithParams extends boolean> = Prettify<
-  (WithParams extends true ? ParamsOption<E> : object) & BodyOption<E> & QueryHeaderOption<E>
+  & (WithParams extends true ? ParamsOption<E extends { params: infer P } ? P : object> : object)
+  & (E extends { body: infer B } ? BodyOption<B> : object)
+  & { query?: E extends { query: infer Q } ? Q : never }
+  & { headers?: E extends { headers: infer H } ? H : never }
 >
 
 /** The wire-shaped response, exactly as the base client reports it. */
@@ -71,8 +69,29 @@ type VerbPatterns<R, M extends string> = {
   [Route in keyof R & string]: M extends keyof R[Route] ? Route : never;
 }[keyof R & string]
 
-/** The interpolated (template-literal) forms of those patterns — `` `/fruits/${id}` ``. */
-type VerbTemplates<R, M extends string> = PathTemplate<VerbPatterns<R, M>>
+/** Of those, only the ones carrying a `:param` — the routes interpolation applies to. */
+type ParamPatterns<R, M extends string> = {
+  [P in VerbPatterns<R, M>]: P extends `${string}:${string}` ? P : never;
+}[VerbPatterns<R, M>]
+
+/** The interpolated (template-literal) forms of the param routes — `` `/fruits/${id}` ``. */
+type VerbTemplates<R, M extends string> = PathTemplate<ParamPatterns<R, M>>
+
+/** Every route argument a verb accepts: the literal patterns plus the interpolated param forms. */
+type VerbRoutes<R, M extends string> = VerbPatterns<R, M> | VerbTemplates<R, M>
+
+/**
+ * The literal patterns, forced to *evaluate* to their string literals (the
+ * `extends infer U`). Used for two things the template forms would spoil:
+ *  - completions — a `${string}` template in the union subsumes `/fruits/:id`,
+ *    so it would vanish from the dropdown; the patterns alone keep it.
+ *  - the bad-route message — a typo reports against `'/fruits' | '/fruits/:id'`,
+ *    not the whole accumulated route map printed as a lazy generic.
+ */
+type CleanPatterns<R, M extends string> = VerbPatterns<R, M> extends infer U ? U & string : never
+
+/** True when the route argument is a declared literal pattern (so `params` are supplied at the call). */
+type IsPattern<R, M extends string, Route extends string> = Route extends VerbPatterns<R, M> ? true : false
 
 /** Does interpolated `Input` match route `Pattern`, treating each `:x` as exactly one segment? */
 type Matches<Input extends string, Pattern extends string> = Pattern extends `${infer PH}/${infer PR}`
@@ -95,37 +114,41 @@ type MatchEndpoint<R, M extends string, Route extends string>
   = MatchPattern<R, M, Route> extends infer P extends keyof R ? R[P][M & keyof R[P]] : never
 
 /** The options argument(s) for a verb call — required only when the endpoint needs them. */
-type VerbArgs<E, WithParams extends boolean, O> = HasRequired<VerbOptions<E, WithParams>> extends true
-  ? [options: O & NoExcess<O, VerbOptions<E, WithParams>>]
-  : [options?: O & NoExcess<O, VerbOptions<E, WithParams>>]
-
-/** Reject a literal pattern (it carries a `:param`) from the interpolation overload. */
-type NotPattern<Route extends string> = Route extends `${string}:${string}` ? never : Route
+type VerbArgs<E, WithParams extends boolean> = HasRequired<VerbOptions<E, WithParams>> extends true
+  ? [options: VerbOptions<E, WithParams>]
+  : [options?: VerbOptions<E, WithParams>]
 
 // ── the verb methods ──────────────────────────────────────────────────────────
 
 /**
- * One verb method (`api.get`, `api.post`, …). Two typed ways to address a route:
+ * One verb method (`api.get`, `api.post`, …). A single call signature covers two
+ * ways to address a route — both typed end-to-end from the server contract:
  *  1. literal pattern — `api.get('/fruits/:id', { params: { id } })`; the
  *     declared paths autocomplete and `params` is supplied here.
  *  2. interpolation — `` api.get(`/fruits/${id}`) ``; the params live in the path.
  *
- * The response is the wire shape; options are required only when the endpoint
- * needs them, so a bare `api.get('/health')` works.
+ * One signature (not an overload pair) is deliberate: TypeScript reports a bad
+ * call against *this* shape directly, instead of the doubled, unreadable
+ * "No overload matches this call" wall (see docs/dux-spec.md delta 6). The
+ * response is the wire shape; options are required only when the endpoint needs
+ * them, so a bare `api.get('/health')` works.
+ *
+ * The route parameter is `Route extends VerbRoutes ? Route : CleanPatterns`: a
+ * valid literal **or** interpolated path is accepted as itself, while anything
+ * else (a typo, or the empty string mid-type) falls back to the literal patterns
+ * — which is exactly what completions should offer and what a bad route should
+ * report against. This keeps the interpolation forms out of the *completion*
+ * type (so `/fruits/:id` survives the dropdown) without a second overload.
  */
 export interface VerbFetch<R, M extends string> {
-  <const Route extends VerbPatterns<R, M>, const O extends VerbOptions<MatchEndpoint<R, M, Route>, true>>(
-    route: Route,
-    ...args: VerbArgs<MatchEndpoint<R, M, Route>, true, O>
-  ): VerbReturn<MatchEndpoint<R, M, Route>>
-  <const Route extends VerbTemplates<R, M>, const O extends VerbOptions<MatchEndpoint<R, M, Route>, false>>(
-    route: NotPattern<Route>,
-    ...args: VerbArgs<MatchEndpoint<R, M, Route>, false, O>
+  <const Route extends string>(
+    route: Route extends VerbRoutes<R, M> ? Route : CleanPatterns<R, M>,
+    ...args: VerbArgs<MatchEndpoint<R, M, Route>, IsPattern<R, M, Route>>
   ): VerbReturn<MatchEndpoint<R, M, Route>>
 }
 
 /** The route map behind a server: a dux `createServer` app, an upstream `H3Typed`, or a raw map. */
-type RouteMapOf<App> = App extends { '~duxRoutes': infer R } ? R : NormalizeRoutes<App>
+type RouteMapOf<App> = App extends { '~duxRoutes': infer R } ? Prettify<R> : NormalizeRoutes<App>
 
 /**
  * The typed client: the bare `createTypedFetch` callable plus symmetric verb
