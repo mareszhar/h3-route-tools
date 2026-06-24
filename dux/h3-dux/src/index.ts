@@ -5,7 +5,15 @@ export type { Client, VerbFetch } from './client.ts'
 export { DuxHTTPError, DuxTransportError } from './errors.ts'
 export type { DuxError } from './errors.ts'
 export type { EndpointContract, ResponseKind } from './internal/contract.ts'
-export { binary, type BinaryResponse, text, type TextResponse } from './response.ts'
+export {
+  binary,
+  type BinaryResponse,
+  type DuxRawResponse,
+  text,
+  type TextResponse,
+  type TypedNativeResponse,
+  typedResponse,
+} from './response.ts'
 export { createServer, DuxServer } from './server.ts'
 export { type EventStream, sse } from './sse.ts'
 // ── upstream surface ──────────────────────────────────────────────────────────

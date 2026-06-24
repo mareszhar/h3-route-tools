@@ -18,7 +18,7 @@ describe('response kinds — editor DX', () => {
     const { completions } = project.query`
       import { ${cursor} } from '@mszr/h3-dux'
     `
-    expect(completions).toContainCompletions(['sse', 'text', 'binary'])
+    expect(completions).toContainCompletions(['sse', 'text', 'binary', 'typedResponse'])
   })
 
   it('authoring a text() / binary() route is clean', () => {
@@ -56,5 +56,59 @@ describe('response kinds — editor DX', () => {
     `
     // Blob members, not Fruit fields — the body decoded by kind.
     expect(completions).toContainCompletions(['arrayBuffer', 'slice', 'stream', 'type'])
+  })
+
+  it('the ceremony-free string path infers string completions', () => {
+    const { completions } = project.query`
+      import { createClient, createServer } from '@mszr/h3-dux'
+      const app = createServer().get('/motd', { handler: () => 'ripe' })
+      const api = createClient<typeof app>()
+      async function trip() {
+        const motd = await api.get('/motd').orThrow()
+        motd.${cursor}
+      }
+    `
+    expect(completions).toContainCompletions(['charAt', 'includes', 'toUpperCase'])
+  })
+
+  it('typedResponse() preserves native-response body IntelliSense', () => {
+    const { completions } = project.query`
+      import { createClient, createServer, typedResponse } from '@mszr/h3-dux'
+      const app = createServer().get('/native', {
+        handler: () => typedResponse({ orchard: 'ripe' as const, count: 4 }),
+      })
+      const api = createClient<typeof app>()
+      async function trip() {
+        const body = await (await api.get('/native').raw()).parse()
+        body.${cursor}
+      }
+    `
+    expect(completions).toContainCompletions(['orchard', 'count'])
+  })
+
+  it('.raw() offers the universal parse() path and native Response methods', () => {
+    const { completions } = project.query`
+      import { createClient } from '@mszr/h3-dux'
+      import type { App } from '@test'
+      const api = createClient<App>()
+      async function trip() {
+        const response = await api.get('/health/text').raw()
+        response.${cursor}
+      }
+    `
+    expect(completions).toContainCompletions(['parse', 'json', 'text', 'blob', 'headers', 'status'])
+  })
+
+  it('a body on a 204 fails once at the handler with no internal type leak', () => {
+    const { errors } = project.check`
+      import { createServer } from '@mszr/h3-dux'
+      void createServer().get('/empty', {
+        status: 204,
+        handler: () => ({ nope: true }),
+      })
+    `
+    expect(errors).toHaveErrorCount(1)
+    expect(errors).toHaveError(2322, /not assignable/)
+    expectNoLeak(errors)
   })
 })

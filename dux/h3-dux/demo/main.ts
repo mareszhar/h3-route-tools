@@ -21,7 +21,7 @@ function show(label: string, value: unknown): void {
 // `.orThrow()` — the one-liner when you want failures to bubble. Response inferred.
 show('GET /health', await api.get('/health').orThrow())
 
-// Response kinds: text() → a plain `string` (not re-parsed as JSON).
+// Response kinds: a bare string is inferred as text (not re-parsed as JSON).
 show('GET /motd (text)', await api.get('/motd').orThrow())
 
 show('GET /fruits', await api.get('/fruits').orThrow())
@@ -48,7 +48,7 @@ const missing = await api.get('/fruits/:id', { params: { id: 'durian' } })
 if (missing.error?.kind === 'http' && missing.error.status === 404)
   show('GET /fruits/durian → 404', missing.error.data)
 
-// Response kinds: binary() → a real `Blob` download, decoded as bytes (not JSON).
+// Response kinds: a bare Blob is inferred as binary, decoded as bytes (not JSON).
 const label = await api.get(`/fruits/mango/label`).orThrow()
 show('GET /fruits/mango/label (binary)', `${label.size} bytes → "${await label.text()}"`)
 
@@ -67,8 +67,8 @@ for await (const tick of api.get(`/fruits/kiwi/ripen`))
 // Manual mode: a dry-run skips body validation entirely.
 show('POST /import?mode=dry-run', await api.post('/import', { query: { mode: 'dry-run' }, body: [] }).orThrow())
 
-// The web-standard escape hatch: `.raw()` for status/headers.
+// The web-standard escape hatch: native status/headers plus universal `.parse()`.
 const raw = await api.get('/health').raw()
-show(`GET /health (raw) → ${raw.status}`, await raw.json())
+show(`GET /health (raw) → ${raw.status}`, await raw.parse())
 
 console.log('\n✓ trip complete\n')

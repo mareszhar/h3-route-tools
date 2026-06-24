@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { TypedResponse } from 'h3-route-tools'
-import { buildResult, DuxHTTPError } from './errors.ts'
+import type { ResponseKind } from './internal/contract.ts'
+import type { DuxRawResponse } from './response.ts'
+import { buildResult, DuxHTTPError, withParser } from './errors.ts'
 
 /** Runtime + type marker key branding a response schema as a typed SSE stream. */
 const BRAND = '~h3dux/eventStream'
@@ -29,7 +30,7 @@ export function isEventStream(value: unknown): boolean {
 }
 
 /** Matches an SSE event boundary — a blank line in any of the three line-ending styles. */
-const FRAME_BOUNDARY = /\r\n\r\n|\n\n|\r\r/
+const FRAME_BOUNDARY = /(?:\r\n|\r|\n){2}/
 
 /**
  * Parse one SSE frame's fields into its data payload, per the EventSource spec:
@@ -81,6 +82,7 @@ export async function* parseEventStream<T>(response: Response): AsyncGenerator<T
         match = FRAME_BOUNDARY.exec(buffer)
       }
     }
+    buffer += decoder.decode()
     // A trailing frame with no terminating blank line still carries an event.
     const tail = parseFrame<T>(buffer)
     if (tail !== undefined)
@@ -96,10 +98,10 @@ export async function* parseEventStream<T>(response: Response): AsyncGenerator<T
  * consume it — the type decides which is valid, and only the consumed path fetches:
  *  - `await call` → the honest result `{ data, error }` (`Result`);
  *  - `await call.orThrow()` → `Data`, rejecting with a `DuxError` on failure;
- *  - `await call.raw()` → the native `TypedResponse` (never throws on non-2xx);
+ *  - `await call.raw()` → the native kind-aware Response (never throws on non-2xx);
  *  - `for await (… of call)` → a typed SSE `AsyncGenerator`.
  */
-export class DuxCall<Result, Data> implements PromiseLike<Result> {
+export class DuxCall<Result, Data, Kind extends ResponseKind> implements PromiseLike<Result> {
   readonly #fetch: () => Promise<Response>
   readonly #stream: () => AsyncGenerator<unknown>
 
@@ -126,8 +128,8 @@ export class DuxCall<Result, Data> implements PromiseLike<Result> {
   }
 
   /** The web-standard escape hatch: the native response, never throwing on a non-2xx status. */
-  raw(): Promise<TypedResponse<Data>> {
-    return this.#fetch() as Promise<TypedResponse<Data>>
+  async raw(): Promise<DuxRawResponse<Data, Kind>> {
+    return withParser<Data, Kind>(await this.#fetch())
   }
 
   [Symbol.asyncIterator](): AsyncGenerator<unknown> {

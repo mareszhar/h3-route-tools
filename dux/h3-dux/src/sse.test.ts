@@ -41,6 +41,16 @@ it('handles CRLF line endings and skips comment / id / retry lines', async () =>
   expect(ticks).toEqual([{ id: 'x', ripeness: 40, at: 't' }])
 })
 
+it('handles mixed valid line endings at frame boundaries', async () => {
+  const body = [
+    'data: {"id":"x","ripeness":20,"at":"a"}\n\r\n',
+    'data: {"id":"x","ripeness":40,"at":"b"}\r\r\n',
+    'data: {"id":"x","ripeness":60,"at":"c"}\r\n\n',
+  ].join('')
+  const ticks = await collect(ripen(sseClient(body)))
+  expect(ticks.map(tick => tick.ripeness)).toEqual([20, 40, 60])
+})
+
 it('accumulates a multi-line data payload (joined with \\n)', async () => {
   const body = 'data: {"id":"x",\ndata: "ripeness":60,\ndata: "at":"t"}\n\n'
   const ticks = await collect(ripen(sseClient(body)))

@@ -3,7 +3,7 @@
  * display: per-verb authoring, response + param inference, validation modes,
  * typed SSE, and typed errors. `App = typeof app` is the single source of truth.
  */
-import { binary, createServer, sse, text } from '@mszr/h3-dux'
+import { createServer, sse } from '@mszr/h3-dux'
 import * as v from 'valibot'
 import {
   CheckoutSchema,
@@ -27,8 +27,8 @@ export const app = createServer()
   })
   // Response inferred from the return — no schema, no annotation.
   .get('/health', { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) })
-  // Response kinds (delta 10): text() → the client receives a `string`, not parsed JSON.
-  .get('/motd', { validate: { response: text() }, handler: () => 'Eat your fruits 🍎' })
+  // Response kinds (delta 10): strings infer as text — no marker or schema.
+  .get('/motd', { handler: () => 'Eat your fruits 🍎' })
   .get('/fruits', { validate: { response: v.array(FruitSchema) }, handler: () => orchard.list() })
   // status sets the success code; the validated body is on e.context.body.
   .post('/fruits', {
@@ -52,9 +52,8 @@ export const app = createServer()
       }
     },
   })
-  // binary() → a download; the client receives a `Blob`, never a guessed `.json()`.
+  // Blob → inferred binary download; the client receives a Blob.
   .get('/fruits/:id/label', {
-    validate: { response: binary() },
     handler: (e) => {
       const fruit = orchard.get(e.context.params.id)
       return new Blob([new TextEncoder().encode(`${fruit.emoji} ${fruit.name} — $${fruit.pricePerKg}/kg`)])

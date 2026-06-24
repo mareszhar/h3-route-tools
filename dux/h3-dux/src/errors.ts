@@ -1,3 +1,7 @@
+import type { ResponseKind } from './internal/contract.ts'
+import type { DuxRawResponse } from './response.ts'
+import { responseKindFromHeaders } from './response.ts'
+
 /**
  * The honest client's failure channel (delta 8/9). A call resolves to a result
  * `{ data, error }`; `error` is a `DuxError` — either a typed non-2xx response
@@ -47,19 +51,25 @@ function unwrapErrorData(body: unknown): unknown {
 }
 
 /**
- * Read a response body by its declared content type — the runtime half of the
- * response-kind contract (delta 10). A `204`/empty body is `undefined`, JSON is
- * parsed, `text/*` stays a `string` (never re-parsed, so `"42"` stays `"42"`), and
- * any other declared type is a `Blob`. With no content type we fall back to a
- * best-effort text/JSON read, so a bare value still round-trips.
+ * Read a response body by dux's kind metadata — the runtime half of the response
+ * contract. Kind is independent of MIME, so a `text/csv` binary response remains
+ * a Blob and an empty text response remains `""`. Opaque/native responses without
+ * kind metadata fall back conservatively to their MIME type.
  */
-async function parseBody(response: Response): Promise<unknown> {
+export async function parseBody(response: Response): Promise<unknown> {
   if (response.status === 204 || response.status === 205)
     return undefined
-  if (response.headers.get('content-length') === '0')
+
+  const kind = responseKindFromHeaders(response.headers)
+  if (kind === 'empty')
     return undefined
-  const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('application/json')) {
+  if (kind === 'text')
+    return await response.text()
+  if (kind === 'binary') {
+    const mediaType = response.headers.get('content-type')?.split(';', 1)[0]?.trim() ?? ''
+    return new Blob([await response.arrayBuffer()], { type: mediaType })
+  }
+  if (kind === 'json') {
     try {
       return await response.json()
     }
@@ -67,13 +77,22 @@ async function parseBody(response: Response): Promise<unknown> {
       return undefined
     }
   }
-  if (contentType.startsWith('text/')) {
-    const text = await response.text()
-    return text === '' ? undefined : text
+
+  // Opaque/native or non-dux responses: decode conservatively from the MIME.
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
+  if (contentType === 'application/json' || contentType.endsWith('+json')) {
+    try {
+      return await response.json()
+    }
+    catch {
+      return undefined
+    }
   }
+  if (contentType.startsWith('text/'))
+    return await response.text()
   if (contentType)
     return await response.blob()
-  // No content type: best-effort — text, parsed as JSON when it parses.
+  // No content type: best-effort for opaque/native responses only.
   const text = await response.text()
   if (!text)
     return undefined
@@ -83,6 +102,24 @@ async function parseBody(response: Response): Promise<unknown> {
   catch {
     return text
   }
+}
+
+/** Add the kind-aware `.parse()` method while preserving a genuine Response. */
+export function withParser<Data, Kind extends ResponseKind>(
+  response: Response,
+): DuxRawResponse<Data, Kind> {
+  const nativeClone = response.clone.bind(response)
+  Object.defineProperties(response, {
+    parse: {
+      configurable: true,
+      value: () => parseBody(response) as Promise<Data>,
+    },
+    clone: {
+      configurable: true,
+      value: () => withParser<Data, Kind>(nativeClone()),
+    },
+  })
+  return response as DuxRawResponse<Data, Kind>
 }
 
 /**

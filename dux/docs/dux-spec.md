@@ -321,12 +321,13 @@ if (error) {
 data // Fruit — narrowed only after error is handled
 
 const fruit = await api.get('/fruits/:id', { params: { id } }).orThrow() // Fruit, throws DuxError
-const res = await api.get('/fruits/:id', { params: { id } }).raw() // TypedResponse<Fruit>
+const res = await api.get('/fruits/:id', { params: { id } }).raw() // native Response + parse(): Promise<Fruit>
+const sameFruit = await res.parse()
 for await (const tick of api.get(`/fruits/${id}/ripen`)) // unchanged SSE
   console.log(tick.ripeness)
 ```
 
-**Approach (delivered).** The existing `DuxCall` handle ([sse.ts](../h3-dux/src/sse.ts)) is generalized: default `await` resolves to `{ data, error }` (built by `buildResult` in `errors.ts`); `.orThrow()` returns `Promise<Data>`, rejecting with the `DuxError`; `.raw()` returns the upstream `TypedResponse` and never throws on a non-2xx; `for await` stays SSE. `DuxError` is `DuxHTTPError | DuxTransportError` — a fetch reject becomes the transport variant, a non-2xx the HTTP variant. The handle's type is `DuxCall<HonestResult<…>, Data>`; the `data`/`error` types are the delta-7 projections. The honest default *is* the typed result, so there is no separate `api.try` surface. `createTestClient(app)` wraps the in-process `fetch: app.request` pattern under a name that signals intent.
+**Approach (delivered).** The existing `DuxCall` handle ([sse.ts](../h3-dux/src/sse.ts)) is generalized: default `await` resolves to `{ data, error }` (built by `buildResult` in `errors.ts`); `.orThrow()` returns `Promise<Data>`, rejecting with the `DuxError`; `.raw()` returns the native kind-aware `DuxRawResponse<Data, Kind>` and never throws on a non-2xx; `for await` stays SSE. Raw responses add one universal reader, `.parse()`, while retaining the standard `.json()`/`.text()`/`.blob()` surface; only JSON endpoints narrow `.json()` to `Data`. `DuxError` is `DuxHTTPError | DuxTransportError` — a fetch reject becomes the transport variant, a non-2xx the HTTP variant. The honest default *is* the typed result, so there is no separate `api.try` surface. `createTestClient(app)` wraps the in-process `fetch: app.request` pattern under a name that signals intent.
 
 **Reality:** the body is read **once** and folded into the result; an empty/`204` response yields `data: undefined`, and a non-JSON body falls back to text. The success/error decision is `response.ok`, not the declared status — honest about what actually came back.
 
@@ -369,17 +370,18 @@ app.post('/fruits', {
 
 ```ts
 app.delete('/fruits/:id', { status: 204, handler: e => orchard.remove(e.context.params.id) }) // kind: empty
-app.get('/health/text', { validate: { response: text() }, handler: () => 'ripe' }) //             kind: text → string
-app.get('/fruits/:id/label', { validate: { response: binary() }, handler: e => makeLabel(e) }) //  kind: binary → Blob
+app.get('/health/text', { handler: () => 'ripe' }) //                                              inferred text → string
+app.get('/fruits/:id/label', { handler: e => makeLabel(e) }) //                                    inferred binary → Blob
+app.get('/native', { handler: () => typedResponse({ ok: true }, { status: 201 }) }) //              typed native Response
 // sse() is just the `sse` kind with a brand — streaming is no longer a special case
 ```
 
-**Approach (delivered).** A `kind` (`json | text | empty | sse | binary`) is computed onto every `DuxEndpoint` (`SuccessKind<V, Ret>` in [route-types.ts](../h3-dux/src/internal/route-types.ts)) alongside the success body. It is inferred — `json` by default, a `void`/`null`/`undefined` return → `empty`, `sse()` → `sse` — or declared by the schema-free markers `text()`/`binary()` ([response.ts](../h3-dux/src/response.ts)), the siblings of `sse()`. The client projects the body **by kind** (`ClientData` in [contract.ts](../h3-dux/src/internal/contract.ts)): `string` for `text`, `Blob` for `binary`, `undefined` for `empty`, `AsyncGenerator<T>` for `sse`, the serialized wire shape for `json`. `parseEventStream` ([sse.ts](../h3-dux/src/sse.ts)) is hardened: it refuses a non-2xx (throws `DuxHTTPError`), handles `\n`/`\r\n`/`\r`, accumulates multi-line `data:` per the SSE spec (joined with `\n`, one leading space stripped), ignores comment/`id:`/`event:`/`retry:` lines, and flushes a final unterminated frame.
+**Approach (delivered).** A `kind` (`json | text | empty | sse | binary`) is computed onto every `DuxEndpoint` alongside the success body. The common path is fully inferred from the response schema/handler return: objects → `json`, strings → `text`, Blob/bytes/streams → `binary`, and empty values, `204`/`205`, or `HEAD` → `empty`. Body-returning empty-status handlers fail at the cursor. `text()`/`binary()` remain schema-free explicit overrides; `sse()` carries its element schema. The client projects the body **by kind** (`ClientData` in [contract.ts](../h3-dux/src/internal/contract.ts)): `string`, `Blob`, `undefined`, `AsyncGenerator<T>`, or the serialized JSON shape. `parseEventStream` ([sse.ts](../h3-dux/src/sse.ts)) refuses non-2xx responses, handles homogeneous and mixed `\n`/`\r\n`/`\r` boundaries, accumulates multi-line `data:`, ignores non-data fields, flushes the decoder, and emits a final unterminated frame.
 
 Two realities worth recording:
 
-- **The wire must carry the kind, because h3 won't infer it.** h3 sends a bare `string` with *no* `content-type` and an untyped `Blob` with an empty one — so the client, which decodes by `content-type`, would re-`JSON.parse` `"42"` into `42`. The server now tags a `text()` response `text/plain` and a `binary()` response `application/octet-stream` (a typed `Blob`'s own mime wins, and a native `Response` self-describes), and the client reads `text/*` as a raw `string`, a `204`/empty body as `undefined`, and any other declared type as a `Blob`. Kind lives in the *type*; `content-type` is its runtime shadow, and the two are kept in lockstep.
-- **Native `Response` stays honest by being opaque.** A handler may return a native `Response` (h3 passes it through), but its body is unknowable to the contract, so `data` is typed `unknown` — you reach for `.raw()` to inspect it, rather than the type asserting a shape the kit can't guarantee (principle 3).
+- **Kind is not MIME.** h3 does not add enough metadata to distinguish a numeric-looking string from JSON or a `text/csv` Blob from text. The server therefore infers the actual handler value and adds a standards-valid `dux-kind` parameter to `Content-Type`. The MIME remains intact; the parameter tells the dux client how to expose the bytes. This works through CORS because `Content-Type` is a safelisted response header.
+- **Native `Response` can be opaque or typed.** A plain platform `Response` still passes through honestly as body-`unknown`. `typedResponse(data, init)` constructs that same native object but carries an inferred phantom body contract and wire kind, so default await, `.orThrow()`, and `.raw().parse()` all retain high-quality inference.
 
 **Status:** ☑ done (phase 7).
 

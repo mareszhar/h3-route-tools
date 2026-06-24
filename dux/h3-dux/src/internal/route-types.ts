@@ -25,7 +25,13 @@ import type {
   SchemaWithJSON,
   StatusCodeKey,
 } from 'h3-route-tools'
-import type { BinaryResponse, TextResponse } from '../response.ts'
+import type {
+  BinaryBody,
+  BinaryResponse,
+  ResponseKindOf,
+  TextResponse,
+  TypedNativeResponse,
+} from '../response.ts'
 import type { EventStream } from '../sse.ts'
 
 /** Flatten an intersection into a plain object type (display only). */
@@ -88,38 +94,61 @@ type Is2xx<S> = `${S & (string | number)}` extends `2${string}` ? true : false
 type NumKey<S> = S extends number ? S : S extends `${infer N extends number}` ? N : never
 
 /** The success (2xx) body a method answers with — bare schema, the 2xx of a status map, else inferred. */
-export type SuccessResponse<V extends AnyMethodValidate, Ret> = ResponseSchema<V> extends EventStream<infer T>
-  ? EventStream<T>
-  : ResponseSchema<V> extends TextResponse
-    ? string
-    : ResponseSchema<V> extends BinaryResponse
-      ? Blob
-      : [ResponseSchema<V>] extends [SchemaWithJSON]
-          ? InferOutput<ResponseSchema<V>>
-          : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
-            ? Pick2xx<ResponseSchema<V>>
-            : unknown extends InferMethodResponse<V> ? Ret : InferMethodResponse<V>
+export type SuccessResponse<
+  V extends AnyMethodValidate,
+  Ret,
+  M extends RouteMethod,
+  Status extends number | undefined,
+> = IsEmptyResponse<M, Status> extends true
+  ? undefined
+  : ResponseSchema<V> extends EventStream<infer T>
+    ? EventStream<T>
+    : ResponseSchema<V> extends TextResponse
+      ? string
+      : ResponseSchema<V> extends BinaryResponse
+        ? Blob
+        : [ResponseSchema<V>] extends [SchemaWithJSON]
+            ? InferOutput<ResponseSchema<V>>
+            : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
+              ? Pick2xx<ResponseSchema<V>>
+              : Ret extends TypedNativeResponse<infer Data, infer _Kind>
+                ? Data
+                : unknown extends InferMethodResponse<V> ? Ret : InferMethodResponse<V>
 
 /**
  * The response *kind* an endpoint answers with (delta 10) — the kernel tag every
  * plane reads. `sse()`/`text()`/`binary()` declare it explicitly; otherwise it is
- * inferred: a `void`/`null`/`undefined` return is `empty` (a `204`/no-body), a
- * native `Response` passes through as `json` (opaque — consume with `.raw()`),
- * and everything else is `json`. See docs/dux-conventions.md §11.
+ * inferred from the schema/return: strings are text, bytes are binary, empty
+ * values/statuses are empty, and everything else is JSON. A plain native
+ * `Response` stays opaque; `typedResponse()` carries an explicit body contract.
+ * See docs/dux-conventions.md §11.
  */
-export type SuccessKind<V extends AnyMethodValidate, Ret> = ResponseSchema<V> extends EventStream<infer _T>
-  ? 'sse'
-  : ResponseSchema<V> extends TextResponse
-    ? 'text'
-    : ResponseSchema<V> extends BinaryResponse
-      ? 'binary'
-      : [ResponseSchema<V>] extends [SchemaWithJSON]
-          ? 'json'
-          : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
-            ? 'json'
-            : [Ret] extends [Response]
-                ? 'json'
-                : [Ret] extends [void | null | undefined] ? 'empty' : 'json'
+export type SuccessKind<
+  V extends AnyMethodValidate,
+  Ret,
+  M extends RouteMethod,
+  Status extends number | undefined,
+> = IsEmptyResponse<M, Status> extends true
+  ? 'empty'
+  : ResponseSchema<V> extends EventStream<infer _T>
+    ? 'sse'
+    : ResponseSchema<V> extends TextResponse
+      ? 'text'
+      : ResponseSchema<V> extends BinaryResponse
+        ? 'binary'
+        : [ResponseSchema<V>] extends [SchemaWithJSON]
+            ? ResponseKindOf<InferOutput<ResponseSchema<V>>>
+            : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
+              ? ResponseKindOf<Pick2xx<ResponseSchema<V>>>
+              : Ret extends TypedNativeResponse<infer _Data, infer Kind>
+                ? Kind
+                : [Ret] extends [Response]
+                    ? 'json'
+                    : ResponseKindOf<Awaited<Ret>>
+
+/** Status/method combinations whose wire response cannot carry a body. */
+type IsEmptyResponse<M extends RouteMethod, Status extends number | undefined>
+  = M extends 'head' ? true : Status extends 204 | 205 ? true : false
 
 /** Union of the 2xx entry outputs of a response status map. */
 type Pick2xx<M> = {
@@ -247,25 +276,26 @@ type ConstResponse<T> = T extends Date | RegExp | URL
         ? { [K in keyof T]: ConstResponse<T[K]> }
         : T
 
-/** A binary body a handler may return for a `binary()` response — h3 streams any of these. */
-export type BinaryBody = Blob | ArrayBuffer | Uint8Array | ReadableStream | Response
-
 /** A method handler: `event` typed from the validate block, params, and pattern; return matches the **success** response. */
 export type MethodHandler<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   Ret,
   Route extends string,
+  M extends RouteMethod,
+  Status extends number | undefined,
   Err = undefined,
 > = (
   event: MethodEvent<V, P, Route, Err>,
-) => ResponseSchema<V> extends EventStream<infer T>
-  ? AsyncIterable<T>
-  : ResponseSchema<V> extends TextResponse
-    ? string | Promise<string>
-    : ResponseSchema<V> extends BinaryResponse
-      ? BinaryBody | Promise<BinaryBody>
-      : (Ret & ConstResponse<SuccessConstraint<V>>) | Promise<Ret & ConstResponse<SuccessConstraint<V>>>
+) => IsEmptyResponse<M, Status> extends true
+  ? void | null | undefined | Promise<void | null | undefined>
+  : ResponseSchema<V> extends EventStream<infer T>
+    ? AsyncIterable<T>
+    : ResponseSchema<V> extends TextResponse
+      ? string | Promise<string>
+      : ResponseSchema<V> extends BinaryResponse
+        ? BinaryBody | Promise<BinaryBody>
+        : (Ret & ConstResponse<SuccessConstraint<V>>) | Promise<Ret & ConstResponse<SuccessConstraint<V>>>
 
 /** The success shape a handler's return is checked against (errors are thrown, never returned). */
 type SuccessConstraint<V extends AnyMethodValidate> = [ResponseSchema<V>] extends [SchemaWithJSON]
@@ -287,15 +317,17 @@ export interface DuxEndpoint<
   P extends SchemaWithJSON | undefined,
   Ret,
   Route extends string,
+  M extends RouteMethod,
+  Status extends number | undefined,
   Err = undefined,
 > {
   params: ResolvedParams<P, Route>
   query: InferMethodQuery<V>
   headers: InferMethodHeaders<V>
   body: InferMethodBodyDir<V, 'input'>
-  response: SuccessResponse<V, Ret>
+  response: SuccessResponse<V, Ret, M, Status>
   // The response kind (delta 10) — the client decodes `data` by this, never guessing.
-  kind: SuccessKind<V, Ret>
+  kind: SuccessKind<V, Ret, M, Status>
   // Prettify so an indexed read (`E['errors']`) resolves to a flat `{ status: body }`
   // map rather than the lazy `EndpointErrors<…>` alias — keeps the client clean.
   errors: Prettify<EndpointErrors<V, P, Err>>
@@ -308,8 +340,9 @@ export type DuxRouteRecord<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   Ret,
+  Status extends number | undefined,
   Err = undefined,
-> = { [R in Route]: { [Method in M]: DuxEndpoint<V, P, Ret, Route, Err> } }
+> = { [R in Route]: { [Method in M]: DuxEndpoint<V, P, Ret, Route, M, Status, Err> } }
 
 /** The options a verb method accepts — route-level params/middleware flattened in, plus `status`/`errors`. */
 export interface DuxVerbOpts<
@@ -318,6 +351,7 @@ export interface DuxVerbOpts<
   M extends RouteMethod,
   Ret,
   Route extends string,
+  Status extends number | undefined,
   Err extends ErrorsOption | undefined = undefined,
 > {
   /** A schema for the route's `:params` — typed/coerced params opt in here (else they're `string`). */
@@ -326,7 +360,7 @@ export interface DuxVerbOpts<
   middleware?: Middleware[]
   meta?: H3RouteMeta
   /** Success status code; sets `event.res.status` before the handler runs. */
-  status?: number
+  status?: Status
   /** Shape this method's validation errors (overrides the route/app hook). */
   onValidationError?: OnValidationError
   /**
@@ -340,7 +374,7 @@ export interface DuxVerbOpts<
    * eager-sequential — params → query → headers → body, short-circuit).
    */
   validate?: ([M] extends [BodylessMethod] ? V & { body?: never } : V) & { eager?: boolean }
-  handler: MethodHandler<V, P, Ret, Route, Err>
+  handler: MethodHandler<V, P, Ret, Route, M, Status, Err>
 }
 
 /** Merge two route maps: different paths/methods compose; a method in both keeps the first. */

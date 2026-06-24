@@ -1,4 +1,4 @@
-import type { DuxHTTPError, DuxTransportError, TypedResponse } from '@mszr/h3-dux'
+import type { DuxHTTPError, DuxRawResponse, DuxTransportError } from '@mszr/h3-dux'
 import type { App, ErrorBody, Fruit, NewFruit } from '@test'
 import { createClient } from '@mszr/h3-dux'
 import { expectTypeOf, test } from 'vitest'
@@ -45,7 +45,8 @@ test('the default await is the honest { data, error } result', async () => {
 
 test('.raw() returns the native typed response', async () => {
   const res = await api.get('/fruits/:id', { params: { id: 'm' } }).raw()
-  expectTypeOf(res).toEqualTypeOf<TypedResponse<Fruit>>()
+  expectTypeOf(res).toEqualTypeOf<DuxRawResponse<Fruit, 'json'>>()
+  expectTypeOf(await res.parse()).toEqualTypeOf<Fruit>()
   expectTypeOf(await res.json()).toEqualTypeOf<Fruit>()
 })
 

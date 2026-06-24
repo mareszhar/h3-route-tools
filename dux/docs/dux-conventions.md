@@ -187,10 +187,10 @@ Three consumption modes hang off the **call handle** — one mechanism, no paral
 | --- | --- | --- |
 | `await api.get(path, opts)` | `{ data, error }` | the default — honest about failure |
 | `await api.get(path, opts).orThrow()` | `Data` (throws `DuxError`) | you *want* it to bubble (scripts, SSR loaders, server-to-server) |
-| `await api.get(path, opts).raw()` | `TypedResponse<Data>` | headers, status, redirects — the web-standard escape hatch |
+| `await api.get(path, opts).raw()` | `DuxRawResponse<Data, Kind>` | native status/headers plus kind-aware `.parse()` |
 | `for await (… of api.get(path, opts))` | `AsyncGenerator<T>` | an `sse()` endpoint, unchanged |
 
-`.orThrow()` keeps the one-liner for cases where bubbling is correct — but you have to *name* the choice to discard the error, which reads as the decision it is (Go's `_`, made legible). `.raw()` never throws on a non-2xx; it hands you the standard `Response` to inspect.
+`.orThrow()` keeps the one-liner for cases where bubbling is correct — but you have to *name* the choice to discard the error, which reads as the decision it is (Go's `_`, made legible). `.raw()` never throws on a non-2xx; it hands you the native `Response` to inspect, augmented with one method: `.parse()` returns the endpoint's inferred body whether it is JSON, text, binary, or empty. The standard `.json()`/`.text()`/`.blob()` methods remain available; `.json()` is typed as the body only for an actual JSON endpoint.
 
 This **subsumes** a separate "typed result" surface (Elysia Treaty's `api.try`): the honest default *is* the typed result, so there is one shape to learn, not three. It also kills Generation 1's double-`await` (`await (await api.get()).json()`) and the lie where `.json()` was typed as the success body even on a `404`.
 
@@ -244,9 +244,11 @@ Not every response is JSON. The kernel tags each status's body with a **kind** s
 | `sse` | `text/event-stream` | `AsyncGenerator<T>` ([§6](#6-response-typing)) |
 | `binary` | `Blob`/stream | `Blob` |
 
-The common case needs nothing: a handler that returns an object is `json`, inferred, and a `void`/`null`/`undefined` return is `empty`. Kinds are opt-in for the rest — a `204` no-content `delete`, a `text/plain` health string, a file download — and they keep the client from guessing `.json()` on a body that has none. `sse()`, `text()`, and `binary()` are siblings: each brands `validate.response` with its kind. Native `Response` returns pass through unchanged; the contract can't see inside one, so its `data` is `unknown` — reach for `.raw()` to inspect it.
+The common case needs nothing. Objects are `json`, strings are `text`, Blob/bytes/streams are `binary`, and `void`/`null`/`undefined`, `204`/`205`, and `HEAD` are `empty`. The status-aware contract rejects a body-returning `204`/`205`/`HEAD` handler at the cursor. `text()` and `binary()` remain available only as explicit overrides for an ambiguous schema; `sse(schema)` carries the streaming schema and kind.
 
-Kind lives in the type; on the wire it is carried by `content-type` (h3 sends a bare `string` and an untyped `Blob` without one, so the server tags `text/plain`/`application/octet-stream` and the client decodes by it). The two are kept in lockstep, so the declared kind and the runtime body always agree.
+Kind and MIME are separate concepts. The server infers the runtime kind from the actual handler value and carries it as a standards-valid `dux-kind` parameter on `Content-Type`; the media type remains the real format (`text/csv`, `image/png`, and so on). Thus a CSV Blob stays a `Blob` rather than becoming a string merely because its MIME starts with `text/`.
+
+A plain native `Response` passes through unchanged and stays body-opaque (`unknown`) because the platform type carries no body generic. When the body should remain typed, construct the same web-standard object with `typedResponse(data, init)`: strings, JSON values, binary bodies, and empty responses are inferred, and the client sees the body through the default result, `.orThrow()`, and `.raw().parse()` alike.
 
 ---
 
@@ -311,13 +313,14 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `app.get(path, opts)` | `.route({ route, get })` | verb authoring; mirrors the client and the HTTP method |
 | `api.get(path, opts)` | `api(path, { method: 'get' })` | verb sugar; symmetric with the server |
 | `sse(schema)` | — (new) | brands a `validate.response` as a typed `EventStream`; the `sse` response kind ([§11](#11-response-kinds)) |
-| `text()` / `binary()` | — (new) | brand a `validate.response` as the `text`/`binary` kind — the client receives `string`/`Blob` ([§11](#11-response-kinds)) |
+| `text()` / `binary()` | — (new) | explicit kind overrides for an ambiguous response schema; ordinary strings/Blobs infer automatically ([§11](#11-response-kinds)) |
+| `typedResponse(data, init?)` | `new Response(body, init)` | constructs a real native `Response` while carrying its inferred body contract end-to-end |
 | `validate: { eager: false }` | — (new) | switches the validation pipeline to manual/on-demand |
 | `event.valid('scope')` | — (new) | deliberate, idempotent validator; Hono `c.req.valid()` parity ([§4](#4-the-validated-data-model)) |
 | `event.context.<scope>` | `event.validated.<scope>` | neutral typed read; aligns with [h3 core PR #1237](https://github.com/h3js/h3/pull/1237) |
 | `{ data, error }` | — (new) | the honest default result; `data` on 2xx, typed `error` otherwise ([§9](#9-the-honest-client)) |
 | `.orThrow()` | ofetch `$fetch` (throws) | legible opt-out: bubble the error instead of returning it |
-| `.raw()` | ofetch `.raw` | the native `TypedResponse` escape hatch; never throws on non-2xx |
+| `.raw()` | ofetch `.raw` | native response metadata plus kind-aware `.parse()`; never throws on non-2xx |
 | `errors: { 409: … }` | upstream `errors` (kept, widened) | per-status failure schemas in the contract; feeds client + runtime + OpenAPI ([§10](#10-typed-errors--results)) |
 | `event.error(status, data)` | `HTTPError` / `createError` | typed thrower checked against the declared `errors` schema |
 | `createRouter()` / `defineRoutes()` | `defineRoute` + `register` | delta-carrying, route-free composition unit ([§12](#12-composition--scope)) |

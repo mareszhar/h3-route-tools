@@ -10,13 +10,13 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 
 🎯 **Responses are inferred, not asserted** — the handler's return *is* the client's type. No `request<Receipt>(…)` to drift out of sync. Opt into runtime response validation by declaring `validate.response`.
 
-🧭 **Honest by default** — a call resolves to `{ data, error }`, so a failure is handled at the cursor, not surfaced later as a throw. `.orThrow()` bubbles it; `.raw()` hands you the native `Response`. The `error` is discriminated and typed per status.
+🧭 **Honest by default** — a call resolves to `{ data, error }`, so a failure is handled at the cursor, not surfaced later as a throw. `.orThrow()` bubbles it; `.raw()` hands you the native `Response` with a kind-aware `.parse()`. The `error` is discriminated and typed per status.
 
 🔗 **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`{ params: { id } }`), whichever reads best at the call site.
 
 📡 **Typed SSE** — `sse(schema)` makes a streaming endpoint return an `AsyncGenerator<T>` on the client, not a hand-parsed `text/event-stream`.
 
-🧱 **Response kinds** — beyond JSON: `text()` → `string`, `binary()` → `Blob`, a `204` → `undefined`, `sse()` → `AsyncGenerator<T>`. The client decodes by kind, never guessing `.json()`.
+🧱 **Response kinds, inferred** — return a string, Blob, empty value, or object and the client receives `string`, `Blob`, `undefined`, or JSON automatically. `sse()` adds streams; `typedResponse()` keeps native Response bodies typed.
 
 🚦 **Validation you control** — eager and sequential by default (params → query → body, short-circuit); flip `eager: false` for deliberate, on-demand validation via `event.valid('body')`.
 
@@ -36,7 +36,7 @@ One package, three entrypoints. The root is the standalone server + client; the 
 
 | Entrypoint | What it is |
 | --- | --- |
-| `@mszr/h3-dux` | `createServer`, `createClient`, `defineRoute`, `sse`, schema/validation helpers, the typed-fetch types |
+| `@mszr/h3-dux` | `createServer`, `createClient`, `typedResponse`, `defineRoute`, `sse`, schema/validation helpers, the typed-fetch types |
 | `@mszr/h3-dux/nitro` | the Nitro module for file-based routes (`modules: ['@mszr/h3-dux/nitro']`) |
 | `@mszr/h3-dux/codegen` | the route-types / OpenAPI codegen used by the Nitro module and CLI |
 

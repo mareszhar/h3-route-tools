@@ -59,9 +59,13 @@ type VerbOptions<E, WithParams extends boolean> = Prettify<
  */
 type VerbReturn<E> = E extends { kind: 'sse' }
   ? ClientData<E>
-  : E extends { errors: infer Errors }
-    ? DuxCall<HonestResult<ClientData<E>, ClientError<{ [S in keyof Errors]: Errors[S] }>>, ClientData<E>>
-    : DuxCall<HonestResult<unknown, ClientError<object>>, unknown>
+  : E extends { errors: infer Errors, kind: infer Kind extends import('./internal/contract.ts').ResponseKind }
+    ? DuxCall<
+      HonestResult<ClientData<E>, ClientError<{ [S in keyof Errors]: Errors[S] }>>,
+      ClientData<E>,
+      Kind
+    >
+    : DuxCall<HonestResult<unknown, ClientError<object>>, unknown, 'json'>
 
 /** Replace each `:param` segment of a route pattern with a `${string}` hole. */
 type PathTemplate<P extends string> = P extends `${infer Head}:${infer After}`
