@@ -19,9 +19,9 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 4 | Typed SSE | `sse.ts`, `server.ts`, `client.ts` | ☑ done |
 | 5 | Validation modes (`event.context` + `event.valid`) | `server.ts`, `internal/route-types.ts` | ☑ done |
 | 6 | Cleaner inference + diagnostics-as-contract | `client.ts`, `client.dx.test.ts` | ☑ done |
-| 7 | The contract kernel | `internal/contract.ts` (new) | ☐ planned |
-| 8 | The honest client (`{ data, error }`, `.orThrow()`, `.raw()`) | `client.ts`, `sse.ts` | ☐ planned |
-| 9 | Typed error contracts (`errors`, `event.error`, 422) | `internal/contract.ts`, `server.ts`, `client.ts` | ☐ planned |
+| 7 | The contract kernel | `internal/contract.ts`, `internal/route-types.ts` | ☑ done |
+| 8 | The honest client (`{ data, error }`, `.orThrow()`, `.raw()`) | `client.ts`, `sse.ts`, `errors.ts` | ☑ done |
+| 9 | Typed error contracts (`errors`, `event.error`, 422) | `route-types.ts`, `server.ts`, `errors.ts` | ☑ done |
 | 10 | Response kinds + SSE hardening | `internal/contract.ts`, `sse.ts`, `server.ts` | ☐ planned |
 | 11 | Delta-aware composition (`createRouter`, `.mount`, `.native`) | `router.ts` (new), `server.ts` | ☐ planned |
 | 12 | Typed event-context augmentation (`defineMiddleware`) | `middleware.ts` (new), `server.ts`, `router.ts` | ☐ planned |
@@ -40,7 +40,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by 
 | 3 | Validation modes (5) — eager default + `eager: false` manual | ☑ done |
 | 4 | Typed SSE (4) — `sse()` brand + client `AsyncGenerator` return | ☑ done |
 | 5 | Cleaner inference + diagnostics-as-contract (6) — single signature, drop `O`/`NoExcess`, Selenita contract | ☑ done (source mode; `forModes`/perf pending W4) |
-| 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☐ |
+| 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☑ done |
 | 7 | Response fidelity — response kinds + SSE hardening (10) | ☐ |
 | 8 | Scale — delta-aware composition (11) + typed event context (12) | ☐ |
 | 9 | The Nitro moat — deltas via codegen (13) | ☐ |
@@ -289,9 +289,14 @@ interface EndpointContract {
 }
 ```
 
-**Proposed approach.** Introduce `internal/contract.ts` with `EndpointContract` and a `ResolveContract<DuxEndpoint<…>>` mapped type that projects the existing `DuxEndpoint` ([internal/route-types.ts:184](../h3-dux/src/internal/route-types.ts:184)) into plain members: `request.*` via the existing `InferMethod*` helpers, `responses` by **preserving** upstream's `ResponseValidation = SchemaWithJSON | Record<StatusCodeKey, SchemaWithJSON>` ([route-handler.ts:42](../../src/route-handler.ts:42)) instead of collapsing it through `InferMethodResponse` ([route-types.ts:194](../h3-dux/src/internal/route-types.ts:194)), each entry serialized via `Serialize` and tagged with its `kind` (delta 10). `DuxRouteRecord` accumulates the resolved contract; `createClient`, codegen, and OpenAPI read it. The kernel is a *projection* — runtime validation still runs off the original schema, so there is still one source of truth.
+**Approach (delivered).** `DuxEndpoint` ([route-types.ts](../h3-dux/src/internal/route-types.ts)) now stores the **resolved** contract: the request shapes, the success (2xx) body as `response` (`SuccessResponse<V, Ret>` — bare schema, the 2xx of a status map, or the inferred `Ret`), and a per-status **error map** as `errors` (`EndpointErrors` = a response status-map's non-2xx entries ∪ the declared `errors` ∪ an auto `422` when the endpoint validates any request scope). Upstream's status→schema map is **preserved**, not collapsed through `InferMethodResponse`. `internal/contract.ts` projects those resolved pieces into what the client consumes — `ClientData`, the discriminated `ClientError`, the `HonestResult` — and documents the `EndpointContract` kernel shape. The kernel is a *projection*: runtime validation still runs off the original schema.
 
-**Status:** ☐ planned (phase 6). Foundational; lands with 8–9.
+Two realities worth recording:
+
+- **Resolve before you compose, or the schema leaks.** A *conditional* type alias resolves in a hover, but a *union/object* alias prints its argument unresolved. Passing the raw `DuxEndpoint` to the result alias reintroduced the exact `ObjectSchema<…>` leak delta 6 fixed. The fix: pull the success body and error map out with `infer` first, and force the error map to evaluate with a homomorphic `{ [S in keyof Errors]: Errors[S] }`, so only resolved pieces reach the result. The verb hover now reads `DuxCall<HonestResult<SerializeObject<{…}>, ClientError<{ 422: ValidationErrorBody }>>, …>`.
+- **The kernel is half-realized by design.** The success/error split, the resolved request shapes, and the client projection are in. The unified `responses: { [status]: { body, kind } }` representation, the `kind` tag, and the codegen/OpenAPI consumers arrive with deltas 10/13/14 — each builds on this spine without reshaping it.
+
+**Status:** ☑ done (phase 6).
 
 ---
 
@@ -321,9 +326,11 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // unchanged SSE
   console.log(tick.ripeness)
 ```
 
-**Proposed approach.** Generalize the existing `DuxCall` handle ([sse.ts:65](../h3-dux/src/sse.ts:65)): default `await` resolves to `{ data, error }` (success → `data`, non-2xx → typed `error`, transport reject → `{ kind: 'transport' }`); `.orThrow()` returns `Promise<Data>` (rejecting with `DuxError`); `.raw()` returns the upstream `TypedResponse` and never throws on non-2xx; `for await` stays SSE. `data`/`error` types come from the kernel's success/non-2xx projections (delta 7). The honest default *is* the typed result, so no separate `api.try` surface is needed. Add `createTestClient(app)` as the named, in-process form of the `fetch: app.request` pattern ([demo/main.ts:12](../h3-dux/demo/main.ts:12)) so it can't be copy-pasted into a browser bundle.
+**Approach (delivered).** The existing `DuxCall` handle ([sse.ts](../h3-dux/src/sse.ts)) is generalized: default `await` resolves to `{ data, error }` (built by `buildResult` in `errors.ts`); `.orThrow()` returns `Promise<Data>`, rejecting with the `DuxError`; `.raw()` returns the upstream `TypedResponse` and never throws on a non-2xx; `for await` stays SSE. `DuxError` is `DuxHTTPError | DuxTransportError` — a fetch reject becomes the transport variant, a non-2xx the HTTP variant. The handle's type is `DuxCall<HonestResult<…>, Data>`; the `data`/`error` types are the delta-7 projections. The honest default *is* the typed result, so there is no separate `api.try` surface. `createTestClient(app)` wraps the in-process `fetch: app.request` pattern under a name that signals intent.
 
-**Status:** ☐ planned (phase 6).
+**Reality:** the body is read **once** and folded into the result; an empty/`204` response yields `data: undefined`, and a non-JSON body falls back to text. The success/error decision is `response.ok`, not the declared status — honest about what actually came back.
+
+**Status:** ☑ done (phase 6).
 
 ---
 
@@ -346,9 +353,11 @@ app.post('/fruits', {
 })
 ```
 
-**Proposed approach.** Add `errors?: Partial<Record<StatusCodeKey, SchemaWithJSON>>` to `DuxVerbOpts` ([route-types.ts:209](../h3-dux/src/internal/route-types.ts:209)) — it merges into the kernel's `responses` as the non-2xx entries (delta 7). Add `event.error(status, data)` typed against the declared `errors` schema for that status (throws an h3 `HTTPError` carrying the validated payload). **Standardize request-validation failures on `422`** in both eager and manual modes ([server.ts](../h3-dux/src/server.ts) — eager currently routes through upstream's `400`); the `422` envelope (`{ source, issues }`) is auto-registered into `responses` so the client's `error.data` knows it. Response-validation failures stay `500`. A mid-stream SSE failure surfaces as a thrown `DuxError` from the iterator (delta 10).
+**Approach (delivered).** `errors?: Partial<Record<StatusCodeKey, SchemaWithJSON>>` is a `DuxVerbOpts` field, threaded as a type param `Err` and folded into the endpoint's error map (delta 7). `event.error(status, data)` is attached per request and typed against the declared `errors` schema for that status — `throw e.error(409, { … })` is checked at the cursor and throws an h3 `HTTPError`. Request-validation failures are **standardized on `422`** by wrapping the method's `onValidationError` with a 422 default before handing it to both upstream (eager) and the manual `validateScope`; the user's hook still wins, and response failures stay `500` because upstream's `validateResponse` re-wraps them. The `422` envelope (`{ source, issues }`) auto-registers into the error map when the endpoint validates a request scope. A failed SSE stream throws a `DuxHTTPError` rather than yielding an empty iterator.
 
-**Status:** ☐ planned (phase 6).
+**The one reality that makes it honest:** h3 serializes a thrown `HTTPError` as `{ status, message, data }`, so the declared payload lives under `.data`. The client **unwraps** that envelope (`errors.ts`), so `error.data` is exactly the `ErrorSchema`/`event.error` shape — `{ error, message }`, not the transport envelope. Without this, the typed-error contract would be a lie. (Runtime validation of `event.error` data is *not* run — the cursor check is the guarantee, and the schema feeds the client type + future OpenAPI.)
+
+**Status:** ☑ done (phase 6).
 
 ---
 

@@ -1,15 +1,17 @@
 /**
  * The Orchard server, authored with the h3-dux verb surface. Every delta is on
- * display: per-verb authoring, response + param inference, validation modes, and
- * typed SSE. `App = typeof app` is the single source of truth the client reads.
+ * display: per-verb authoring, response + param inference, validation modes,
+ * typed SSE, and typed errors. `App = typeof app` is the single source of truth.
  */
 import { createServer, sse } from '@mszr/h3-dux'
 import * as v from 'valibot'
 import {
   CheckoutSchema,
   createOrchard,
+  ErrorSchema,
   FruitSchema,
   NewFruitSchema,
+  NotFoundError,
   ReceiptSchema,
   RipenTickSchema,
 } from './orchard.ts'
@@ -32,8 +34,22 @@ export const app = createServer()
     validate: { body: NewFruitSchema, response: FruitSchema },
     handler: e => orchard.create(e.context.body),
   })
-  // `:id` typed from the pattern — no params schema needed.
-  .get('/fruits/:id', { validate: { response: FruitSchema }, handler: e => orchard.get(e.context.params.id) })
+  // `:id` typed from the pattern; `errors` declares a typed 404, thrown with the
+  // cursor-checked `e.error(404, …)` — the client's `error` is discriminated by status.
+  .get('/fruits/:id', {
+    validate: { response: FruitSchema },
+    errors: { 404: ErrorSchema },
+    handler: (e) => {
+      try {
+        return orchard.get(e.context.params.id)
+      }
+      catch (cause) {
+        if (cause instanceof NotFoundError)
+          throw e.error(404, { error: 'not_found', message: cause.message })
+        throw cause
+      }
+    },
+  })
   .post('/checkout', {
     validate: { body: CheckoutSchema, response: ReceiptSchema },
     handler: e => orchard.checkout(e.context.body),

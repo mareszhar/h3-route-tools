@@ -1,4 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { TypedResponse } from 'h3-route-tools'
+import { buildResult } from './errors.ts'
 
 /** Runtime + type marker key branding a response schema as a typed SSE stream. */
 const BRAND = '~h3dux/eventStream'
@@ -57,25 +59,42 @@ export async function* parseEventStream<T>(response: Response): AsyncGenerator<T
 }
 
 /**
- * A lazy response handle returned by the verb methods. `await` it for the JSON
- * path (resolving a `TypedResponse`); `for await` it for the SSE path (a typed
- * async iterator). The endpoint's type decides which is valid — the runtime
- * supports both, so neither path fetches until you consume it.
+ * The lazy handle every verb call returns (delta 8). One mechanism, four ways to
+ * consume it — the type decides which is valid, and only the consumed path fetches:
+ *  - `await call` → the honest result `{ data, error }` (`Result`);
+ *  - `await call.orThrow()` → `Data`, rejecting with a `DuxError` on failure;
+ *  - `await call.raw()` → the native `TypedResponse` (never throws on non-2xx);
+ *  - `for await (… of call)` → a typed SSE `AsyncGenerator`.
  */
-export class DuxCall<T> implements PromiseLike<T> {
-  readonly #json: () => Promise<T>
+export class DuxCall<Result, Data> implements PromiseLike<Result> {
+  readonly #fetch: () => Promise<Response>
   readonly #stream: () => AsyncGenerator<unknown>
 
-  constructor(json: () => Promise<T>, stream: () => AsyncGenerator<unknown>) {
-    this.#json = json
+  constructor(fetchResponse: () => Promise<Response>, stream: () => AsyncGenerator<unknown>) {
+    this.#fetch = fetchResponse
     this.#stream = stream
   }
 
-  then<R1 = T, R2 = never>(
-    onFulfilled?: ((value: T) => R1 | PromiseLike<R1>) | null,
+  /** Default `await`: the honest `{ data, error }` result. */
+  then<R1 = Result, R2 = never>(
+    onFulfilled?: ((value: Result) => R1 | PromiseLike<R1>) | null,
     onRejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null,
   ): PromiseLike<R1 | R2> {
-    return this.#json().then(onFulfilled, onRejected)
+    return (buildResult(this.#fetch) as Promise<Result>).then(onFulfilled, onRejected)
+  }
+
+  /** Bubble the error instead of returning it — for scripts, SSR loaders, server-to-server. */
+  orThrow(): Promise<Data> {
+    return buildResult(this.#fetch).then((result) => {
+      if (result.error)
+        throw result.error
+      return result.data as Data
+    })
+  }
+
+  /** The web-standard escape hatch: the native response, never throwing on a non-2xx status. */
+  raw(): Promise<TypedResponse<Data>> {
+    return this.#fetch() as Promise<TypedResponse<Data>>
   }
 
   [Symbol.asyncIterator](): AsyncGenerator<unknown> {

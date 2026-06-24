@@ -2,11 +2,12 @@ import type {
   CreateTypedFetchOptions,
   NormalizeRoutes,
   TypedFetch,
-  TypedResponse,
 } from 'h3-route-tools'
+import type { ClientError, HonestResult } from './internal/contract.ts'
 import type { Serialize } from './internal/serialize.ts'
 import type { EventStream } from './sse.ts'
 import { createTypedFetch } from 'h3-route-tools'
+import { DuxHTTPError } from './errors.ts'
 import { DuxCall, parseEventStream } from './sse.ts'
 
 // ── reconstructing the per-verb option/return shapes ──────────────────────────
@@ -46,16 +47,22 @@ type VerbOptions<E, WithParams extends boolean> = Prettify<
   & { headers?: E extends { headers: infer H } ? H : never }
 >
 
-/** The wire-shaped response, exactly as the base client reports it. */
-type ResponseOf<E> = E extends { response: infer R } ? Serialize<R> : unknown
-
 /**
  * What a verb call returns: an `AsyncGenerator<T>` for an `sse()` endpoint (you
- * `for await` it), otherwise a `Promise<TypedResponse>` (you `await` then `.json()`).
+ * `for await` it), otherwise a {@link DuxCall} — `await` it for the honest
+ * `{ data, error }`, `.orThrow()` for the value, `.raw()` for the native response.
+ *
+ * The endpoint's success body and error map are pulled out with `infer` *first*,
+ * so only the resolved pieces (`Serialize<R>`, the error map) reach the result —
+ * the return type never prints the schema-typed `DuxEndpoint`.
  */
 type VerbReturn<E> = (E extends { response: infer R } ? R : unknown) extends EventStream<infer T>
   ? AsyncGenerator<T>
-  : Promise<TypedResponse<ResponseOf<E>>>
+  : E extends { response: infer R, errors: infer Errors }
+    // `{ [S in keyof Errors]: … }` forces the error map to *resolve* to `{ 409: … }`
+    // rather than printing as the lazy `EndpointErrors<…schema…>` alias.
+    ? DuxCall<HonestResult<Serialize<R>, ClientError<{ [S in keyof Errors]: Errors[S] }>>, Serialize<R>>
+    : DuxCall<HonestResult<unknown, ClientError<object>>, unknown>
 
 /** Replace each `:param` segment of a route pattern with a `${string}` hole. */
 type PathTemplate<P extends string> = P extends `${infer Head}:${infer After}`
@@ -182,10 +189,13 @@ export function createClient<App>(options: CreateTypedFetchOptions = {}): Client
       // A DuxCall handle: `await` runs the JSON fetch; `for await` runs the SSE
       // fetch (only one ever fires, chosen by how the caller consumes it).
       (route: string, opts: Record<string, unknown> = {}) => new DuxCall(
-        () => call(route, { ...opts, method }),
+        () => call(route, { ...opts, method }) as Promise<Response>,
         async function* () {
           const headers = { accept: 'text/event-stream', ...(opts.headers as Record<string, string>) }
           const res = await call(route, { ...opts, method, headers }) as Response
+          // A failed stream surfaces as a thrown DuxError, not a silent empty iterator.
+          if (!res.ok)
+            throw new DuxHTTPError(res.status, await res.json().catch(() => undefined), res)
           yield* parseEventStream(res)
         },
       ),
@@ -195,4 +205,15 @@ export function createClient<App>(options: CreateTypedFetchOptions = {}): Client
   // The dynamic verbs can't be statically proven against the precise generic —
   // the one boundary cast, mirroring upstream's `createTypedFetch`.
   return Object.assign(base, verbs) as unknown as Client<App>
+}
+
+/**
+ * A client wired to an in-process app via `app.request` — for tests, SSR, and
+ * server-to-server calls. Named so the in-process transport is a deliberate
+ * choice, never copy-pasted into a browser bundle (use `baseURL` there).
+ */
+export function createTestClient<App>(
+  app: { request: (input: string, init?: RequestInit) => Response | Promise<Response> },
+): Client<App> {
+  return createClient<App>({ fetch: app.request })
 }

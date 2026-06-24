@@ -11,6 +11,7 @@ import type {
   AnyMethodValidate,
   DuxRouteRecord,
   DuxVerbOpts,
+  ErrorsOption,
   InferMethodResponse,
   MergePair,
   Prettify,
@@ -27,7 +28,8 @@ type DuxNext<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   Ret,
-> = DuxServer<Prettify<MergePair<Routes, DuxRouteRecord<Route, M, V, P, Ret>>>>
+  Err,
+> = DuxServer<Prettify<MergePair<Routes, DuxRouteRecord<Route, M, V, P, Ret, Err>>>>
 
 /** Loose runtime view of a verb's options, for the dispatch boundary. */
 interface RuntimeOpts {
@@ -36,6 +38,7 @@ interface RuntimeOpts {
   meta?: H3RouteMeta
   status?: number
   onValidationError?: OnValidationError
+  errors?: ErrorsOption
   validate?: AnyMethodValidate & { eager?: boolean }
   handler: (event: H3Event) => unknown
 }
@@ -147,10 +150,23 @@ function mount(app: H3Typed, method: RouteMethod, route: string, options: Runtim
     ? { query: schemas.query, body: schemas.body, headers: schemas.headers, response }
     : (response ? { response } : undefined)
 
+  // Standardize request-validation failures on 422, eager or manual (delta 9). The
+  // user's hook still wins; response failures are re-wrapped to 500 by upstream.
+  const onError: OnValidationError = ctx =>
+    onValidationError?.(ctx) ?? {
+      status: 422,
+      statusText: 'Unprocessable Entity',
+      message: `${ctx.source} validation failed`,
+      data: { source: ctx.source, issues: ctx.issues },
+    }
+
   const wrapped = async (event: H3Event): Promise<unknown> => {
     if (status !== undefined)
       event.res.status = status
-    attachValid(event, eager, schemas, onValidationError)
+    attachValid(event, eager, schemas, onError)
+    // `throw event.error(status, data)` — a typed thrower for the declared `errors` (delta 9).
+    ;(event as { error?: unknown }).error = (errStatus: number, data?: unknown) =>
+      new HTTPError({ status: errStatus, data })
     if (eager) {
       const ctx = event.context as Record<string, unknown>
       const validated = (event as { validated?: Record<string, unknown> }).validated
@@ -160,7 +176,7 @@ function mount(app: H3Typed, method: RouteMethod, route: string, options: Runtim
     }
     const result = await handler(event)
     if (sseSchema)
-      return streamSse(event, result as AsyncIterable<unknown>, sseSchema, onValidationError)
+      return streamSse(event, result as AsyncIterable<unknown>, sseSchema, onError)
     return result
   }
 
@@ -169,7 +185,7 @@ function mount(app: H3Typed, method: RouteMethod, route: string, options: Runtim
     params,
     middleware,
     meta,
-    [method]: { validate: upstreamValidate, handler: wrapped, onValidationError },
+    [method]: { validate: upstreamValidate, handler: wrapped, onValidationError: onError },
   })
 }
 
@@ -214,11 +230,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'get', Ret, Route>,
-  ): DuxNext<Routes, Route, 'get', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'get', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'get', V, P, Ret, Err> {
     mount(this.app, 'get', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'get', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'get', V, P, Ret, Err>
   }
 
   post<
@@ -226,11 +243,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'post', Ret, Route>,
-  ): DuxNext<Routes, Route, 'post', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'post', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'post', V, P, Ret, Err> {
     mount(this.app, 'post', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'post', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'post', V, P, Ret, Err>
   }
 
   put<
@@ -238,11 +256,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'put', Ret, Route>,
-  ): DuxNext<Routes, Route, 'put', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'put', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'put', V, P, Ret, Err> {
     mount(this.app, 'put', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'put', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'put', V, P, Ret, Err>
   }
 
   patch<
@@ -250,11 +269,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'patch', Ret, Route>,
-  ): DuxNext<Routes, Route, 'patch', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'patch', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'patch', V, P, Ret, Err> {
     mount(this.app, 'patch', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'patch', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'patch', V, P, Ret, Err>
   }
 
   delete<
@@ -262,11 +282,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'delete', Ret, Route>,
-  ): DuxNext<Routes, Route, 'delete', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'delete', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'delete', V, P, Ret, Err> {
     mount(this.app, 'delete', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'delete', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'delete', V, P, Ret, Err>
   }
 
   head<
@@ -274,11 +295,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'head', Ret, Route>,
-  ): DuxNext<Routes, Route, 'head', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'head', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'head', V, P, Ret, Err> {
     mount(this.app, 'head', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'head', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'head', V, P, Ret, Err>
   }
 
   options<
@@ -286,11 +308,12 @@ export class DuxServer<Routes = object> {
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
+    Err extends ErrorsOption | undefined = undefined,
   >(route: Route,
-    opts: DuxVerbOpts<V, P, 'options', Ret, Route>,
-  ): DuxNext<Routes, Route, 'options', V, P, Ret> {
+    opts: DuxVerbOpts<V, P, 'options', Ret, Route, Err>,
+  ): DuxNext<Routes, Route, 'options', V, P, Ret, Err> {
     mount(this.app, 'options', route, opts as RuntimeOpts)
-    return this as unknown as DuxNext<Routes, Route, 'options', V, P, Ret>
+    return this as unknown as DuxNext<Routes, Route, 'options', V, P, Ret, Err>
   }
 }
 

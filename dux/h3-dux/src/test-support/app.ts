@@ -8,6 +8,7 @@ import * as v from 'valibot'
 import { createOrchard } from './orchard.ts'
 import {
   CheckoutOrderSchema,
+  ErrorSchema,
   FruitPatchSchema,
   FruitQuerySchema,
   FruitSchema,
@@ -35,6 +36,16 @@ export const app = createServer()
   .get('/fruits/:id', {
     validate: { response: FruitSchema },
     handler: e => orchard.get(e.context.params.id),
+  })
+  // Typed errors (delta 9): `errors` declares the failure; `e.error(409, …)` throws it
+  // type-checked; the client's `error` is discriminated by status.
+  .post('/fruits/:id/reserve', {
+    errors: { 409: ErrorSchema },
+    handler: (e) => {
+      if (e.context.params.id === 'taken')
+        throw e.error(409, { error: 'conflict', message: 'already reserved' })
+      return { id: e.context.params.id, reserved: true as const }
+    },
   })
   .patch('/fruits/:id', {
     validate: { body: FruitPatchSchema, response: FruitSchema },

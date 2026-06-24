@@ -21,6 +21,7 @@ export const ReceiptSchema = v.object({
   total: v.number(),
 })
 export const RipenTickSchema = v.object({ id: v.string(), ripeness: v.number(), at: v.string() })
+export const ErrorSchema = v.object({ error: v.string(), message: v.string() })
 
 export type Fruit = v.InferOutput<typeof FruitSchema>
 export type NewFruit = v.InferInput<typeof NewFruitSchema>

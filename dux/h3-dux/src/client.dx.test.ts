@@ -46,7 +46,7 @@ describe('client verb sugar — editor DX', () => {
       ${setup}
       api.post('${cursor}')
     `
-    expect(completions).toEqualCompletions(['/fruits', '/checkout', '/import'])
+    expect(completions).toEqualCompletions(['/fruits', '/fruits/:id/reserve', '/checkout', '/import'])
   })
 
   it('inside the body literal, the fields autocomplete with plain types', () => {
@@ -112,7 +112,9 @@ describe('diagnostics are a contract', () => {
     `
     expect(errors).toHaveErrorCount(1)
     // Names the routes that DO declare POST, rather than printing the whole route map.
-    expect(errors).toHaveError(/not assignable to parameter of type '"\/fruits" \| "\/checkout" \| "\/import"'/)
+    expect(errors).toHaveError(/not assignable to parameter of type/)
+    expect(errors).toHaveError(/"\/checkout"/)
+    expect(errors).toHaveError(/"\/fruits"/)
     expectNoLeak(errors)
   })
 

@@ -1,7 +1,10 @@
 // ── the dux surface (counterpart-named; see docs/dux-conventions.md) ───────────
-export { createClient } from './client.ts'
+export { createClient, createTestClient } from './client.ts'
 
 export type { Client, VerbFetch } from './client.ts'
+export { DuxHTTPError, DuxTransportError } from './errors.ts'
+export type { DuxError } from './errors.ts'
+export type { EndpointContract, ResponseKind } from './internal/contract.ts'
 export { createServer, DuxServer } from './server.ts'
 export { type EventStream, sse } from './sse.ts'
 // ── upstream surface ──────────────────────────────────────────────────────────
