@@ -10,9 +10,13 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 
 🎯 **Responses are inferred, not asserted** — the handler's return *is* the client's type. No `request<Receipt>(…)` to drift out of sync. Opt into runtime response validation by declaring `validate.response`.
 
+🧭 **Honest by default** — a call resolves to `{ data, error }`, so a failure is handled at the cursor, not surfaced later as a throw. `.orThrow()` bubbles it; `.raw()` hands you the native `Response`. The `error` is discriminated and typed per status.
+
 🔗 **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`{ params: { id } }`), whichever reads best at the call site.
 
 📡 **Typed SSE** — `sse(schema)` makes a streaming endpoint return an `AsyncGenerator<T>` on the client, not a hand-parsed `text/event-stream`.
+
+🧱 **Response kinds** — beyond JSON: `text()` → `string`, `binary()` → `Blob`, a `204` → `undefined`, `sse()` → `AsyncGenerator<T>`. The client decodes by kind, never guessing `.json()`.
 
 🚦 **Validation you control** — eager and sequential by default (params → query → body, short-circuit); flip `eager: false` for deliberate, on-demand validation via `event.valid('body')`.
 
@@ -70,8 +74,8 @@ import type { App } from './server'
 
 const api = createClient<App>({ baseURL })
 
-const fruit = await (await api.get(`/fruits/${id}`)).json() // Fruit (wire shape)
-const created = await api.post('/fruits', { body: mango }) // body checked against NewFruitSchema
+const { data, error } = await api.get(`/fruits/${id}`) // data: Fruit (wire shape) | undefined
+const created = await api.post('/fruits', { body: mango }).orThrow() // body checked; throws on failure
 
 for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator<RipenTick>
   console.log(tick.ripeness)
@@ -85,7 +89,7 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 **Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
 
-**Generation 2** — the next evolution is specced and phased (deltas 6–14): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds, delta-aware composition, typed event-context middleware, and the Nitro file-routing moat made real. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
+**Generation 2** — in progress. Shipped (deltas 6–10, all three test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, and response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser. Planned (deltas 11–14): delta-aware composition, typed event-context middleware, OpenAPI from the standalone server, and the Nitro file-routing moat made real. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
 
 ## Development
 

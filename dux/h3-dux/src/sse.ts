@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { TypedResponse } from 'h3-route-tools'
-import { buildResult } from './errors.ts'
+import { buildResult, DuxHTTPError } from './errors.ts'
 
 /** Runtime + type marker key branding a response schema as a typed SSE stream. */
 const BRAND = '~h3dux/eventStream'
@@ -28,8 +28,38 @@ export function isEventStream(value: unknown): boolean {
   return typeof value === 'object' && value !== null && BRAND in value
 }
 
-/** Parse a `text/event-stream` response body into typed events. */
+/** Matches an SSE event boundary — a blank line in any of the three line-ending styles. */
+const FRAME_BOUNDARY = /\r\n\r\n|\n\n|\r\r/
+
+/**
+ * Parse one SSE frame's fields into its data payload, per the EventSource spec:
+ * `data:` lines accumulate (joined with `\n`), one leading space after the colon
+ * is stripped, and comment (`:…`), `id:`, `event:`, and `retry:` lines are ignored.
+ * Returns `undefined` for a frame with no data (a heartbeat/comment) so it's skipped.
+ */
+function parseFrame<T>(frame: string): T | undefined {
+  const dataLines: string[] = []
+  for (const line of frame.split(/\r\n|\r|\n/)) {
+    if (line === '' || line.startsWith(':'))
+      continue
+    const colon = line.indexOf(':')
+    if ((colon === -1 ? line : line.slice(0, colon)) !== 'data')
+      continue
+    const value = colon === -1 ? '' : line.slice(colon + 1)
+    dataLines.push(value.startsWith(' ') ? value.slice(1) : value)
+  }
+  return dataLines.length === 0 ? undefined : (JSON.parse(dataLines.join('\n')) as T)
+}
+
+/**
+ * Parse a `text/event-stream` response body into typed events. Hardened (delta 10):
+ * it refuses a non-2xx response (throwing a {@link DuxHTTPError}), handles `\n`,
+ * `\r\n`, and `\r` line endings, accumulates multi-line `data:` payloads, ignores
+ * comments and `id`/`event`/`retry` lines, and flushes a final unterminated frame.
+ */
 export async function* parseEventStream<T>(response: Response): AsyncGenerator<T> {
+  if (!response.ok)
+    throw new DuxHTTPError(response.status, undefined, response)
   const body = response.body
   if (!body)
     return
@@ -42,16 +72,19 @@ export async function* parseEventStream<T>(response: Response): AsyncGenerator<T
       if (done)
         break
       buffer += decoder.decode(value, { stream: true })
-      let boundary = buffer.indexOf('\n\n')
-      while (boundary !== -1) {
-        const frame = buffer.slice(0, boundary)
-        buffer = buffer.slice(boundary + 2)
-        const data = frame.split('\n').find(line => line.startsWith('data:'))
-        if (data)
-          yield JSON.parse(data.slice(5).trim()) as T
-        boundary = buffer.indexOf('\n\n')
+      let match = FRAME_BOUNDARY.exec(buffer)
+      while (match) {
+        const event = parseFrame<T>(buffer.slice(0, match.index))
+        buffer = buffer.slice(match.index + match[0].length)
+        if (event !== undefined)
+          yield event
+        match = FRAME_BOUNDARY.exec(buffer)
       }
     }
+    // A trailing frame with no terminating blank line still carries an event.
+    const tail = parseFrame<T>(buffer)
+    if (tail !== undefined)
+      yield tail
   }
   finally {
     reader.releaseLock()

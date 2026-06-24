@@ -244,7 +244,9 @@ Not every response is JSON. The kernel tags each status's body with a **kind** s
 | `sse` | `text/event-stream` | `AsyncGenerator<T>` ([§6](#6-response-typing)) |
 | `binary` | `Blob`/stream | `Blob` |
 
-The common case needs nothing: a handler that returns an object is `json`, inferred. Kinds are opt-in for the rest — a `204` no-content `delete`, a `text/plain` health string, a file download — and they keep the client from guessing `.json()` on a body that has none. `sse()` is simply the `sse` kind with a brand; this generalizes it rather than treating streaming as a special case. Native `Response` returns from a handler pass through as-is and are typed as such.
+The common case needs nothing: a handler that returns an object is `json`, inferred, and a `void`/`null`/`undefined` return is `empty`. Kinds are opt-in for the rest — a `204` no-content `delete`, a `text/plain` health string, a file download — and they keep the client from guessing `.json()` on a body that has none. `sse()`, `text()`, and `binary()` are siblings: each brands `validate.response` with its kind. Native `Response` returns pass through unchanged; the contract can't see inside one, so its `data` is `unknown` — reach for `.raw()` to inspect it.
+
+Kind lives in the type; on the wire it is carried by `content-type` (h3 sends a bare `string` and an untyped `Blob` without one, so the server tags `text/plain`/`application/octet-stream` and the client decodes by it). The two are kept in lockstep, so the declared kind and the runtime body always agree.
 
 ---
 
@@ -309,6 +311,7 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `app.get(path, opts)` | `.route({ route, get })` | verb authoring; mirrors the client and the HTTP method |
 | `api.get(path, opts)` | `api(path, { method: 'get' })` | verb sugar; symmetric with the server |
 | `sse(schema)` | — (new) | brands a `validate.response` as a typed `EventStream`; the `sse` response kind ([§11](#11-response-kinds)) |
+| `text()` / `binary()` | — (new) | brand a `validate.response` as the `text`/`binary` kind — the client receives `string`/`Blob` ([§11](#11-response-kinds)) |
 | `validate: { eager: false }` | — (new) | switches the validation pipeline to manual/on-demand |
 | `event.valid('scope')` | — (new) | deliberate, idempotent validator; Hono `c.req.valid()` parity ([§4](#4-the-validated-data-model)) |
 | `event.context.<scope>` | `event.validated.<scope>` | neutral typed read; aligns with [h3 core PR #1237](https://github.com/h3js/h3/pull/1237) |

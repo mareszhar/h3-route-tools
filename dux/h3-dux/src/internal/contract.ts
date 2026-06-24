@@ -10,6 +10,7 @@
  * off the original schema, so there is one source of truth.
  */
 import type { DuxError } from '../errors.ts'
+import type { EventStream } from '../sse.ts'
 import type { Serialize } from './serialize.ts'
 
 /** How a response body crosses the wire. `json` is the default; the rest are delta 10. */
@@ -31,8 +32,28 @@ export interface EndpointContract {
  * the resolved members first, then composes them here.
  */
 
-/** The success body a call yields as `data`, in its wire shape. */
-export type ClientData<E> = E extends { response: infer R } ? Serialize<R> : unknown
+/**
+ * The success value a call yields, decoded by the endpoint's response *kind*
+ * (delta 10) — so the client never guesses `.json()` on a body that has none:
+ *  - `text`   → `string`            (a `text/plain` body)
+ *  - `binary` → `Blob`             (a download)
+ *  - `empty`  → `undefined`        (`204`/no body)
+ *  - `sse`    → `AsyncGenerator<T>` (a stream — consumed with `for await`)
+ *  - `json`   → the serialized wire shape (the default)
+ * A native `Response` returned by a handler is opaque to the contract, so its
+ * data is `unknown` — reach for `.raw()` to inspect it.
+ */
+export type ClientData<E> = E extends { kind: infer K, response: infer R }
+  ? ResponseBody<K, R>
+  : unknown
+
+type ResponseBody<K, R>
+  = K extends 'text' ? string
+    : K extends 'binary' ? Blob
+      : K extends 'empty' ? undefined
+        : K extends 'sse' ? (R extends EventStream<infer T> ? AsyncGenerator<T> : AsyncGenerator<unknown>)
+          : R extends Response ? unknown
+            : Serialize<R>
 
 /** An endpoint's error map (`{ status: body }`), resolved. */
 export type ClientErrors<E> = E extends { errors: infer Errors } ? Errors : object

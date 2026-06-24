@@ -21,6 +21,9 @@ function show(label: string, value: unknown): void {
 // `.orThrow()` — the one-liner when you want failures to bubble. Response inferred.
 show('GET /health', await api.get('/health').orThrow())
 
+// Response kinds: text() → a plain `string` (not re-parsed as JSON).
+show('GET /motd (text)', await api.get('/motd').orThrow())
+
 show('GET /fruits', await api.get('/fruits').orThrow())
 
 // Data-first: `{ data, error }`. `status` made it a 201; `data` is the created Fruit.
@@ -44,6 +47,15 @@ show('GET /fruits/:id (interpolated)', await api.get(`/fruits/mango`).orThrow())
 const missing = await api.get('/fruits/:id', { params: { id: 'durian' } })
 if (missing.error?.kind === 'http' && missing.error.status === 404)
   show('GET /fruits/durian → 404', missing.error.data)
+
+// Response kinds: binary() → a real `Blob` download, decoded as bytes (not JSON).
+const label = await api.get(`/fruits/mango/label`).orThrow()
+show('GET /fruits/mango/label (binary)', `${label.size} bytes → "${await label.text()}"`)
+
+// Response kinds: status 204 → the empty kind. `data` is `undefined`; `.raw()` shows the status.
+// Remove the Lychee we just created above.
+const removed = await api.delete('/fruits/:id', { params: { id: 'lychee' } }).raw()
+show(`DELETE /fruits/lychee (empty) → ${removed.status}`, removed.ok)
 
 show('POST /checkout', await api.post('/checkout', { body: { items: [{ id: 'mango', kg: 2 }] } }).orThrow())
 

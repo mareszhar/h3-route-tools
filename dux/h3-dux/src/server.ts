@@ -18,6 +18,7 @@ import type {
 } from './internal/route-types.ts'
 import { createEventStream, getQuery, HTTPError } from 'h3'
 import { H3Typed } from 'h3-route-tools'
+import { isBinaryResponse, isTextResponse } from './response.ts'
 import { isEventStream } from './sse.ts'
 
 /** The server type after adding one route+method — accumulates into `typeof app`. */
@@ -144,8 +145,12 @@ function mount(app: H3Typed, method: RouteMethod, route: string, options: Runtim
   const eager = validate?.eager !== false
   const schemas: Schemas = { query: validate?.query, body: validate?.body, headers: validate?.headers }
   const sseSchema = isEventStream(validate?.response) ? (validate?.response as SchemaWithJSON) : undefined
-  // The response schema upstream value-validates (none, when we stream it ourselves).
-  const response = sseSchema ? undefined : validate?.response
+  // Response kinds (delta 10): `text()`/`binary()` carry no schema to value-validate;
+  // the server just sends the matching content type so the client decodes by kind.
+  const isText = isTextResponse(validate?.response)
+  const isBinary = isBinaryResponse(validate?.response)
+  // The response schema upstream value-validates (none for streams or kind markers).
+  const response = (sseSchema || isText || isBinary) ? undefined : validate?.response
   const upstreamValidate = eager
     ? { query: schemas.query, body: schemas.body, headers: schemas.headers, response }
     : (response ? { response } : undefined)
@@ -177,6 +182,12 @@ function mount(app: H3Typed, method: RouteMethod, route: string, options: Runtim
     const result = await handler(event)
     if (sseSchema)
       return streamSse(event, result as AsyncIterable<unknown>, sseSchema, onError)
+    // Tag the response with the content type the client decodes by, unless the
+    // handler already set one (its own mime wins — and a native Response self-describes).
+    if (isText && !event.res.headers.has('content-type'))
+      event.res.headers.set('content-type', 'text/plain; charset=utf-8')
+    if (isBinary && !event.res.headers.has('content-type') && !(result instanceof Response))
+      event.res.headers.set('content-type', result instanceof Blob && result.type ? result.type : 'application/octet-stream')
     return result
   }
 

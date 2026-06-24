@@ -50,6 +50,10 @@ export function createOrchard() {
       fruits.set(fruit.id, fruit)
       return fruit
     },
+    remove: (id: string): void => {
+      get(id)
+      fruits.delete(id)
+    },
     checkout: (order: CheckoutOrder): Receipt => {
       const lines = order.items.map((item) => {
         const fruit = get(item.id)

@@ -22,6 +22,7 @@ bun run serve    # serve on http://localhost:3000 to poke by hand
 - **Validation modes** — `/import` uses `eager: false` + `event.valid('query' | 'body')`; a dry-run never touches the body.
 - **Typed SSE** — `/fruits/:id/ripen` uses `sse(RipenTickSchema)`; the client `for await`s an `AsyncGenerator<RipenTick>`.
 - **Typed errors** — `/fruits/:id` declares `errors: { 404: ErrorSchema }` and throws the cursor-checked `e.error(404, …)`; the client's `error` is discriminated by status.
+- **Response kinds** — `/motd` uses `text()` (the client gets a `string`), `/fruits/:id/label` uses `binary()` (a `Blob` download), and `DELETE /fruits/:id` returns `204` (the `empty` kind — `data` is `undefined`).
 
 [`main.ts`](./main.ts) drives them through the **honest client**: every call resolves to `{ data, error }`, with `.orThrow()` for the value and `.raw()` for the native response. Watch the trip print a typed `422` on an invalid body and a typed `404` for a missing fruit — `error.data` is the declared shape, never the transport envelope. Response shapes, path params, request bodies, the SSE element type, and the per-status error bodies are all inferred from `typeof app`.
 

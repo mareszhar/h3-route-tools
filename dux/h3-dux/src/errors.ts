@@ -46,9 +46,17 @@ function unwrapErrorData(body: unknown): unknown {
   return body
 }
 
-/** Read a response body best-effort: JSON when it is JSON, text otherwise, `undefined` when empty. */
+/**
+ * Read a response body by its declared content type — the runtime half of the
+ * response-kind contract (delta 10). A `204`/empty body is `undefined`, JSON is
+ * parsed, `text/*` stays a `string` (never re-parsed, so `"42"` stays `"42"`), and
+ * any other declared type is a `Blob`. With no content type we fall back to a
+ * best-effort text/JSON read, so a bare value still round-trips.
+ */
 async function parseBody(response: Response): Promise<unknown> {
   if (response.status === 204 || response.status === 205)
+    return undefined
+  if (response.headers.get('content-length') === '0')
     return undefined
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('application/json')) {
@@ -59,6 +67,13 @@ async function parseBody(response: Response): Promise<unknown> {
       return undefined
     }
   }
+  if (contentType.startsWith('text/')) {
+    const text = await response.text()
+    return text === '' ? undefined : text
+  }
+  if (contentType)
+    return await response.blob()
+  // No content type: best-effort — text, parsed as JSON when it parses.
   const text = await response.text()
   if (!text)
     return undefined

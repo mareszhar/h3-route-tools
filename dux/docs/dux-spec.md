@@ -22,7 +22,7 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 7 | The contract kernel | `internal/contract.ts`, `internal/route-types.ts` | ☑ done |
 | 8 | The honest client (`{ data, error }`, `.orThrow()`, `.raw()`) | `client.ts`, `sse.ts`, `errors.ts` | ☑ done |
 | 9 | Typed error contracts (`errors`, `event.error`, 422) | `route-types.ts`, `server.ts`, `errors.ts` | ☑ done |
-| 10 | Response kinds + SSE hardening | `internal/contract.ts`, `sse.ts`, `server.ts` | ☐ planned |
+| 10 | Response kinds + SSE hardening | `response.ts`, `internal/route-types.ts`, `internal/contract.ts`, `client.ts`, `errors.ts`, `server.ts`, `sse.ts` | ☑ done |
 | 11 | Delta-aware composition (`createRouter`, `.mount`, `.native`) | `router.ts` (new), `server.ts` | ☐ planned |
 | 12 | Typed event-context augmentation (`defineMiddleware`) | `middleware.ts` (new), `server.ts`, `router.ts` | ☐ planned |
 | 13 | Nitro deltas via codegen | `nitro.ts`, `codegen.ts`, route-handler port | ☐ planned |
@@ -41,7 +41,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by 
 | 4 | Typed SSE (4) — `sse()` brand + client `AsyncGenerator` return | ☑ done |
 | 5 | Cleaner inference + diagnostics-as-contract (6) — single signature, drop `O`/`NoExcess`, Selenita contract | ☑ done (source mode; `forModes`/perf pending W4) |
 | 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☑ done |
-| 7 | Response fidelity — response kinds + SSE hardening (10) | ☐ |
+| 7 | Response fidelity — response kinds + SSE hardening (10) | ☑ done |
 | 8 | Scale — delta-aware composition (11) + typed event context (12) | ☐ |
 | 9 | The Nitro moat — deltas via codegen (13) | ☐ |
 | 10 | Symmetry extras — standalone OpenAPI + client interceptors (14) | ☐ |
@@ -294,7 +294,7 @@ interface EndpointContract {
 Two realities worth recording:
 
 - **Resolve before you compose, or the schema leaks.** A *conditional* type alias resolves in a hover, but a *union/object* alias prints its argument unresolved. Passing the raw `DuxEndpoint` to the result alias reintroduced the exact `ObjectSchema<…>` leak delta 6 fixed. The fix: pull the success body and error map out with `infer` first, and force the error map to evaluate with a homomorphic `{ [S in keyof Errors]: Errors[S] }`, so only resolved pieces reach the result. The verb hover now reads `DuxCall<HonestResult<SerializeObject<{…}>, ClientError<{ 422: ValidationErrorBody }>>, …>`.
-- **The kernel is half-realized by design.** The success/error split, the resolved request shapes, and the client projection are in. The unified `responses: { [status]: { body, kind } }` representation, the `kind` tag, and the codegen/OpenAPI consumers arrive with deltas 10/13/14 — each builds on this spine without reshaping it.
+- **The kernel is half-realized by design.** The success/error split, the resolved request shapes, and the client projection are in. The `kind` tag landed with delta 10 (a per-endpoint success kind, projected to `data` by the client); the unified per-status `responses: { [status]: { body, kind } }` representation and the codegen/OpenAPI consumers arrive with deltas 13/14 — each builds on this spine without reshaping it.
 
 **Status:** ☑ done (phase 6).
 
@@ -369,13 +369,19 @@ app.post('/fruits', {
 
 ```ts
 app.delete('/fruits/:id', { status: 204, handler: e => orchard.remove(e.context.params.id) }) // kind: empty
-app.get('/health/text', { response: text(), handler: () => 'ripe' }) //                          kind: text → string
+app.get('/health/text', { validate: { response: text() }, handler: () => 'ripe' }) //             kind: text → string
+app.get('/fruits/:id/label', { validate: { response: binary() }, handler: e => makeLabel(e) }) //  kind: binary → Blob
 // sse() is just the `sse` kind with a brand — streaming is no longer a special case
 ```
 
-**Proposed approach.** Add a `kind` (`json | text | empty | sse | binary`) to each `responses` entry in the kernel (delta 7), inferred (`json` default; `void`/`204` → `empty`; `sse()` → `sse`) or declared via small response markers (`text()`, `binary()`) that sit beside `sse()`. The client decodes by kind, and the return type reflects it (`string`, `void`, `Blob`, `AsyncGenerator<T>`). Harden `parseEventStream`: check `response.ok` (throw `DuxError` if not), accumulate multi-line `data:` per SSE spec, handle `\r\n`, and ignore comment/`id:`/`retry:` lines. Native `Response` returns from a handler pass through, typed as such.
+**Approach (delivered).** A `kind` (`json | text | empty | sse | binary`) is computed onto every `DuxEndpoint` (`SuccessKind<V, Ret>` in [route-types.ts](../h3-dux/src/internal/route-types.ts)) alongside the success body. It is inferred — `json` by default, a `void`/`null`/`undefined` return → `empty`, `sse()` → `sse` — or declared by the schema-free markers `text()`/`binary()` ([response.ts](../h3-dux/src/response.ts)), the siblings of `sse()`. The client projects the body **by kind** (`ClientData` in [contract.ts](../h3-dux/src/internal/contract.ts)): `string` for `text`, `Blob` for `binary`, `undefined` for `empty`, `AsyncGenerator<T>` for `sse`, the serialized wire shape for `json`. `parseEventStream` ([sse.ts](../h3-dux/src/sse.ts)) is hardened: it refuses a non-2xx (throws `DuxHTTPError`), handles `\n`/`\r\n`/`\r`, accumulates multi-line `data:` per the SSE spec (joined with `\n`, one leading space stripped), ignores comment/`id:`/`event:`/`retry:` lines, and flushes a final unterminated frame.
 
-**Status:** ☐ planned (phase 7).
+Two realities worth recording:
+
+- **The wire must carry the kind, because h3 won't infer it.** h3 sends a bare `string` with *no* `content-type` and an untyped `Blob` with an empty one — so the client, which decodes by `content-type`, would re-`JSON.parse` `"42"` into `42`. The server now tags a `text()` response `text/plain` and a `binary()` response `application/octet-stream` (a typed `Blob`'s own mime wins, and a native `Response` self-describes), and the client reads `text/*` as a raw `string`, a `204`/empty body as `undefined`, and any other declared type as a `Blob`. Kind lives in the *type*; `content-type` is its runtime shadow, and the two are kept in lockstep.
+- **Native `Response` stays honest by being opaque.** A handler may return a native `Response` (h3 passes it through), but its body is unknowable to the contract, so `data` is typed `unknown` — you reach for `.raw()` to inspect it, rather than the type asserting a shape the kit can't guarantee (principle 3).
+
+**Status:** ☑ done (phase 7).
 
 ---
 

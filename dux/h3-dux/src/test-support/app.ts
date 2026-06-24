@@ -3,7 +3,7 @@
  * shared across every test plane. `App = typeof app` is the single source of
  * truth a `createClient<App>()` reads.
  */
-import { createServer, sse } from '@mszr/h3-dux'
+import { binary, createServer, sse, text } from '@mszr/h3-dux'
 import * as v from 'valibot'
 import { createOrchard } from './orchard.ts'
 import {
@@ -22,6 +22,8 @@ const orchard = createOrchard()
 export const app = createServer()
   // No validate.response → the response type is INFERRED from the handler return.
   .get('/health', { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) })
+  // Response kinds (delta 10): text() → the client receives a `string`, not parsed JSON.
+  .get('/health/text', { validate: { response: text() }, handler: () => 'ripe' })
   .get('/fruits', {
     validate: { query: FruitQuerySchema, response: v.array(FruitSchema) },
     handler: () => orchard.list(),
@@ -36,6 +38,14 @@ export const app = createServer()
   .get('/fruits/:id', {
     validate: { response: FruitSchema },
     handler: e => orchard.get(e.context.params.id),
+  })
+  // binary() → the client receives a `Blob` download (a tiny "label" of the fruit).
+  .get('/fruits/:id/label', {
+    validate: { response: binary() },
+    handler: (e) => {
+      const fruit = orchard.get(e.context.params.id)
+      return new Blob([new TextEncoder().encode(`${fruit.emoji} ${fruit.name}`)])
+    },
   })
   // Typed errors (delta 9): `errors` declares the failure; `e.error(409, …)` throws it
   // type-checked; the client's `error` is discriminated by status.

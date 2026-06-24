@@ -3,9 +3,7 @@ import type {
   NormalizeRoutes,
   TypedFetch,
 } from 'h3-route-tools'
-import type { ClientError, HonestResult } from './internal/contract.ts'
-import type { Serialize } from './internal/serialize.ts'
-import type { EventStream } from './sse.ts'
+import type { ClientData, ClientError, HonestResult } from './internal/contract.ts'
 import { createTypedFetch } from 'h3-route-tools'
 import { DuxHTTPError } from './errors.ts'
 import { DuxCall, parseEventStream } from './sse.ts'
@@ -52,16 +50,17 @@ type VerbOptions<E, WithParams extends boolean> = Prettify<
  * `for await` it), otherwise a {@link DuxCall} — `await` it for the honest
  * `{ data, error }`, `.orThrow()` for the value, `.raw()` for the native response.
  *
- * The endpoint's success body and error map are pulled out with `infer` *first*,
- * so only the resolved pieces (`Serialize<R>`, the error map) reach the result —
- * the return type never prints the schema-typed `DuxEndpoint`.
+ * The success body is decoded by the endpoint's response *kind* via `ClientData`
+ * (delta 10): `string` for `text()`, `Blob` for `binary()`, `undefined` for an
+ * empty `204`, the serialized wire shape for `json`. The body and error map are
+ * resolved by the projection *first*, so the return type never prints the
+ * schema-typed `DuxEndpoint` — `{ [S in keyof Errors]: … }` forces the error map
+ * to resolve to `{ 409: … }` rather than the lazy `EndpointErrors<…schema…>` alias.
  */
-type VerbReturn<E> = (E extends { response: infer R } ? R : unknown) extends EventStream<infer T>
-  ? AsyncGenerator<T>
-  : E extends { response: infer R, errors: infer Errors }
-    // `{ [S in keyof Errors]: … }` forces the error map to *resolve* to `{ 409: … }`
-    // rather than printing as the lazy `EndpointErrors<…schema…>` alias.
-    ? DuxCall<HonestResult<Serialize<R>, ClientError<{ [S in keyof Errors]: Errors[S] }>>, Serialize<R>>
+type VerbReturn<E> = E extends { kind: 'sse' }
+  ? ClientData<E>
+  : E extends { errors: infer Errors }
+    ? DuxCall<HonestResult<ClientData<E>, ClientError<{ [S in keyof Errors]: Errors[S] }>>, ClientData<E>>
     : DuxCall<HonestResult<unknown, ClientError<object>>, unknown>
 
 /** Replace each `:param` segment of a route pattern with a `${string}` hole. */

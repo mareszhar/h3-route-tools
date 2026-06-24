@@ -25,6 +25,7 @@ import type {
   SchemaWithJSON,
   StatusCodeKey,
 } from 'h3-route-tools'
+import type { BinaryResponse, TextResponse } from '../response.ts'
 import type { EventStream } from '../sse.ts'
 
 /** Flatten an intersection into a plain object type (display only). */
@@ -89,11 +90,36 @@ type NumKey<S> = S extends number ? S : S extends `${infer N extends number}` ? 
 /** The success (2xx) body a method answers with — bare schema, the 2xx of a status map, else inferred. */
 export type SuccessResponse<V extends AnyMethodValidate, Ret> = ResponseSchema<V> extends EventStream<infer T>
   ? EventStream<T>
-  : [ResponseSchema<V>] extends [SchemaWithJSON]
-      ? InferOutput<ResponseSchema<V>>
-      : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
-        ? Pick2xx<ResponseSchema<V>>
-        : unknown extends InferMethodResponse<V> ? Ret : InferMethodResponse<V>
+  : ResponseSchema<V> extends TextResponse
+    ? string
+    : ResponseSchema<V> extends BinaryResponse
+      ? Blob
+      : [ResponseSchema<V>] extends [SchemaWithJSON]
+          ? InferOutput<ResponseSchema<V>>
+          : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
+            ? Pick2xx<ResponseSchema<V>>
+            : unknown extends InferMethodResponse<V> ? Ret : InferMethodResponse<V>
+
+/**
+ * The response *kind* an endpoint answers with (delta 10) — the kernel tag every
+ * plane reads. `sse()`/`text()`/`binary()` declare it explicitly; otherwise it is
+ * inferred: a `void`/`null`/`undefined` return is `empty` (a `204`/no-body), a
+ * native `Response` passes through as `json` (opaque — consume with `.raw()`),
+ * and everything else is `json`. See docs/dux-conventions.md §11.
+ */
+export type SuccessKind<V extends AnyMethodValidate, Ret> = ResponseSchema<V> extends EventStream<infer _T>
+  ? 'sse'
+  : ResponseSchema<V> extends TextResponse
+    ? 'text'
+    : ResponseSchema<V> extends BinaryResponse
+      ? 'binary'
+      : [ResponseSchema<V>] extends [SchemaWithJSON]
+          ? 'json'
+          : ResponseSchema<V> extends Record<StatusCodeKey, SchemaWithJSON>
+            ? 'json'
+            : [Ret] extends [Response]
+                ? 'json'
+                : [Ret] extends [void | null | undefined] ? 'empty' : 'json'
 
 /** Union of the 2xx entry outputs of a response status map. */
 type Pick2xx<M> = {
@@ -221,6 +247,9 @@ type ConstResponse<T> = T extends Date | RegExp | URL
         ? { [K in keyof T]: ConstResponse<T[K]> }
         : T
 
+/** A binary body a handler may return for a `binary()` response — h3 streams any of these. */
+export type BinaryBody = Blob | ArrayBuffer | Uint8Array | ReadableStream | Response
+
 /** A method handler: `event` typed from the validate block, params, and pattern; return matches the **success** response. */
 export type MethodHandler<
   V extends AnyMethodValidate,
@@ -232,7 +261,11 @@ export type MethodHandler<
   event: MethodEvent<V, P, Route, Err>,
 ) => ResponseSchema<V> extends EventStream<infer T>
   ? AsyncIterable<T>
-  : (Ret & ConstResponse<SuccessConstraint<V>>) | Promise<Ret & ConstResponse<SuccessConstraint<V>>>
+  : ResponseSchema<V> extends TextResponse
+    ? string | Promise<string>
+    : ResponseSchema<V> extends BinaryResponse
+      ? BinaryBody | Promise<BinaryBody>
+      : (Ret & ConstResponse<SuccessConstraint<V>>) | Promise<Ret & ConstResponse<SuccessConstraint<V>>>
 
 /** The success shape a handler's return is checked against (errors are thrown, never returned). */
 type SuccessConstraint<V extends AnyMethodValidate> = [ResponseSchema<V>] extends [SchemaWithJSON]
@@ -261,6 +294,8 @@ export interface DuxEndpoint<
   headers: InferMethodHeaders<V>
   body: InferMethodBodyDir<V, 'input'>
   response: SuccessResponse<V, Ret>
+  // The response kind (delta 10) — the client decodes `data` by this, never guessing.
+  kind: SuccessKind<V, Ret>
   // Prettify so an indexed read (`E['errors']`) resolves to a flat `{ status: body }`
   // map rather than the lazy `EndpointErrors<…>` alias — keeps the client clean.
   errors: Prettify<EndpointErrors<V, P, Err>>
