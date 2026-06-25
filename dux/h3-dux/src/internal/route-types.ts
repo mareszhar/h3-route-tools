@@ -25,7 +25,11 @@ import type {
   SchemaWithJSON,
   StatusCodeKey,
 } from 'h3-route-tools'
-import type { TupleBindings } from '../middleware.ts'
+import type {
+  MiddlewareTupleIssue,
+  RequirementsIssue,
+  TupleBindings,
+} from '../middleware.ts'
 import type {
   BinaryBody,
   BinaryResponse,
@@ -189,6 +193,13 @@ type RouteParams<Route extends string> = Route extends `${string}:${infer Param}
   : Route extends `${string}:${infer Param}`
     ? Record<Param, string>
     : Record<string, string>
+
+/** Read only the literal `:param` names from a path pattern. */
+export type PathParamNames<Route extends string> = Route extends `${string}:${infer Param}/${infer Rest}`
+  ? Param | PathParamNames<`/${Rest}`>
+  : Route extends `${string}:${infer Param}`
+    ? Param
+    : never
 
 /** The params a handler sees: the schema's output if declared, else inferred from the pattern. */
 type ResolvedParams<P extends SchemaWithJSON | undefined, Route extends string>
@@ -402,9 +413,13 @@ export interface DuxVerbOpts<
   /** A schema for the route's `:params` — typed/coerced params opt in here (else they're `string`). */
   params?: P
   /** Middleware to register and run for this endpoint; typed ones add to `event.bindings`. */
-  middleware?: Mw
+  middleware?: Mw & ([MiddlewareTupleIssue<Mw, Bindings>] extends [never]
+    ? unknown
+    : MiddlewareTupleIssue<Mw, Bindings>)
   /** Type-only capability requirements an enclosing scope must already provide (delta 12). */
-  requires?: Req
+  requires?: Req & ([RequirementsIssue<Req, Bindings>] extends [never]
+    ? unknown
+    : RequirementsIssue<Req, Bindings>)
   meta?: H3RouteMeta
   /** Success status code; sets `event.res.status` before the handler runs. */
   status?: Status

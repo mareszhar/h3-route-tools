@@ -21,7 +21,8 @@ export {
   type TypedNativeResponse,
   typedResponse,
 } from './response.ts'
-export { createRouter, defineRoutes, DuxRouter } from './router.ts'
+export { createRouter } from './router.ts'
+export type { DuxRouter } from './router.ts'
 export { createServer, DuxServer } from './server.ts'
 export { type EventStream, sse } from './sse.ts'
 // ── upstream surface ──────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@
  * registers with `.use(...)` / `middleware: [...]` exactly like any other.
  */
 import type { H3Event, Middleware } from 'h3'
+import { getQuery } from 'h3'
 
 /** A value or a promise of it — h3's middleware return shape, not re-exported by h3. */
 type MaybePromise<T> = T | Promise<T>
@@ -46,6 +47,9 @@ export interface PlainMiddleware {
 /** The bindings a typed middleware publishes (`object` for a plain one). */
 export type BindingsOf<M> = M extends TypedMiddleware<any, infer B> ? B : object
 
+/** The bindings a typed middleware requires upstream (`object` for a plain one). */
+export type RequirementsOf<M> = M extends TypedMiddleware<infer R, any> ? R : object
+
 /** Intersect the published bindings of a tuple of providers. */
 export type TupleBindings<T extends readonly unknown[]> = T extends readonly [infer Head, ...infer Tail]
   ? BindingsOf<Head> & TupleBindings<Tail>
@@ -59,8 +63,8 @@ export type TupleBindings<T extends readonly unknown[]> = T extends readonly [in
 export type BoundEvent<Bindings = object, Staged = undefined> = H3Event & {
   bindings: Bindings
   staged: Staged
-  params: Record<string, string>
-  query: Record<string, string | string[]>
+  params: Partial<Record<string, string>>
+  query: Partial<Record<string, string | string[]>>
   body: unknown
 }
 
@@ -128,13 +132,14 @@ export function ensureDuxAccessors(event: H3Event): void {
     params: {
       configurable: true,
       get(this: H3Event) {
-        return this.context.params
+        return this.context.params ?? {}
       },
     },
     query: {
       configurable: true,
       get(this: H3Event) {
-        return (this.context as DuxContext).query
+        const ctx = this.context as DuxContext
+        return Object.hasOwn(ctx, 'query') ? ctx.query : getQuery(this)
       },
     },
     body: {
@@ -181,24 +186,25 @@ function runSpec(spec: MiddlewareSpec<any, any, any>): Middleware {
     ensureDuxAccessors(event)
     const ctx = event.context as DuxContext
     const enclosingStaged = ctx.staged
-    ctx.staged = staged ? await staged(event as BoundEvent) : undefined
-    if (bindings) {
-      const published = await bindings(event as BoundEvent)
-      ctx.bindings = Object.assign(ctx.bindings ?? {}, published)
-    }
-    // Hide this middleware's staged scope while downstream runs, then restore it
-    // so any post-`next()` logic in the handler sees its own staged values again.
-    const innerNext = async (): Promise<unknown> => {
-      const mine = ctx.staged
-      ctx.staged = enclosingStaged
-      try {
-        return await next()
-      }
-      finally {
-        ctx.staged = mine
-      }
-    }
     try {
+      ctx.staged = staged ? await staged(event as BoundEvent) : undefined
+      if (bindings) {
+        const published = await bindings(event as BoundEvent)
+        ctx.bindings = Object.assign(ctx.bindings ?? {}, published)
+      }
+
+      // Hide this middleware's staged scope while downstream runs, then restore it
+      // so any post-`next()` logic in the handler sees its own staged values again.
+      const innerNext = async (): Promise<unknown> => {
+        const mine = ctx.staged
+        ctx.staged = enclosingStaged
+        try {
+          return await next()
+        }
+        finally {
+          ctx.staged = mine
+        }
+      }
       return handler ? await handler(event as BoundEvent, innerNext) : await innerNext()
     }
     finally {
@@ -217,9 +223,21 @@ export function toMiddleware(input: Middleware | MiddlewareSpec<any, any, any>):
 /** The keys two binding sets both declare — a provider collision when non-`never`. */
 type Overlap<A, B> = Extract<keyof A, keyof B>
 
+/** Required keys absent from, or incompatibly implemented by, the available bindings. */
+export type UnsatisfiedKeys<Requires, Available> = {
+  [K in keyof Requires]: K extends keyof Available
+    ? Available[K] extends Requires[K] ? never : K
+    : K
+}[keyof Requires]
+
 /** A cursor-legible error standing in for a colliding middleware argument. */
 export interface BindingConflict<Key extends PropertyKey> {
   readonly '⚠ binding already provided by an earlier middleware': Key
+}
+
+/** A cursor-legible error for a middleware whose upstream requirements are absent. */
+export interface MissingBindings<Key extends PropertyKey> {
+  readonly '⚠ middleware requires bindings that are not available yet': Key
 }
 
 /**
@@ -233,18 +251,51 @@ export type NoConflict<M extends TypedMiddleware<any, any>, Existing>
     ? M
     : TypedMiddleware<any, BindingConflict<Overlap<BindingsOf<M>, Existing>>>
 
+/** Guard one typed provider against both missing requirements and key collisions. */
+export type UsableMiddleware<M extends TypedMiddleware<any, any>, Existing>
+  = [UnsatisfiedKeys<RequirementsOf<M>, Existing>] extends [never]
+    ? NoConflict<M, Existing>
+    : TypedMiddleware<MissingBindings<UnsatisfiedKeys<RequirementsOf<M>, Existing>>, any>
+
+/** Validate a middleware tuple in execution order against bindings already in scope. */
+export type MiddlewareTupleIssue<
+  T extends readonly unknown[],
+  Existing,
+> = T extends readonly [infer Head, ...infer Tail]
+  ? Head extends TypedMiddleware<any, any>
+    ? [UnsatisfiedKeys<RequirementsOf<Head>, Existing>] extends [never]
+        ? [Overlap<BindingsOf<Head>, Existing>] extends [never]
+            ? MiddlewareTupleIssue<Tail, Prettify<Existing & BindingsOf<Head>>>
+            : BindingConflict<Overlap<BindingsOf<Head>, Existing>>
+        : MissingBindings<UnsatisfiedKeys<RequirementsOf<Head>, Existing>>
+    : MiddlewareTupleIssue<Tail, Existing>
+  : never
+
+/** Validate a type-only requirements tuple against bindings already in scope. */
+export type RequirementsIssue<
+  T extends readonly unknown[],
+  Existing,
+> = [UnsatisfiedKeys<TupleBindings<T>, Existing>] extends [never]
+  ? never
+  : MissingBindings<UnsatisfiedKeys<TupleBindings<T>, Existing>>
+
 /**
  * The inline `.use({ … })` form. Its callbacks see the chain's accumulated
  * bindings (`Existing`) contextually — that is the only difference from a
  * standalone {@link MiddlewareSpec}, which starts from its own `requires`.
  */
-export interface InlineSpec<Existing, Staged, Bindings extends object> {
+export interface InlineSpec<
+  Existing,
+  Requires extends readonly TypedMiddleware<any, any>[],
+  Staged,
+  Bindings extends object,
+> {
   /**
    * Excludes an already-branded {@link TypedMiddleware} from this overload, so a
    * colliding provider falls through to a cursor error instead of being swallowed.
    */
   readonly [META]?: never
-  requires?: readonly TypedMiddleware<any, any>[]
+  requires?: Requires
   staged?: (event: BoundEvent<Existing>) => Staged | Promise<Staged>
   bindings?: (event: BoundEvent<Existing, Staged>) => Bindings | Promise<Bindings>
   handler?: (
@@ -252,3 +303,14 @@ export interface InlineSpec<Existing, Staged, Bindings extends object> {
     next: () => Promise<unknown>,
   ) => MaybePromise<unknown>
 }
+
+/** Validate an inline provider's explicit requirements and newly published keys. */
+export type InlineSpecIssue<
+  Existing,
+  Requires extends readonly TypedMiddleware<any, any>[],
+  Bindings,
+> = [UnsatisfiedKeys<TupleBindings<Requires>, Existing>] extends [never]
+  ? [Overlap<Bindings, Existing>] extends [never]
+      ? unknown
+      : BindingConflict<Overlap<Bindings, Existing>>
+  : MissingBindings<UnsatisfiedKeys<TupleBindings<Requires>, Existing>>

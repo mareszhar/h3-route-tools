@@ -42,6 +42,36 @@ it('staged feeds bindings but never leaks to the handler payload', async () => {
   expect(seen.stagedInHandler).toBe('abc')
 })
 
+it('staged scope is restored when bindings preparation throws', async () => {
+  let restored: unknown
+  const outer = defineMiddleware({
+    staged: () => ({ scope: 'outer' }),
+    async handler(e, next) {
+      try {
+        return await next()
+      }
+      catch {
+        restored = e.staged
+        return new Response('caught')
+      }
+    },
+  })
+  const inner = defineMiddleware({
+    staged: () => ({ scope: 'inner' }),
+    bindings: () => {
+      throw new Error('boom')
+    },
+  })
+  const app = createServer()
+    .use(outer)
+    .use(inner)
+    .get('/x', { handler: () => null })
+
+  const response = await app.request('/x')
+  expect(await response.text()).toBe('caught')
+  expect(restored).toEqual({ scope: 'outer' })
+})
+
 it('a chain of providers sees the earlier bindings (requires consumes, never re-runs)', async () => {
   let sessionRuns = 0
   const withSession = defineMiddleware({

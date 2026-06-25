@@ -25,6 +25,7 @@ describe('delta-aware composition — editor DX', () => {
       createRouter('/fruits').${cursor}
     `
     expect(completions).toContainCompletions(['get', 'post', 'put', 'patch', 'delete', 'use', 'requires'])
+    expect(completions).not.toContainCompletions(['entries', 'middlewares', 'parentParams'])
   })
 
   it('the server exposes mount, register, and the native escape hatch', () => {
@@ -79,6 +80,18 @@ describe('delta-aware composition — editor DX', () => {
     `
     expect(errors.length).toBeGreaterThanOrEqual(1)
     expect(errors).toHaveError(/already defined/)
+    expectNoLeak(errors)
+  })
+
+  it('an invalid parentParams mount names the param mismatch', () => {
+    const { errors } = project.check`
+      import { createRouter, createServer } from '@mszr/h3-dux'
+      const friends = createRouter('/friends', { parentParams: ['userId'] })
+        .get('/:friendId', { handler: e => e.params.userId })
+      void createServer().mount('/orgs/:orgId', friends)
+    `
+    expect(errors.length).toBeGreaterThanOrEqual(1)
+    expect(errors).toHaveError(/parentParams/)
     expectNoLeak(errors)
   })
 })

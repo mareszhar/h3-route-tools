@@ -16,15 +16,19 @@ import type {
   DuxVerbOpts,
   ErrorsOption,
   InferMethodResponse,
+  JoinPath,
   MergePair,
+  PathParamNames,
   Prettify,
 } from './internal/route-types.ts'
 import type {
   BindingsOf,
   InlineSpec,
-  NoConflict,
+  InlineSpecIssue,
   PlainMiddleware,
   TypedMiddleware,
+  UnsatisfiedKeys,
+  UsableMiddleware,
 } from './middleware.ts'
 import type { DuxRouter } from './router.ts'
 import { createEventStream, getQuery, HTTPError } from 'h3'
@@ -36,6 +40,7 @@ import {
   runtimeResponseKind,
   setResponseKind,
 } from './response.ts'
+import { routerEntries } from './router.ts'
 import { isEventStream } from './sse.ts'
 
 /** The server type after adding one route+method — accumulates into `typeof app`. */
@@ -54,16 +59,49 @@ type DuxNext<
 /** Prefix every key of a router's route map with a static outer mount prefix. */
 type PrefixRoutes<Outer extends string, RR> = Outer extends ''
   ? RR
-  : { [K in keyof RR as `${Outer}${K & string}`]: RR[K] }
+  : { [K in keyof RR as JoinPath<Outer, K & string>]: RR[K] }
+
+/** Route+method collisions between an existing server map and an incoming router. */
+type RouteCollisions<A, B> = {
+  [P in Extract<keyof A, keyof B>]:
+  [Extract<keyof A[P], keyof B[P]>] extends [never] ? never : P
+}[Extract<keyof A, keyof B>]
+
+type NoRouteCollisions<Existing, Incoming> = [RouteCollisions<Existing, Incoming>] extends [never]
+  ? unknown
+  : { '⚠ mounted route + method is already defined': RouteCollisions<Existing, Incoming> }
 
 /**
  * Guard a `.mount(router)`: the router passes through unless it `.requires(...)`
  * a binding the server has not provided, in which case the *expected* type gains
  * an unsatisfiable property and the missing requirement is named at the cursor.
  */
-type RequireSatisfied<Requires, Bindings> = [Exclude<keyof Requires, keyof Bindings>] extends [never]
+type RequireSatisfied<Requires, Bindings> = [UnsatisfiedKeys<Requires, Bindings>] extends [never]
   ? unknown
-  : { '⚠ mount is missing a required binding the router depends on': Exclude<keyof Requires, keyof Bindings> }
+  : { '⚠ mount is missing a required binding the router depends on': UnsatisfiedKeys<Requires, Bindings> }
+
+type RouterPathParamNames<RR> = keyof RR extends infer Route extends string
+  ? PathParamNames<Route>
+  : never
+
+type ParentParamIssue<Outer extends string, RR, ParentParams>
+  = | Exclude<keyof ParentParams, PathParamNames<Outer>>
+    | Exclude<PathParamNames<Outer>, keyof ParentParams>
+    | Extract<keyof ParentParams, RouterPathParamNames<RR>>
+
+type ParentParamsSatisfied<Outer extends string, RR, ParentParams>
+  = [ParentParamIssue<Outer, RR, ParentParams>] extends [never]
+    ? unknown
+    : { '⚠ dynamic outer params must exactly match parentParams and not duplicate child params': ParentParamIssue<Outer, RR, ParentParams> }
+
+/** Join an optional outer mount prefix and an already-prefixed router route. */
+function joinMountedPath(outer: string, route: string): string {
+  if (!outer)
+    return route
+  if (route === '/')
+    return outer
+  return `${outer}${route}`
+}
 
 /** Loose runtime view of a verb's options, for the dispatch boundary. */
 interface RuntimeOpts {
@@ -307,10 +345,14 @@ export class DuxServer<Routes = object, Bindings = object> {
    * binding key — the collision is a cursor error. This is how auth attaches.
    */
   use<M extends TypedMiddleware<any, any>>(
-    middleware: NoConflict<M, Bindings>,
+    middleware: UsableMiddleware<M, Bindings>,
   ): DuxServer<Routes, Prettify<Bindings & BindingsOf<M>>>
-  use<Staged, B extends object>(
-    spec: InlineSpec<Bindings, Staged, B>,
+  use<
+    const Req extends readonly TypedMiddleware<any, any>[] = [],
+    Staged = undefined,
+    B extends object = object,
+  >(
+    spec: InlineSpec<Bindings, Req, Staged, B> & InlineSpecIssue<Bindings, Req, B>,
   ): DuxServer<Routes, Prettify<Bindings & B>>
   use(middleware: PlainMiddleware): this
   use(route: string, handler: Middleware, opts?: unknown): this
@@ -328,19 +370,24 @@ export class DuxServer<Routes = object, Bindings = object> {
    * versioning or deployment structure. A router that `.requires(...)` a binding
    * the server has not provided is rejected at the cursor.
    */
-  mount<RR, Req>(
-    router: DuxRouter<any, RR, any, Req> & RequireSatisfied<Req, Bindings>,
+  mount<RR, Req, PP>(
+    router: DuxRouter<any, RR, any, Req, PP>
+      & RequireSatisfied<Req, Bindings>
+      & ParentParamsSatisfied<'', RR, PP>
+      & NoRouteCollisions<Routes, RR>,
   ): DuxServer<Prettify<MergePair<Routes, RR>>, Bindings>
-  mount<Outer extends string, RR, Req>(
+  mount<Outer extends string, RR, Req, PP>(
     outerPrefix: Outer,
-    router: DuxRouter<any, RR, any, Req> & RequireSatisfied<Req, Bindings>,
+    router: DuxRouter<any, RR, any, Req, PP>
+      & RequireSatisfied<Req, Bindings>
+      & ParentParamsSatisfied<Outer, RR, PP>
+      & NoRouteCollisions<Routes, PrefixRoutes<Outer, RR>>,
   ): DuxServer<Prettify<MergePair<Routes, PrefixRoutes<Outer, RR>>>, Bindings>
   mount(first: unknown, second?: unknown): unknown {
     const outer = typeof first === 'string' ? first : ''
     const router = (typeof first === 'string' ? second : first) as DuxRouter
-    for (const entry of router.entries) {
-      const middleware = [...router.middlewares, ...(entry.options.middleware ?? [])]
-      mount(this.native, entry.method, outer + entry.route, { ...entry.options, middleware } as RuntimeOpts)
+    for (const entry of routerEntries(router)) {
+      mount(this.native, entry.method, joinMountedPath(outer, entry.route), entry.options as unknown as RuntimeOpts)
     }
     return this
   }
@@ -350,8 +397,10 @@ export class DuxServer<Routes = object, Bindings = object> {
    * folds its routes into `typeof app`, so the escape hatch never desyncs the
    * client's type; any other plugin behaves as in base h3.
    */
-  register<P extends RoutePlugin>(plugin: P): DuxServer<Prettify<MergePair<Routes, InferRoutes<P>>>, Bindings>
-  register(plugin: H3Plugin): this
+  register<P extends RoutePlugin>(
+    plugin: P & NoRouteCollisions<Routes, InferRoutes<P>>,
+  ): DuxServer<Prettify<MergePair<Routes, InferRoutes<P>>>, Bindings>
+  register(plugin: H3Plugin & { readonly '~routePlugin'?: never }): this
   register(plugin: H3Plugin): unknown {
     this.native.register(plugin)
     return this

@@ -63,7 +63,7 @@ These words carry exactly these meanings across the server, client, and Nitro su
 | **result** | what a default client call resolves to: `{ data, error }` — `data` on 2xx, a typed `error` otherwise ([§9](#9-the-honest-client)) |
 | **DuxError** | the client-side failure: `DuxHTTPError` (a typed non-2xx response) or `DuxTransportError` (the request never completed) ([§10](#10-typed-errors--results)) |
 | **response kind** | how a response body crosses the wire — `json \| text \| empty \| sse \| binary` ([§11](#11-response-kinds)) |
-| **router** | a delta-carrying route group built with `createRouter`/`defineRoutes`, optionally owning a literal prefix, then mounted into a server ([§12](#12-composition--scope)) |
+| **router** | a delta-carrying route group built with `createRouter`, optionally owning a literal prefix, then mounted into a server ([§12](#12-composition--scope)) |
 | **staged values** | middleware-private preparation returned by `staged`; visible only to that middleware's `bindings` and `handler` callbacks ([§13](#13-typed-middleware-bindings)) |
 | **bindings** | request-scoped values a typed middleware publishes to downstream middleware and handlers as `event.bindings` ([§13](#13-typed-middleware-bindings)) |
 | **requirements** | middleware or parent-path capabilities that a middleware, router, or endpoint consumes without registering them again ([§12](#12-composition--scope), [§13](#13-typed-middleware-bindings)) |
@@ -276,7 +276,7 @@ export type App = typeof app
 
 The rules that make composition trustworthy:
 
-- **Routers carry the deltas.** A `createRouter`/`defineRoutes` group is *delta-aware* — verb authoring, validation modes, `sse()`, response/param inference, typed errors, and typed middleware bindings — so splitting a domain into its own file never drops you back to upstream ergonomics. (Composing via upstream's `defineRoute`/`mountRoutes` still works and still accumulates; the router is the form that keeps the deltas.)
+- **Routers carry the deltas.** A `createRouter` group is *delta-aware* — verb authoring, validation modes, `sse()`, response/param inference, typed errors, and typed middleware bindings — so splitting a domain into its own file never drops you back to upstream ergonomics. (Composing via upstream's `defineRoute`/`mountRoutes` still works and still accumulates; the router is the form that keeps the deltas.)
 - **A router owns its domain prefix.** `createRouter('/users/:userId')` carries that literal in its type, so every child handler knows `userId` and a hover over the router reveals the path it owns. `createRouter()` remains the prefix-free form.
 - **`mount(router)` merges the router as declared.** `mount('/v1', router)` may add a static outer prefix for versioning or deployment structure; the client still sees one flat route map. This is Hono's `app.route(prefix, sub)` / Elysia's `.group` parity with the domain prefix kept beside the domain definition.
 - **Dynamic params should normally be owned where they are consumed.** Prefer `createRouter('/users/:userId/friends')` when its handlers read `userId`. A dynamic outer mount cannot retroactively contextualize an already-authored router. For the uncommon case where the enclosing router must own that segment, use `createRouter('/friends', { parentParams: ['userId'] })` and mount it at `/users/:userId`; `.mount()` checks the requirement. Missing names and duplicate parent/local param names are cursor diagnostics. When validation or coercion is required, the endpoint's params schema describes the combined parent + owned + local shape and wins over string inference.
@@ -388,7 +388,7 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `.raw()` | ofetch `.raw` | native response metadata plus kind-aware `.parse()`; never throws on non-2xx |
 | `errors: { 409: … }` | upstream `errors` (kept, widened) | per-status failure schemas in the contract; feeds client + runtime + OpenAPI ([§10](#10-typed-errors--results)) |
 | `event.error(status, data)` | `HTTPError` / `createError` | typed thrower checked against the declared `errors` schema |
-| `createRouter(prefix?)` / `defineRoutes()` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([§12](#12-composition--scope)) |
+| `createRouter(prefix?, options?)` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([§12](#12-composition--scope)) |
 | `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
 | `app.native` | `DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
 | `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([§13](#13-typed-middleware-bindings)) |

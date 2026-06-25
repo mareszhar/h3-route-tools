@@ -1,6 +1,7 @@
 import type { App, Fruit } from '@test'
 import { createClient, createRouter, createServer } from '@mszr/h3-dux'
 import { FruitSchema, NewFruitSchema } from '@test'
+import { defineRoute } from 'h3-route-tools'
 import { expectTypeOf, test } from 'vitest'
 
 test('a router prefix is inferred in every child handler', () => {
@@ -14,13 +15,20 @@ test('a router prefix is inferred in every child handler', () => {
 })
 
 test('parentParams folds a dynamic outer segment into the child params', () => {
-  createRouter('/friends', { parentParams: ['userId'] }).get('/:friendId', {
+  const friends = createRouter('/friends', { parentParams: ['userId'] }).get('/:friendId', {
     handler: (e) => {
       expectTypeOf(e.params.userId).toEqualTypeOf<string>()
       expectTypeOf(e.params.friendId).toEqualTypeOf<string>()
       return null
     },
   })
+
+  createServer().mount('/users/:userId', friends)
+
+  // @ts-expect-error — the outer path does not supply the declared `userId`
+  createServer().mount('/orgs/:orgId', friends)
+  // @ts-expect-error — a parent-param router cannot be mounted without its dynamic outer path
+  createServer().mount(friends)
 })
 
 test('a mounted router is addressable on its flat, prefixed path from the client', async () => {
@@ -47,6 +55,38 @@ test('a duplicate route + method is a cursor error', () => {
     .get('/x', { handler: () => null })
     // @ts-expect-error — `/x` GET is already defined; the duplicate is rejected
     .get('/x', { handler: () => null })
+})
+
+test('duplicate param names across composition boundaries are cursor errors', () => {
+  createRouter('/users/:id')
+    // @ts-expect-error — the local route repeats the prefix param `id`
+    .get('/friends/:id', { handler: () => null })
+
+  createRouter('/friends', { parentParams: ['id'] })
+    // @ts-expect-error — the local route repeats the declared parent param `id`
+    .get('/:id', { handler: () => null })
+})
+
+test('a duplicate introduced by mounting is a cursor error', () => {
+  const first = createRouter('/x').get('/', { handler: () => null })
+  const second = createRouter('/x').get('/', { handler: () => null })
+
+  createServer()
+    .mount(first)
+    // @ts-expect-error — mounting would duplicate GET /x
+    .mount(second)
+})
+
+test('a duplicate introduced by registering a route plugin is a cursor error', () => {
+  const plugin = defineRoute({
+    route: '/x',
+    get: { handler: () => null },
+  })
+
+  createServer()
+    .get('/x', { handler: () => null })
+    // @ts-expect-error — registering would duplicate GET /x
+    .register(plugin)
 })
 
 test('the shared Orchard app remains fully typed through the client', async () => {

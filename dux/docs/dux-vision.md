@@ -160,7 +160,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 8 | **The honest client** — `{ data, error }` by default; `.orThrow()` and `.raw()` on the call handle; `DuxError = HTTP \| transport` | 6 | ☑ done |
 | 9 | **Typed error contracts** — preserve status→schema; `errors: { 409: … }`; `event.error(status, data)`; one envelope, standardized on `422` | 6 | ☑ done |
 | 10 | **Response kinds** — infer `json/text/empty/sse/binary`, type native bodies with `typedResponse`, add raw `.parse()`; harden SSE | 7 | ☑ done |
-| 11 | **Delta-aware composition** — prefix-carrying `createRouter`/`defineRoutes`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☑ done |
+| 11 | **Delta-aware composition** — prefix-carrying `createRouter`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☑ done |
 | 12 | **Typed middleware bindings** — `defineMiddleware` infers staged private values and downstream `event.bindings`; `requires` checks parent capabilities without re-registering middleware | 8 | ☑ done |
 | 13 | **Nitro deltas via codegen** — generate the kernel route map (no hand-written `Routes`); bring the deltas to file routes; filename→param inference | 9 | ☐ planned |
 | 14 | **Symmetry extras** — OpenAPI from the standalone `createServer`; client interceptors / `signal` / timeout / retry | 10 | ☐ planned |

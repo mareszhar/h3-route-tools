@@ -27,14 +27,16 @@ import type {
   InferMethodResponse,
   JoinPath,
   MergePair,
+  PathParamNames,
   Prettify,
 } from './internal/route-types.ts'
 import type {
   BindingsOf,
   InlineSpec,
-  NoConflict,
+  InlineSpecIssue,
   PlainMiddleware,
   TypedMiddleware,
+  UsableMiddleware,
 } from './middleware.ts'
 import { toMiddleware } from './middleware.ts'
 
@@ -43,6 +45,27 @@ interface RouterEntry {
   method: RouteMethod
   route: string
   options: { middleware?: Middleware[] } & Record<string, unknown>
+}
+
+interface RouterState {
+  prefix: string
+  middlewares: Middleware[]
+  entries: RouterEntry[]
+}
+
+/** Runtime records stay out of the public router surface and its completions. */
+const ROUTER_STATE = new WeakMap<object, RouterState>()
+
+function stateOf(router: object): RouterState {
+  const state = ROUTER_STATE.get(router)
+  if (!state)
+    throw new TypeError('Invalid h3-dux router')
+  return state
+}
+
+/** Internal replay boundary consumed by `DuxServer.mount`; not exported by the package. */
+export function routerEntries(router: DuxRouter): readonly RouterEntry[] {
+  return stateOf(router).entries
 }
 
 /** Join a router prefix and a local route at runtime (`'/'` is the prefix root). */
@@ -67,6 +90,20 @@ type RouterOpts<
   Mw extends readonly Middleware[],
   Req extends readonly TypedMiddleware<any, any>[],
 > = DuxVerbOpts<V, P, M, Ret, JoinPath<Prefix, Route>, Status, Err, Bindings, ParentParams, Mw, Req>
+
+type DuplicateParamNames<Prefix extends string, Route extends string, ParentParams>
+  = | Extract<PathParamNames<Prefix>, PathParamNames<Route>>
+    | Extract<keyof ParentParams, PathParamNames<JoinPath<Prefix, Route>>>
+
+type RouterRouteArgument<
+  Routes,
+  M extends RouteMethod,
+  Prefix extends string,
+  Route extends string,
+  ParentParams,
+> = [DuplicateParamNames<Prefix, Route, ParentParams>] extends [never]
+  ? DuplicateRoute<Routes, M, JoinPath<Prefix, Route>, Route>
+  : '⚠ a path param name is duplicated across parent, router prefix, and local route'
 
 /** The router type after adding one route+method — keyed by the full, prefixed path. */
 type RouterNext<
@@ -110,17 +147,12 @@ export class DuxRouter<
   declare readonly '~bindings': Bindings
   declare readonly '~requires': Requires
 
-  readonly prefix: Prefix
-  /** Names a dynamic outer mount must supply (the `parentParams` escape hatch). */
-  readonly parentParams: readonly string[]
-  /** Router-scoped middleware, prepended to every endpoint when mounted. */
-  readonly middlewares: Middleware[] = []
-  /** The recorded endpoints, mounted verbatim by `createServer().mount(this)`. */
-  readonly entries: RouterEntry[] = []
-
-  constructor(prefix: Prefix = '' as Prefix, parentParams: readonly string[] = []) {
-    this.prefix = prefix
-    this.parentParams = parentParams
+  constructor(prefix: Prefix = '' as Prefix, _parentParams: readonly string[] = []) {
+    ROUTER_STATE.set(this, {
+      prefix,
+      middlewares: [],
+      entries: [],
+    })
   }
 
   /**
@@ -129,14 +161,18 @@ export class DuxRouter<
    * to give a domain exact runtime scope. Typed middleware publishes `event.bindings`.
    */
   use<M extends TypedMiddleware<any, any>>(
-    middleware: NoConflict<M, Bindings>,
+    middleware: UsableMiddleware<M, Bindings>,
   ): DuxRouter<Prefix, Routes, Prettify<Bindings & BindingsOf<M>>, Requires, ParentParams>
-  use<Staged, B extends object>(
-    spec: InlineSpec<Bindings, Staged, B>,
+  use<
+    const Req extends readonly TypedMiddleware<any, any>[] = [],
+    Staged = undefined,
+    B extends object = object,
+  >(
+    spec: InlineSpec<Bindings, Req, Staged, B> & InlineSpecIssue<Bindings, Req, B>,
   ): DuxRouter<Prefix, Routes, Prettify<Bindings & B>, Requires, ParentParams>
   use(middleware: PlainMiddleware): this
   use(spec: unknown): unknown {
-    this.middlewares.push(toMiddleware(spec as Middleware))
+    stateOf(this).middlewares.push(toMiddleware(spec as Middleware))
     return this
   }
 
@@ -161,10 +197,10 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'get', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'get', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'get', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'get', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('get', route, opts)
     return this as never
   }
 
@@ -177,10 +213,10 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'post', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'post', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'post', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'post', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('post', route, opts)
     return this as never
   }
 
@@ -193,10 +229,10 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'put', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'put', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'put', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'put', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('put', route, opts)
     return this as never
   }
 
@@ -209,10 +245,10 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'patch', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'patch', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'patch', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'patch', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('patch', route, opts)
     return this as never
   }
 
@@ -225,10 +261,10 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'delete', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'delete', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'delete', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'delete', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('delete', route, opts)
     return this as never
   }
 
@@ -241,10 +277,10 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'head', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'head', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'head', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'head', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('head', route, opts)
     return this as never
   }
 
@@ -257,11 +293,25 @@ export class DuxRouter<
     Err extends ErrorsOption | undefined = undefined,
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(route: DuplicateRoute<Routes, 'options', JoinPath<Prefix, Route>, Route>,
+  >(route: RouterRouteArgument<Routes, 'options', Prefix, Route, ParentParams>,
     opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'options', V, P, Ret, Status, Err> {
-    this.entries.push({ method: 'options', route: joinPath(this.prefix, route), options: opts as unknown as RouterEntry['options'] })
+    this.record('options', route, opts)
     return this as never
+  }
+
+  /** Capture the middleware chain exactly as it exists when an endpoint is authored. */
+  private record(method: RouteMethod, route: string, opts: unknown): void {
+    const state = stateOf(this)
+    const options = opts as RouterEntry['options']
+    state.entries.push({
+      method,
+      route: joinPath(state.prefix, route),
+      options: {
+        ...options,
+        middleware: [...state.middlewares, ...(options.middleware ?? [])],
+      },
+    })
   }
 }
 
@@ -287,9 +337,4 @@ export function createRouter(
   options?: RouterOptions<readonly string[]>,
 ): DuxRouter<string> {
   return new DuxRouter(prefix, options?.parentParams)
-}
-
-/** Prefix-free alias of {@link createRouter} for a flat group of routes. */
-export function defineRoutes(): DuxRouter<''> {
-  return new DuxRouter('')
 }

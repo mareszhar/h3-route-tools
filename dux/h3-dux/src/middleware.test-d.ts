@@ -29,6 +29,15 @@ test('requires types the incoming bindings; staged and published bindings compos
   })
 })
 
+test('a middleware cannot be registered before its requirements are available', () => {
+  // @ts-expect-error — withUser requires withSession first
+  createServer().use(withUser)
+
+  createRouter()
+    // @ts-expect-error — withUser requires withSession first
+    .use(withUser)
+})
+
 test('two providers of the same binding key collide at the cursor', () => {
   const a = defineMiddleware({ bindings: () => ({ user: { id: 'a' } }) })
   const b = defineMiddleware({ bindings: () => ({ user: { id: 'b' } }) })
@@ -49,6 +58,14 @@ test('an inline .use object publishes typed bindings and sees the chain', () => 
   })
 })
 
+test('inline requirements and binding collisions are checked', () => {
+  createServer()
+    // @ts-expect-error — the inline middleware requires withSession
+    .use({ requires: [withSession], bindings: () => ({ requestId: 'x' }) })
+
+  createServer().use(withSession).use({ bindings: () => ({ session: { tenant: 'other' } }) })
+})
+
 test('endpoint middleware publishes its bindings to that handler only', () => {
   const withUpload = defineMiddleware({ bindings: () => ({ upload: { size: 0 } }) })
   createServer().post('/avatar', {
@@ -57,6 +74,40 @@ test('endpoint middleware publishes its bindings to that handler only', () => {
       expectTypeOf(e.bindings.upload).toEqualTypeOf<{ size: number }>()
       return null
     },
+  })
+})
+
+test('endpoint middleware requirements and collisions are checked in execution order', () => {
+  const duplicateSession = defineMiddleware({ bindings: () => ({ session: { tenant: 'other' } }) })
+
+  createServer().get('/missing', {
+    // @ts-expect-error — withUser requires withSession before it
+    middleware: [withUser],
+    handler: () => null,
+  })
+
+  createServer().get('/ordered', {
+    middleware: [withSession, withUser],
+    handler: e => e.bindings.user,
+  })
+
+  createServer().get('/duplicate', {
+    // @ts-expect-error — both providers publish `session`
+    middleware: [withSession, duplicateSession],
+    handler: () => null,
+  })
+})
+
+test('endpoint requires must already be supplied by the enclosing chain', () => {
+  createServer().get('/missing', {
+    // @ts-expect-error — requires consumes a capability; it does not register withSession
+    requires: [withSession],
+    handler: () => null,
+  })
+
+  createServer().use(withSession).get('/present', {
+    requires: [withSession],
+    handler: e => e.bindings.session,
   })
 })
 

@@ -3,7 +3,7 @@
  * and accumulates without mounting; `createServer().mount(router)` folds it into a
  * flat, typed route map the client reads end-to-end.
  */
-import { createRouter, createServer, createTestClient } from '@mszr/h3-dux'
+import { createRouter, createServer, createTestClient, defineMiddleware } from '@mszr/h3-dux'
 import { createOrchard, FruitSchema, NewFruitSchema } from '@test'
 import * as v from 'valibot'
 import { expect, it } from 'vitest'
@@ -88,6 +88,23 @@ it('two routers compose into one flat client map', async () => {
 
   expect((await api.get('/health')).data).toEqual({ status: 'ripe' })
   expect((await api.get('/fruits/:id', { params: { id: 'kiwi' } })).data?.name).toBe('Kiwi')
+})
+
+it('router middleware is captured in registration order, not applied retroactively', async () => {
+  let runs = 0
+  const router = createRouter('/ordered')
+    .get('/before', { handler: () => ({ ok: true }) })
+    .use(defineMiddleware((_event, next) => {
+      runs++
+      return next()
+    }))
+    .get('/after', { handler: () => ({ ok: true }) })
+
+  const app = createServer().mount(router)
+  await app.request('/ordered/before')
+  expect(runs).toBe(0)
+  await app.request('/ordered/after')
+  expect(runs).toBe(1)
 })
 
 it('.register folds an upstream defineRoute plugin into the accumulated map', async () => {

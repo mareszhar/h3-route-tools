@@ -59,6 +59,21 @@ describe('typed middleware bindings — editor DX', () => {
     expect(errors).toBeClean()
   })
 
+  it('a provider registered before its requirement reports the missing capability', () => {
+    const { errors } = project.check`
+      import { createServer, defineMiddleware } from '@mszr/h3-dux'
+      const withSession = defineMiddleware({ bindings: () => ({ session: { id: 's1' } }) })
+      const withUser = defineMiddleware({
+        requires: [withSession],
+        bindings: e => ({ user: e.bindings.session.id }),
+      })
+      void createServer().use(withUser)
+    `
+    expect(errors.length).toBeGreaterThanOrEqual(1)
+    expect(errors).toHaveError(/requires bindings/)
+    expectNoLeak(errors)
+  })
+
   it('two providers of the same binding key collide without leaking internals', () => {
     const { errors } = project.check`
       import { createServer, defineMiddleware } from '@mszr/h3-dux'
