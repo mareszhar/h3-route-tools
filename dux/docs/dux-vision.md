@@ -162,7 +162,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 10 | **Response kinds** — infer `json/text/empty/sse/binary`, type native bodies with `typedResponse`, add raw `.parse()`; harden SSE | 7 | ☑ done |
 | 11 | **Delta-aware composition** — prefix-carrying `createRouter`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☑ done |
 | 12 | **Typed middleware bindings** — `defineMiddleware` infers staged private values and downstream `event.bindings`; `requires` checks parent capabilities without re-registering middleware | 8 | ☑ done |
-| 13 | **Nitro deltas via codegen** — `defineFileRoute` + capability-carrying factories; generate the kernel route map; filename-derived client params | 9 | ☐ planned |
+| 13 | **Nitro deltas via codegen** — `defineFileRoute` + capability-carrying factories; generate the kernel route map; filename-derived client params | 9 | ☑ done |
 | 14 | **Symmetry extras** — OpenAPI from the standalone `createServer`; client interceptors / `signal` / timeout / retry | 10 | ☐ planned |
 
 Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).

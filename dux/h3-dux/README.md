@@ -24,6 +24,8 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 
 🪪 **Typed middleware bindings** — `defineMiddleware({ bindings })` publishes request-scoped values that downstream handlers read as `event.bindings`, fully typed. `requires` consumes a parent capability without re-registering it; `.mount` checks it.
 
+📁 **Nitro file routes, fully typed** — `defineFileRoute` carries every delta into a filesystem route (the filename owns the path/method); `createFileRouteFactory().use(…)` carries middleware capabilities across files. The Nitro module generates `#h3-dux/routes`, so `createClient<Routes>()` is typed end-to-end with **no hand-written route interface**.
+
 🔓 **Auth is not a concept here** — a protected route is `middleware: [...]`; an authenticated call is a header. Nothing app-specific leaks into the kit.
 
 ## Install
@@ -93,7 +95,7 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 **Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
 
-**Generation 2** — in progress. Shipped (deltas 6–12, all three test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), and **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors). Planned (deltas 13–14): the Nitro file-routing moat made real through `defineFileRoute`, capability-carrying file-route factories, and generated `#h3-dux/routes`; then OpenAPI from the standalone server. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
+**Generation 2** — in progress. Shipped (deltas 6–13, all test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), and the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface. The contract kernel is now canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. Planned (delta 14): OpenAPI from the standalone server; client interceptors. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
 
 ## Development
 

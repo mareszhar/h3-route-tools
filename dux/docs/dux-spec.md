@@ -25,7 +25,7 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 10 | Response kinds + SSE hardening | `response.ts`, `internal/route-types.ts`, `internal/contract.ts`, `client.ts`, `errors.ts`, `server.ts`, `sse.ts` | ☑ done |
 | 11 | Delta-aware composition (`createRouter`, `.mount`, `.native`) | `router.ts` (new), `server.ts` | ☑ done |
 | 12 | Typed middleware bindings (`defineMiddleware`, `event.bindings`, `requires`) | `middleware.ts` (new), `server.ts`, `router.ts`, `internal/route-types.ts` | ☑ done |
-| 13 | Nitro deltas via codegen | `file-route.ts` (new), `nitro.ts`, `codegen.ts`, contract projection | ☐ planned |
+| 13 | Nitro deltas via codegen | `file-route.ts` (new), `internal/nitro-codegen.ts` (new), `internal/runtime.ts` (new), `nitro.ts` | ☑ done |
 | 14 | Symmetry extras (standalone OpenAPI, interceptors) | `openapi.ts` (new), `client.ts` | ☐ planned |
 
 ## Roadmap
@@ -43,7 +43,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by 
 | 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☑ done |
 | 7 | Response fidelity — response kinds + SSE hardening (10) | ☑ done |
 | 8 | Scale — delta-aware composition (11) + typed middleware bindings and event accessors (12) | ☑ done |
-| 9 | The Nitro moat — deltas via codegen (13) | ☐ |
+| 9 | The Nitro moat — deltas via codegen (13) | ☑ done |
 | 10 | Symmetry extras — standalone OpenAPI + client interceptors (14) | ☐ |
 
 Every delta ships with three test planes (runtime `*.test.ts`, type `*.test-d.ts`, editor-DX `*.dx.test.ts`), driven by the shared Orchard fixture in `src/test-support/`. For Generation 2, the editor-DX plane is promoted from "an error exists" to a *quality contract* ([dux-spec-workspace.md §5](./dux-spec-workspace.md#5-testing)).
@@ -296,7 +296,7 @@ interface EndpointContract {
 Two realities worth recording:
 
 - **Resolve before you compose, or the schema leaks.** A *conditional* type alias resolves in a hover, but a *union/object* alias prints its argument unresolved. Passing the raw `DuxEndpoint` to the result alias reintroduced the exact `ObjectSchema<…>` leak delta 6 fixed. The fix: pull the success body and error map out with `infer` first, and force the error map to evaluate with a homomorphic `{ [S in keyof Errors]: Errors[S] }`, so only resolved pieces reach the result. The verb hover now reads `DuxCall<HonestResult<SerializeObject<{…}>, ClientError<{ 422: ValidationErrorBody }>>, …>`.
-- **The kernel is half-realized until phase 9.** The success/error split, resolved request shapes, and client projection are in. The `kind` tag landed with delta 10 as a per-endpoint success kind. Phase 9 completes the canonical `{ request, responses, success }` representation before Nitro codegen consumes it; phase 10 adds the standalone OpenAPI consumer. Neither phase invents another endpoint shape.
+- **The kernel is canonical as of phase 9.** Phase 6 landed the success/error split, resolved request shapes, and client projection; the `kind` tag landed with delta 10. Phase 9 completed the canonical `{ request, responses, success }` representation: `DuxEndpoint` *is* the kernel now (`internal/route-types.ts`), the client reads it through `SuccessEntry`/`ClientData`/`ClientErrors` (`internal/contract.ts`), and **both** `createServer`'s `typeof app` and Nitro's generated `#h3-dux/routes` produce the same shape — so one `createClient` is typed from either. No second endpoint shape was invented. Phase 10 adds the standalone OpenAPI consumer of the same kernel.
 
 **Status:** ☑ done (phase 6).
 
@@ -677,6 +677,19 @@ Registering the same provider globally and through a factory may execute it twic
 
 Each step leaves a testable surface and preserves one implementation of the route runtime. Codegen is a consumer of the handler kernel, never a second validator or dispatcher.
 
+**Approach (delivered).**
+
+- **9A — shared route core.** The per-method execution (validation mode, SSE, response-kind tagging, the dux event layer — `event.valid`/`event.error`/the root accessors) was extracted into `internal/runtime.ts`'s `buildMethod`, which returns upstream's per-method def (validate block + wrapped handler). `server.ts`'s `mount` and the file-route dispatcher both call it, so there is **one** route runtime. The kernel was finished in the same step: `DuxEndpoint` now *is* `{ request, responses, success }` and the client reads it (delta 7 reality, above) — existing standalone tests stayed green throughout.
+- **9B — file-route authoring.** `file-route.ts` adds `defineFileRoute` (flat **and** method-map forms, picked by overload — flat requires `handler`) and `createFileRouteFactory()` (`.use`/`.requires`/`.compose`). The flat form reuses `DuxVerbOpts` verbatim, typed for a body-bearing method at the route-free pattern `'/'`; the method-map form carries per-method validate/response/status/errors inference. The factory is callable only while its `Requires` are empty (a call signature is intersected in conditionally), so an unresolved `.requires(...)` factory is a cursor "not callable" until `.compose`d — the file-route counterpart of router `.mount()`, sharing the phase-8 binding-collision/requirement checks. Runtime, type, and editor-DX planes all lock it.
+- **9C — Nitro generation.** `internal/nitro-codegen.ts` holds the pure `generateRoutesModule` (unit-tested without Nitro): it maps each collected dux file route — Nitro's route table is the path/method truth — through the type-only `FlatContract`/`FileMethods`/`WithFilenameParams` helpers into one schema-free `#h3-dux/routes` entry, and rejects the runtime-inspectable contradictions (unreachable-method file, body-bearing shared handler, duplicate route+method). `nitro.ts` is now a real module: it imports each route file to read the handler's form markers, generates `#h3-dux/routes` on `types:extend`, writes it to `generatedTypesDir`, registers the import path in the generated tsconfig, and fails the build on a diagnostic.
+- **9D — moat proof.** The Nitro demo's route files were ported to `defineFileRoute` and its client now reads `import type { Routes } from '#h3-dux/routes'` — the hand-written route interface is gone. `nitro prepare` generates the map, the demo typechecks end-to-end (verified: `api.get('/fruits/:id', { params })` is `Fruit`, missing-params / unknown-route are cursor errors), and a deliberately mis-suffixed file fails `prepare` with the focused diagnostic.
+
+**Realities worth recording.**
+
+- **The flat form registers under every method at runtime** so it self-dispatches for whichever method the filename routes; the `#h3-dux/routes` projection is driven by Nitro's table (not this registration), so a method-locked flat file still exposes only its locked method to the client.
+- **The honest filename boundary holds.** With a `validate.params` schema the handler and client get the coerced type; without one the source type is `Record<string, string>` and codegen substitutes the exact filename params via `WithFilenameParams`. The generated declaration references `import('<file>').default` (the kernel is already resolved/schema-free), so it re-links to source on every regenerate rather than being flattened to literals.
+- **Two coexistence items are deferred to a later pass (not blockers):** OpenAPI enrichment *for dux file routes* through the Nitro module (the handlers carry `~routeDef` schemas, so an overlay is straightforward, but a method-locked flat file would over-report methods until the registration is trimmed), and the generated params key-agreement *assertion* (`WithFilenameParams` already substitutes/keeps the right params; the extra shape-only cross-check is additive). Plain Nitro and inherited upstream handlers keep Nitro's default `$fetch`/OpenAPI and are omitted from the dux client map, as specified.
+
 ### Deferred intentionally
 
 - **No special setup file.** Phase 9 does not reserve `dux.ts`, `h3-dux.ts`, or any project filename. File-route factories are ordinary project-owned server utilities.
@@ -684,7 +697,7 @@ Each step leaves a testable surface and preserves one implementation of the rout
 - **No Nuxt-specific module, auto-import, `useDuxClient`, or app-side type bridge.** Nuxt 5 is not released; its final h3 v2/Nitro v3 integration surface is not a stable contract. Once released, a thin Nuxt adapter may consume this Nitro-native kernel and factory model without changing the phase-9 route API.
 - **No pre-bound `#h3-dux/client`.** `createClient<Routes>()` is explicit, small, and sufficient. A convenience module must earn its extra surface through real usage.
 
-**Status:** ☐ planned (phase 9). Higher risk — touches the codegen and a handler-surface port.
+**Status:** ☑ done (phase 9). Runtime, type, editor-DX, and generation planes are green; the Nitro demo is migrated and verified through `nitro prepare`.
 
 ---
 

@@ -304,7 +304,7 @@ export type MethodEvent<
 }
 
 /** Relaxes a `const`-captured (deeply readonly) return so it still satisfies the mutable schema output. */
-type ConstResponse<T> = T extends Date | RegExp | URL
+export type ConstResponse<T> = T extends Date | RegExp | URL
   ? T
   : T extends (...args: never[]) => unknown
     ? T
@@ -344,13 +344,43 @@ type SuccessConstraint<V extends AnyMethodValidate> = [ResponseSchema<V>] extend
     ? Pick2xx<ResponseSchema<V>>
     : unknown
 
-// ── the dux contract (response + param inference are the additions) ────────────
+// ── the contract kernel (delta 7, completed in phase 9) ───────────────────────
+
+/** The 2xx status an endpoint answers with: the declared `status`, else `200`. */
+export type ResolveSuccess<Status extends number | undefined> = Status extends number ? Status : 200
 
 /**
- * One method's contract. `params` is inferred from the pattern when no schema is
- * given; `response` is the **success (2xx)** body (falling back to the handler's
- * return `Ret` when no `validate.response` is declared); `errors` is the per-status
- * map of typed failures (response non-2xx ∪ declared `errors` ∪ the auto `422`).
+ * The per-status `responses` map (kernel §8): the success entry (its 2xx body +
+ * response *kind*) plus one `json` entry per declared failure (response non-2xx ∪
+ * `errors` ∪ the auto `422`). Per-status, never flattened — the discrimination the
+ * client's typed `error` channel reads.
+ */
+export type EndpointResponses<
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  Ret,
+  M extends RouteMethod,
+  Status extends number | undefined,
+  Err,
+> = Prettify<
+  & { [S in ResolveSuccess<Status>]: { body: SuccessResponse<V, Ret, M, Status>, kind: SuccessKind<V, Ret, M, Status> } }
+  & { [S in keyof EndpointErrors<V, P, Err>]: { body: EndpointErrors<V, P, Err>[S], kind: 'json' } }
+>
+
+/**
+ * One endpoint's normalized **contract kernel** — the single shape every plane
+ * reads (client, diagnostics, composition, Nitro codegen, OpenAPI). Computed once,
+ * at accumulation time, into plain resolved shapes (no schema generics):
+ *
+ *  - `request` — what the caller supplies (`params`/`query`/`headers` as output,
+ *    `body` as input); `params` is inferred from the pattern when no schema is given.
+ *  - `responses` — per-status `{ body, kind }`; the success 2xx falls back to the
+ *    handler's return `Ret` when no `validate.response` is declared.
+ *  - `success` — the 2xx status this endpoint answers with.
+ *
+ * Structurally assignable to {@link EndpointContract} (internal/contract.ts). Both
+ * `createServer`'s `typeof app` and Nitro's generated `#h3-dux/routes` produce it,
+ * so one client is typed from either.
  */
 export interface DuxEndpoint<
   V extends AnyMethodValidate,
@@ -362,16 +392,14 @@ export interface DuxEndpoint<
   Err = undefined,
   ExtraParams = object,
 > {
-  params: Prettify<ResolvedParams<P, Route> & ExtraParams>
-  query: InferMethodQuery<V>
-  headers: InferMethodHeaders<V>
-  body: InferMethodBodyDir<V, 'input'>
-  response: SuccessResponse<V, Ret, M, Status>
-  // The response kind (delta 10) — the client decodes `data` by this, never guessing.
-  kind: SuccessKind<V, Ret, M, Status>
-  // Prettify so an indexed read (`E['errors']`) resolves to a flat `{ status: body }`
-  // map rather than the lazy `EndpointErrors<…>` alias — keeps the client clean.
-  errors: Prettify<EndpointErrors<V, P, Err>>
+  request: {
+    params: Prettify<ResolvedParams<P, Route> & ExtraParams>
+    query: InferMethodQuery<V>
+    headers: InferMethodHeaders<V>
+    body: InferMethodBodyDir<V, 'input'>
+  }
+  responses: EndpointResponses<V, P, Ret, M, Status, Err>
+  success: ResolveSuccess<Status>
 }
 
 /** A single route+method's contribution to the accumulated route map. */

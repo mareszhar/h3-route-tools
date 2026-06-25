@@ -1,9 +1,9 @@
 import type {
   CreateTypedFetchOptions,
   NormalizeRoutes,
-  TypedFetch,
+  TypedResponse,
 } from 'h3-route-tools'
-import type { ClientData, ClientError, HonestResult } from './internal/contract.ts'
+import type { ClientData, ClientError, ClientErrors, HonestResult, ResponseKind, SuccessKindOf } from './internal/contract.ts'
 import { createTypedFetch } from 'h3-route-tools'
 import { DuxHTTPError } from './errors.ts'
 import { DuxCall, parseEventStream } from './sse.ts'
@@ -29,20 +29,22 @@ type ParamsOption<P> = [keyof P] extends [never]
 /** Present only when the endpoint declares a body. */
 type BodyOption<B> = unknown extends B ? object : { body: B }
 
+/** The kernel's `request` block — the caller-supplied shapes for one endpoint. */
+type RequestOf<E> = E extends { request: infer Req } ? Req : object
+
 /**
- * The call options for a verb+endpoint, resolved to **plain shapes**. Every slot
- * is extracted with an `infer` and the whole thing flattened with `Prettify`, so
- * neither the signature nor a diagnostic ever prints the underlying endpoint or
- * schema generics (`DuxEndpoint<…>`, `ObjectSchema<…>`) — only `{ body: { … } }`.
- * This is the client-side projection the contract kernel generalizes (delta 7).
- * When the route was interpolated the params already live in the path, so
- * `WithParams` is `false` and `params` is dropped.
+ * The call options for a verb+endpoint, resolved to **plain shapes** from the
+ * kernel's `request`. Every slot is extracted with an `infer` and flattened with
+ * `Prettify`, so neither the signature nor a diagnostic ever prints the underlying
+ * kernel or schema generics (`DuxEndpoint<…>`, `ObjectSchema<…>`) — only
+ * `{ body: { … } }`. When the route was interpolated the params already live in the
+ * path, so `WithParams` is `false` and `params` is dropped.
  */
-type VerbOptions<E, WithParams extends boolean> = Prettify<
-  & (WithParams extends true ? ParamsOption<E extends { params: infer P } ? P : object> : object)
-  & (E extends { body: infer B } ? BodyOption<B> : object)
-  & { query?: E extends { query: infer Q } ? Q : never }
-  & { headers?: E extends { headers: infer H } ? H : never }
+type VerbOptions<E, WithParams extends boolean, Req = RequestOf<E>> = Prettify<
+  & (WithParams extends true ? ParamsOption<Req extends { params: infer P } ? P : object> : object)
+  & (Req extends { body: infer B } ? BodyOption<B> : object)
+  & { query?: Req extends { query: infer Q } ? Q : never }
+  & { headers?: Req extends { headers: infer H } ? H : never }
 >
 
 /**
@@ -52,20 +54,19 @@ type VerbOptions<E, WithParams extends boolean> = Prettify<
  *
  * The success body is decoded by the endpoint's response *kind* via `ClientData`
  * (delta 10): `string` for `text()`, `Blob` for `binary()`, `undefined` for an
- * empty `204`, the serialized wire shape for `json`. The body and error map are
- * resolved by the projection *first*, so the return type never prints the
- * schema-typed `DuxEndpoint` — `{ [S in keyof Errors]: … }` forces the error map
- * to resolve to `{ 409: … }` rather than the lazy `EndpointErrors<…schema…>` alias.
+ * empty `204`, the serialized wire shape for `json`. `ClientData`/`ClientErrors`/
+ * `SuccessKindOf` each resolve the kernel pieces *first*, so the return type prints
+ * `DuxCall<HonestResult<Fruit, ClientError<{ 409: … }>>, …>`, never the kernel alias.
  */
-type VerbReturn<E> = E extends { kind: 'sse' }
-  ? ClientData<E>
-  : E extends { errors: infer Errors, kind: infer Kind extends import('./internal/contract.ts').ResponseKind }
-    ? DuxCall<
-      HonestResult<ClientData<E>, ClientError<{ [S in keyof Errors]: Errors[S] }>>,
+type VerbReturn<E> = [E] extends [never]
+  ? DuxCall<HonestResult<unknown, ClientError<object>>, unknown, 'json'>
+  : SuccessKindOf<E> extends 'sse'
+    ? ClientData<E>
+    : DuxCall<
+      HonestResult<ClientData<E>, ClientError<ClientErrors<E>>>,
       ClientData<E>,
-      Kind
+      SuccessKindOf<E> extends ResponseKind ? SuccessKindOf<E> : 'json'
     >
-    : DuxCall<HonestResult<unknown, ClientError<object>>, unknown, 'json'>
 
 /** Replace each `:param` segment of a route pattern with a `${string}` hole. */
 type PathTemplate<P extends string> = P extends `${infer Head}:${infer After}`
@@ -157,14 +158,44 @@ export interface VerbFetch<R, M extends string> {
   ): VerbReturn<MatchEndpoint<R, M, Route>>
 }
 
+// ── the bare call (`api(path, { method })`) — the upstream primitive, kept ─────
+// The verb sugar fixes the method; the bare form names it in the options. It reads
+// the same kernel as the verbs and keeps the upstream `TypedResponse` (double-await)
+// shape, so `(await api('/x', { method })).json()` stays valid.
+
+/** A route's declared (lowercase) methods plus their uppercase spellings — both accepted. */
+type BareMethodInput<Methods> = (keyof Methods & string) | Uppercase<keyof Methods & string>
+
+/** The endpoint for a bare call's `method`, looked up by its lowercase key. */
+type BareEndpoint<R, Route extends keyof R, M> = R[Route][Lowercase<M & string> & keyof R[Route]]
+
+/** Any key on `O` absent from the expected options becomes `never` → an excess-property error. */
+type NoExcess<O, Expected> = { [K in Exclude<keyof O, keyof Expected>]: never }
+
+/**
+ * The bare typed fetch: `api(route, { method, params?, query?, body?, headers? })`.
+ * `O &` anchors `method` inference (so the response narrows to the chosen method),
+ * `NoExcess` flags stray keys, and the result is a `TypedResponse<Data>` whose
+ * `.json()` is the kind-decoded success body.
+ */
+export interface BareFetch<R> {
+  <Route extends keyof R & string, const O extends { method: BareMethodInput<R[Route]> }>(
+    route: Route,
+    options: O
+      & { method: BareMethodInput<R[Route]> }
+      & VerbOptions<BareEndpoint<R, Route, O['method']>, true>
+      & NoExcess<O, { method: unknown } & VerbOptions<BareEndpoint<R, Route, O['method']>, true>>,
+  ): Promise<TypedResponse<ClientData<BareEndpoint<R, Route, O['method']>>>>
+}
+
 /** The route map behind a server: a dux `createServer` app, an upstream `H3Typed`, or a raw map. */
 type RouteMapOf<App> = App extends { '~duxRoutes': infer R } ? Prettify<R> : NormalizeRoutes<App>
 
 /**
- * The typed client: the bare `createTypedFetch` callable plus symmetric verb
- * methods. `api('/x', { method })` and `api.get('/x')` are the same call.
+ * The typed client: the bare callable plus symmetric verb methods. `api('/x', {
+ * method })` and `api.get('/x')` are the same call, both typed from the kernel.
  */
-export type Client<App, R = RouteMapOf<App>> = TypedFetch<R> & {
+export type Client<App, R = RouteMapOf<App>> = BareFetch<R> & {
   get: VerbFetch<R, 'get'>
   post: VerbFetch<R, 'post'>
   put: VerbFetch<R, 'put'>

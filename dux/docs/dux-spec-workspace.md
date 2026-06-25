@@ -11,7 +11,7 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sy
 | W2 | Per-delta suites land with each delta (1–5) | ☐ |
 | W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☐ |
 | W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6) ☑ source mode; `forModes` parity + type-perf plane (100/500/1000 routes) ☐ | ◑ |
-| W5 | Nitro file-route/codegen harness: `defineFileRoute`, factory composition, generated `#h3-dux/routes`, regeneration, and diagnostics (delta 13) | ☐ |
+| W5 | Nitro file-route/codegen harness (delta 13): `defineFileRoute`, factory composition, and generation diagnostics are unit/type/DX-tested; the Nitro demo is migrated to file routes + generated `#h3-dux/routes` and verified through `nitro prepare` + project typecheck ☑. A standalone automated dev-regeneration (add/remove/rename) harness is ◑ pending | ◑ |
 
 ---
 

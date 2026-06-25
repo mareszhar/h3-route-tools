@@ -63,7 +63,9 @@ test('inline requirements and binding collisions are checked', () => {
     // @ts-expect-error — the inline middleware requires withSession
     .use({ requires: [withSession], bindings: () => ({ requestId: 'x' }) })
 
-  createServer().use(withSession).use({ bindings: () => ({ session: { tenant: 'other' } }) })
+  const chained = createServer().use(withSession)
+  // @ts-expect-error — `session` is already provided; a second provider can't republish it
+  chained.use({ bindings: () => ({ session: { tenant: 'other' } }) })
 })
 
 test('endpoint middleware publishes its bindings to that handler only', () => {

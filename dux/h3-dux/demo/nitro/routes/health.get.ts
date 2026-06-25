@@ -1,6 +1,6 @@
-import { defineRouteHandler } from '@mszr/h3-dux'
+import { defineFileRoute } from '@mszr/h3-dux'
 
-// routes/health.get.ts → GET /health
-export default defineRouteHandler({
-  get: { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) },
+// routes/health.get.ts → GET /health. The response is inferred from the handler.
+export default defineFileRoute({
+  handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }),
 })

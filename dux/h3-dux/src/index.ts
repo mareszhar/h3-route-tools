@@ -4,6 +4,16 @@ export { createClient, createTestClient } from './client.ts'
 export type { Client, VerbFetch } from './client.ts'
 export { DuxHTTPError, DuxTransportError } from './errors.ts'
 export type { DuxError } from './errors.ts'
+export { createFileRouteFactory, defineFileRoute } from './file-route.ts'
+export type {
+  DuxFileHandler,
+  FileMethods,
+  FileRouteDefiner,
+  FileRouteFactory,
+  FlatContract,
+  ResolveFileParams,
+  WithFilenameParams,
+} from './file-route.ts'
 export type { EndpointContract, ResponseKind } from './internal/contract.ts'
 export { defineMiddleware } from './middleware.ts'
 export type {
