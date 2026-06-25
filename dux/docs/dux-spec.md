@@ -24,7 +24,7 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 9 | Typed error contracts (`errors`, `event.error`, 422) | `route-types.ts`, `server.ts`, `errors.ts` | ☑ done |
 | 10 | Response kinds + SSE hardening | `response.ts`, `internal/route-types.ts`, `internal/contract.ts`, `client.ts`, `errors.ts`, `server.ts`, `sse.ts` | ☑ done |
 | 11 | Delta-aware composition (`createRouter`, `.mount`, `.native`) | `router.ts` (new), `server.ts` | ☐ planned |
-| 12 | Typed event-context augmentation (`defineMiddleware`) | `middleware.ts` (new), `server.ts`, `router.ts` | ☐ planned |
+| 12 | Typed middleware bindings (`defineMiddleware`, `event.bindings`, `requires`) | `middleware.ts` (new), `server.ts`, `router.ts`, `internal/route-types.ts` | ☐ planned |
 | 13 | Nitro deltas via codegen | `nitro.ts`, `codegen.ts`, route-handler port | ☐ planned |
 | 14 | Symmetry extras (standalone OpenAPI, interceptors) | `openapi.ts` (new), `client.ts` | ☐ planned |
 
@@ -42,7 +42,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by 
 | 5 | Cleaner inference + diagnostics-as-contract (6) — single signature, drop `O`/`NoExcess`, Selenita contract | ☑ done (source mode; `forModes`/perf pending W4) |
 | 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☑ done |
 | 7 | Response fidelity — response kinds + SSE hardening (10) | ☑ done |
-| 8 | Scale — delta-aware composition (11) + typed event context (12) | ☐ |
+| 8 | Scale — delta-aware composition (11) + typed middleware bindings and event accessors (12) | ☐ |
 | 9 | The Nitro moat — deltas via codegen (13) | ☐ |
 | 10 | Symmetry extras — standalone OpenAPI + client interceptors (14) | ☐ |
 
@@ -174,16 +174,16 @@ for await (const tick of api.get(`/fruits/${id}/ripen`))
 
 **Why.** Validation should be predictable by default and controllable when you need it. The default is **eager and sequential** — a fixed pipeline `params → query → headers → body` that short-circuits on the first failure, so "validate the body only if the query passed" is free. When a handler needs to decide *whether* or *when* to validate (a dry-run that never touches the body, an order that depends on a prior result), `eager: false` switches to **manual** mode: nothing auto-runs, and you validate on demand.
 
-This is the home of the validated-data model defined in [dux-conventions.md §4](./dux-conventions.md#4-the-validated-data-model): `event.context.<scope>` is the neutral typed read; `event.valid('<scope>')` is the deliberate, idempotent validator (throws → `422`).
+This is the home of the validated-data model defined in [dux-conventions.md §4](./dux-conventions.md#4-the-validated-data-model): eager validated values are read through `event.params/query/body` (root aliases of `event.context.*`); `event.valid('<scope>')` is the deliberate, idempotent validator for declared schemas (throws → `422`).
 
 **Usage.**
 
 ```ts
 // DEFAULT (eager): params → query → body run in order, short-circuiting.
-// `event.context.*` holds the validated values.
+// `event.body` and `event.context.body` are the same validated value.
 app.post('/checkout', {
   validate: { body: CheckoutOrderSchema, response: ReceiptSchema },
-  handler: e => orchard.checkout(e.context.body), // body validated before the handler runs
+  handler: e => orchard.checkout(e.body), // body validated before the handler runs
 })
 
 // MANUAL (`eager: false`): nothing auto-validates; you choose when.
@@ -199,7 +199,7 @@ app.post('/import', {
 })
 ```
 
-**Approach (delivered).** `mount` (`src/server.ts`) reads `validate.eager` (default `true`). In **eager** mode it hands the schemas to upstream's pipeline (params → query → headers → body, short-circuiting) and mirrors the validated query onto `event.context.query` and the validated body onto `event.context.body`. In **manual** mode (`eager: false`) only params (and response) reach upstream; `event.valid(scope)` validates query/body/headers on demand via the Standard Schema validator, caching onto `event.context[scope]` (so a re-read or a second `valid()` returns the cache). In eager mode `event.valid(scope)` just reads the already-validated value, so the accessor is mode-agnostic. The scopes `valid()` accepts are exactly those with a declared schema. **`event.validated` is not part of this surface** (conventions §4); upstream's accessor stays available underneath for diffing.
+**Approach (delivered; event-surface refinement in phase 8).** `mount` (`src/server.ts`) reads `validate.eager` (default `true`). In **eager** mode it hands the schemas to upstream's pipeline (params → query → headers → body, short-circuiting) and stores validated values on `event.context`. In **manual** mode (`eager: false`), `event.valid(scope)` validates query/body/headers on demand via the Standard Schema validator and caches the result in the same store. In eager mode `event.valid(scope)` reads the cached value. Phase 8 adds the root aliases and tightens direct property types: a deferred manual scope never advertises its schema output before `valid()`, an undeclared body is `unknown`, and undeclared query data retains its raw h3 shape. **`event.validated` is not part of this surface** (conventions §4); upstream's accessor stays available underneath for diffing.
 
 **Status:** ☑ done.
 
@@ -395,38 +395,117 @@ Two realities worth recording:
 
 ```ts
 // fruits.routes.ts — a domain module, deltas intact, no server
-export const fruits = createRouter()
-  .get('/:id', { validate: { response: FruitSchema }, handler: e => orchard.get(e.context.params.id) })
-  .post('/', { status: 201, validate: { body: NewFruitSchema }, handler: e => orchard.create(e.context.body) })
+export const fruits = createRouter('/fruits')
+  .get('/:id', { validate: { response: FruitSchema }, handler: e => orchard.get(e.params.id) })
+  .post('/', { status: 201, validate: { body: NewFruitSchema }, handler: e => orchard.create(e.body) })
 
 // app.ts
 export const app = createServer()
-  .mount('/fruits', fruits) // → /fruits/:id, /fruits; contracts merged into typeof app
+  .mount(fruits) // → /fruits/:id, /fruits; contracts merged into typeof app
   .mount(checkout)
 ```
 
-**Proposed approach.** Add a route-free `createRouter()`/`defineRoutes()` builder that mirrors the `DuxServer` verb methods but accumulates a contract map instead of mounting (the dux twin of `defineRoute`, carrying every delta). Add `createServer().mount(prefix?, sub)` and `.register(plugin)`: both fold the sub-contract into `~duxRoutes` via the existing `MergePair` ([route-types.ts:235](../h3-dux/src/internal/route-types.ts:235)) and register the routes onto the inner `H3Typed`, prefixing paths when given. Detect duplicate route+method at the type level and surface a diagnostic instead of upstream's silent first-wins. Rename the `.app` escape hatch to `.native` and route additions through it back into `~duxRoutes` via `.register`. Document that type accumulation requires chaining, with router/`mount` as the sanctioned escape from giant chains.
+Router-owned dynamic prefixes are inferred in every child handler:
+
+```ts
+export const friends = createRouter('/users/:userId/friends')
+  .get('/:friendId', {
+    handler: event => loadFriend(event.params.userId, event.params.friendId),
+  })
+
+createServer().mount(friends)
+```
+
+When an enclosing composition layer must own a dynamic segment, the child declares only that exceptional dependency:
+
+```ts
+export const friends = createRouter('/friends', { parentParams: ['userId'] })
+  .get('/:friendId', {
+    handler: event => loadFriend(event.params.userId, event.params.friendId),
+  })
+
+createServer().mount('/users/:userId', friends)
+```
+
+**Proposed approach.** Add `createRouter(prefix?, options?)`/`defineRoutes()` as a delta-aware builder that accumulates routes without mounting them immediately. The optional literal prefix is carried in the router type and prepended while each endpoint is authored, so its params are lexically available to child handlers and visible in hovers/diagnostics. Add `createServer().mount(router)` and `.mount(outerPrefix, router)` plus `.register(plugin)`: each folds the resulting contract into `~duxRoutes` via the existing `MergePair` ([route-types.ts:235](../h3-dux/src/internal/route-types.ts:235)) and registers it on the inner `H3Typed`. A static outer prefix simply prepends paths. Dynamic outer params cannot be inferred retroactively; `options.parentParams` is the explicit escape hatch, and `.mount()` checks that its prefix supplies every required name. Missing requirements and duplicate parent/owned/local param names are cursor diagnostics. When validation/coercion is required, an endpoint `validate.params` schema describes the combined shape and wins over string inference. Detect duplicate route+method at the type level instead of upstream's silent first-wins. Rename `.app` to `.native` and route additions through it back into `~duxRoutes` via `.register`. Type accumulation requires chaining; router/`mount` is the sanctioned escape from giant chains.
 
 **Status:** ☐ planned (phase 8).
 
 ---
 
-## 12. Typed event-context augmentation
+## 12. Typed middleware bindings
 
-**Why.** `middleware: [...]` is plain h3 passthrough: if `requireKey` sets `event.context.user`, downstream handlers need a manual cast. There is no typed, standardized way for middleware to augment the event context. It is a *typing* primitive, decoupled from auth, which stays an app concern (vision §6). Parity with Hono `Variables` / Elysia `derive`·`decorate` ([dux-conventions.md §13](./dux-conventions.md#13-typed-event-context)).
+**Why.** Plain h3 middleware can add arbitrary request state, but downstream handlers cannot know its shape without a global declaration or cast. Global `H3EventContext` augmentation lies for routes where the middleware did not run; interpreting a middleware return as state would conflict with h3, where returns are responses. The dux primitive must preserve all middleware behavior while carrying precise, scoped capabilities through composition ([dux-conventions.md §13](./dux-conventions.md#13-typed-middleware-bindings)).
 
-**Usage.**
+**Usage — reusable middleware.**
 
 ```ts
-const withUser = defineMiddleware((e) => {
-  const user = authenticate(e) // throws 401 on failure — plain h3
-  return { user } //              typed context contribution
+const withSession = defineMiddleware({
+  bindings: event => ({
+    session: readSession(event),
+  }),
 })
 
-app.use(withUser).get('/me', { handler: e => e.context.user }) // e.context.user: User — no cast
+const withUser = defineMiddleware({
+  requires: [withSession],
+  staged: event => ({
+    token: decodeToken(event.bindings.session),
+  }),
+  bindings: event => ({
+    user: loadUser(event.staged.token),
+  }),
+  async handler(event, next) {
+    if (event.bindings.user.suspended)
+      return redirect('/account-suspended')
+    return next()
+  },
+})
+
+export const app = createServer()
+  .use(withSession)
+  .use(withUser)
+  .get('/me', { handler: event => event.bindings.user })
 ```
 
-**Proposed approach.** `defineMiddleware(fn)` wraps an h3 middleware whose return value (if any) is `Object.assign`ed onto `event.context` and whose *type* is captured as a context contribution `C`. Thread an accumulating context generic through `DuxServer`/`createRouter` (alongside `Routes`): `.use(defineMiddleware(...))` merges `C` into the server's context type, and each route's `MethodEvent` ([route-types.ts:143](../h3-dux/src/internal/route-types.ts:143)) intersects the contributions in scope onto `event.context`. Scope follows registration — global (`app.use`), per-router (`router.use`), or per-route (`middleware`) — so intellisense is route-specific, not a global bag. Plain `(e, next) => …` middleware still works and contributes nothing to the type.
+**Usage — inline, route-local, and externally required.**
+
+```ts
+const app = createServer()
+  .use({
+    staged: event => ({ startedAt: performance.now() }),
+    bindings: event => ({ requestId: crypto.randomUUID() }),
+    async handler(event, next) {
+      const response = await next()
+      console.log(event.bindings.requestId, performance.now() - event.staged.startedAt)
+      return response
+    },
+  })
+
+const account = createRouter('/account')
+  .requires(withUser) // type requirement only; does not run withUser
+  .get('/me', { handler: event => event.bindings.user })
+  .post('/avatar', {
+    middleware: [withUpload], // registers and runs withUpload for this endpoint
+    handler: event => saveAvatar(event.bindings.upload),
+  })
+
+app.mount(account) // checked: the parent already provides withUser
+```
+
+**Proposed approach.**
+
+- Introduce a branded `TypedMiddleware<Requires, Bindings>` that is also a real h3 `Middleware`. `defineMiddleware(fn)` preserves the direct callback form for ordinary middleware; `defineMiddleware({ requires?, staged?, bindings?, handler? })` adds typed capability metadata.
+- `staged(event)` runs first and its inferred return is visible as `event.staged` only inside that middleware's `bindings` and `handler`. It is stored temporarily at `event.context.staged`; the wrapper hides/restores the enclosing staged scope while `next()` runs, so staged values never enter downstream types or runtime state.
+- `bindings(event)` runs next. Its inferred object is merged into canonical `event.context.bindings` and exposed through `event.bindings`. There is no imperative setter form: the returned object is simultaneously the implementation and the outgoing type contract.
+- `handler(event, next)` begins after bindings are installed. `next` is controlled by the handler: omitting it intercepts, returning it continues directly, and `await next()` surrounds downstream middleware/the route with before/after logic. With no handler, the wrapper continues automatically.
+- Existing bindings are mutable with assignable values on that request. Changes made before `next()` are visible downstream; changes made downstream are visible to outer handlers after `await next()`. Mutations neither survive the request nor change accumulated route types, and no imperative API can publish a new typed key.
+- `app.use(options)` and `router.use(options)` accept the same options object as `defineMiddleware`; the inline form receives the chain's accumulated bindings contextually. Both also retain the direct `(event, next) => …` form. One middleware API, whether reusable or inline.
+- `requires: [providers]` supplies typed input and checks that their binding capabilities are already present without executing providers. For a reusable middleware it declares the bindings needed by `staged`/`bindings`/`handler`; for inline middleware it can document a subset of the already inferred chain. `.requires(provider)` on a router and `requires: [provider]` on an endpoint record external requirements that must be satisfied by the enclosing scope.
+- `.use(provider)` and endpoint `middleware: [provider]` **register and execute** middleware. `.requires(provider)` and route `requires: [provider]` **only consume its type capability**. This is the explicit distinction between resupplying middleware locally and relying on one registration at a parent mount.
+- Thread an accumulated bindings generic alongside `Routes` through `DuxServer`, routers, and `MethodEvent`. Provider requirements must be satisfied in registration order; middleware is sequential/onion-shaped, so later middleware sees earlier bindings. Two providers in the same chain/tuple may not publish the same key; `requires` publishes nothing and cannot collide. Existing-key assignment remains request-local mutation, not provider override.
+- h3 `app.use()` remains runtime-global. Chained inference is available after the `.use()` call because TypeScript accumulation is lexical; domain-exact runtime scope comes from router-owned or endpoint middleware.
+- Add root event getters `params`, `query`, `body`, and `bindings`, backed by `event.context`; add the middleware-private `staged` getter during its lifecycle. Direct request access follows the honest eager/manual rules in conventions §4. No single-letter aliases are added.
+- Plain h3 middleware remains accepted and contributes no bindings type. Global `declare module 'h3'` augmentation remains an escape hatch for genuinely universal external state, not the scoped dux architecture.
 
 **Status:** ☐ planned (phase 8).
 
@@ -446,7 +525,7 @@ export const api = createClient<Routes>({ baseURL })
 // routes/fruits/[id].get.ts → :id inferred string from the filename, no params schema
 ```
 
-**Proposed approach.** Ride the `types:extend` hook upstream already fires ([nitro.ts:235](../../src/nitro.ts:235)). `collectRouteHandlers` ([nitro.ts:79](../../src/nitro.ts:79)) already knows each route's path, import, and methods; emit a second virtual module (`#h3-dux/routes`) holding the generated kernel route map (`{ [route]: { [method]: EndpointContract } }`), and have `@mszr/h3-dux/nitro` re-export a `createClient` pre-bound to it. Codegen knows `[id]` → `:id`, so **param typing is recovered at generation time** — no `params` schema in the file. Port the *handler-time* deltas (validation modes, SSE, typed errors via `event.valid`/`event.error`) into the `defineRouteHandler` contract so file routes gain them; only path-derived inference needs codegen. The dux contract type rides the same generation upstream already does for `InternalApi` and OpenAPI.
+**Proposed approach.** Ride the `types:extend` hook upstream already fires ([nitro.ts:235](../../src/nitro.ts:235)). `collectRouteHandlers` ([nitro.ts:79](../../src/nitro.ts:79)) already knows each route's full path, import, and methods; emit a second virtual module (`#h3-dux/routes`) holding the generated kernel route map (`{ [route]: { [method]: EndpointContract } }`), and have `@mszr/h3-dux/nitro` re-export a `createClient` pre-bound to it. Codegen knows the complete filename path (`routes/users/[userId]/friends/[friendId].get.ts`), so it recovers both params at generation time with no hand-written repetition. Port the handler-time deltas (validation modes, SSE, typed errors, root event aliases, typed middleware bindings) into a generated route factory/`defineRouteHandler` contract so file routes gain the same event model. The dux contract type rides the same generation upstream already does for `InternalApi` and OpenAPI.
 
 **Status:** ☐ planned (phase 9). Higher risk — touches the codegen and a handler-surface port.
 
@@ -478,9 +557,10 @@ const api = createClient<App>({
 
 Settled as the deltas landed; kept here so they aren't re-litigated.
 
-- **`event.context` vs `event.validated`** — *settled.* `event.context.<scope>` is the neutral read and `event.valid()` the deliberate one; `event.validated` is not part of the dux surface — and in Generation 2 it leaves the *types*, not just the docs (delta 9). Upstream's accessor stays underneath for diffing.
+- **Request-data access** — *settled (revised for phase 8).* `event.params/query/body` are root aliases over canonical `event.context` storage. Params resolve before the handler in both modes. Eager declared query/body schemas expose validated outputs directly; deferred manual scopes retain raw/`unknown` direct properties and expose their trusted output through the return of `event.valid()` only. Undeclared bodies remain `unknown` and undeclared queries retain their raw h3 shape. `event.validated` is not part of the dux surface.
 - **Validation-error status** — *settled (revised for Gen 2).* Request-validation failures are **`422`, eager or manual** (delta 9) — Generation 1's `400`/`422`-by-mode split is gone, because a client must not see a different status for the same malformed request based on a server-internal mode choice. Response failures stay `500`; all carry `{ source, issues }`. A custom envelope is still a userland `onValidationError` ([dux-conventions.md §7](./dux-conventions.md#7-validation-errors)).
 - **Verb coverage** — *settled.* The callable verbs (`get/post/put/patch/delete/head/options`) get verb methods; `trace`/`connect` stay on the underlying `app.native.route()`, matching upstream's `CallableMethod`.
 - **Client default shape** — *settled.* The default is the honest `{ data, error }` result, not a bare value and not a Go tuple (delta 8). Honesty is the tiebreaker: a type that asserts `Fruit` but can reject is the cursor lying. `.orThrow()` is the legible opt-out; `.raw()` the web-standard escape hatch.
 - **Typed errors: now, not later** — *settled.* The status→schema response map is preserved in the kernel from the start (delta 7), not deferred — because the response-contract shape decides whether errors, raw, Nitro, and OpenAPI stay coherent. The honest default *subsumes* a separate `api.try` surface (it already is the typed result), so we ship one mechanism, not three.
 - **`params` placement** — *settled.* On the dux verb surface `params` is declared inside `validate` (one request block); it remains route-level underneath, where multi-method routes and grouped routers share one param schema ([dux-conventions.md §4](./dux-conventions.md#4-the-validated-data-model)).
+- **Middleware state vocabulary** — *settled.* `staged` is private preparation for one middleware; `bindings` are request-scoped capabilities published downstream. Middleware returns keep h3 response semantics. No imperative setter and no single-letter event aliases.

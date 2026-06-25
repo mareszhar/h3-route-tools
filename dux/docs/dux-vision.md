@@ -41,7 +41,7 @@ So we fork. We implement the deltas **inside** the surface, on the `dux` branch,
 
 | What we want | h3-route-tools today | Our path |
 | --- | --- | --- |
-| Route param typing (server + client) | ✅ `event.context.params`, client `params: { id }` | inherit |
+| Route param typing (server + client) | ✅ `event.context.params`, client `params: { id }` | inherit + add `event.params` alias and mounted-prefix requirements |
 | `validate: {}` nesting (params/query/body/headers/response) | ✅ per method | inherit |
 | Standard Schema (zod / valibot) | ✅ | inherit |
 | Nitro file-based codegen | ✅ — *the expensive part* | inherit |
@@ -111,7 +111,7 @@ Everything flows from **one contract per route** — the `validate` block plus t
 
 | Plane | Inherited from h3-route-tools | Added by h3-dux |
 | --- | --- | --- |
-| Server | `H3Typed`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed event-context middleware, `event.error()`** |
+| Server | `H3Typed`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed middleware bindings, root event accessors, `event.error()`** |
 | Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator`, **honest `{ data, error }` surface, `.orThrow()`/`.raw()`, typed error channel, interceptors** |
 | Contract | per-method `Endpoint`, status→schema response map, `errors` | **the normalized kernel: plain shapes, per-status responses, response kinds** |
 | Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **generated kernel route map (no hand-written `Routes`), deltas in file routes, filename→param inference** |
@@ -151,7 +151,7 @@ All five are implemented, each with runtime, type, and editor-DX tests. The pack
 
 ### Generation 2 — honesty, errors, scale (the next evolution)
 
-Generation 1 made authoring delightful and reached *Hono-level* end-to-end safety. Generation 2 is what takes h3-dux *past* Hono and Elysia: an honest client, a typed error channel, composition that scales, typed event context, and the Nitro file-routing moat made real — all resting on the contract kernel ([§4.4](#44-the-contract-kernel)). Ordered by dependency and phase, not by raw value.
+Generation 1 made authoring delightful and reached *Hono-level* end-to-end safety. Generation 2 is what takes h3-dux *past* Hono and Elysia: an honest client, a typed error channel, composition that scales, typed middleware bindings, and the Nitro file-routing moat made real — all resting on the contract kernel ([§4.4](#44-the-contract-kernel)). Ordered by dependency and phase, not by raw value.
 
 | # | Delta | Phase | Status |
 | --- | --- | --- | --- |
@@ -160,8 +160,8 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 8 | **The honest client** — `{ data, error }` by default; `.orThrow()` and `.raw()` on the call handle; `DuxError = HTTP \| transport` | 6 | ☑ done |
 | 9 | **Typed error contracts** — preserve status→schema; `errors: { 409: … }`; `event.error(status, data)`; one envelope, standardized on `422` | 6 | ☑ done |
 | 10 | **Response kinds** — infer `json/text/empty/sse/binary`, type native bodies with `typedResponse`, add raw `.parse()`; harden SSE | 7 | ☑ done |
-| 11 | **Delta-aware composition** — `createRouter`/`defineRoutes` carrying the deltas, `createServer().mount(prefix, sub)`, `.register` accumulation, duplicate-route diagnostics | 8 | ☐ planned |
-| 12 | **Typed event-context augmentation** — `defineMiddleware` declares what it adds to `event.context`; downstream handlers see it typed (decoupled from auth) | 8 | ☐ planned |
+| 11 | **Delta-aware composition** — prefix-carrying `createRouter`/`defineRoutes`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☐ planned |
+| 12 | **Typed middleware bindings** — `defineMiddleware` infers staged private values and downstream `event.bindings`; `requires` checks parent capabilities without re-registering middleware | 8 | ☐ planned |
 | 13 | **Nitro deltas via codegen** — generate the kernel route map (no hand-written `Routes`); bring the deltas to file routes; filename→param inference | 9 | ☐ planned |
 | 14 | **Symmetry extras** — OpenAPI from the standalone `createServer`; client interceptors / `signal` / timeout / retry | 10 | ☐ planned |
 
@@ -173,8 +173,8 @@ Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
 
 A garden's wall is a promise: opting into h3-dux never locks you out of something h3 or Nitro can do — h3-dux is a superset, and any escape hatch is the upstream surface we already re-export.
 
-- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed event-context augmentation**, **OpenAPI from the standalone app**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
-- **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific. Typed event context (delta 12) is the *typing primitive* that lets any middleware — auth or otherwise — publish what it adds to `event.context`; it is deliberately decoupled from auth, which stays an app concern.
+- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed middleware bindings**, **OpenAPI from the standalone app**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
+- **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific. Typed middleware bindings (delta 12) are the general capability mechanism through which any middleware — auth or otherwise — publishes request-scoped values; auth remains an app concern.
 - **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points and competitive bars in `archive/` — we study what they do best and adopt it the dux way (or better) — but they are not compatibility targets.
 
 ---

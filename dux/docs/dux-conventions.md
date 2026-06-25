@@ -17,7 +17,7 @@ Every name we add answers three questions: does it say what the thing **is** (no
 - [10. Typed errors & results](#10-typed-errors--results)
 - [11. Response kinds](#11-response-kinds)
 - [12. Composition & scope](#12-composition--scope)
-- [13. Typed event context](#13-typed-event-context)
+- [13. Typed middleware bindings](#13-typed-middleware-bindings)
 - [14. The naming map](#14-the-naming-map)
 
 ---
@@ -56,17 +56,19 @@ These words carry exactly these meanings across the server, client, and Nitro su
 | **contract** | a method's full type: its `validate` block + handler return; what accumulates into `typeof app` |
 | **validate block** | the `validate: { params, query, body, headers, response, eager? }` object on a method |
 | **handler** | the function that runs for a method; receives the typed `event`, returns the response |
-| **middleware** | plain h3 middleware on a route; how auth and cross-cutting concerns attach (never a kit concept) |
+| **middleware** | h3 middleware, optionally carrying typed requirements and downstream bindings; how auth and cross-cutting concerns attach (never a kit concept) |
 | **eager / manual** | the two validation modes — auto-run before the handler, or on-demand via `event.valid()` ([§4](#4-the-validated-data-model)) |
 | **EventStream** | a response branded by `sse(schema)` — a typed `text/event-stream`, consumed as `AsyncGenerator<T>` |
 | **endpoint contract / kernel** | the normalized, schema-free projection of an endpoint that every plane reads: `{ request, responses, success }` ([§8](#8-the-contract-kernel)) |
 | **result** | what a default client call resolves to: `{ data, error }` — `data` on 2xx, a typed `error` otherwise ([§9](#9-the-honest-client)) |
 | **DuxError** | the client-side failure: `DuxHTTPError` (a typed non-2xx response) or `DuxTransportError` (the request never completed) ([§10](#10-typed-errors--results)) |
 | **response kind** | how a response body crosses the wire — `json \| text \| empty \| sse \| binary` ([§11](#11-response-kinds)) |
-| **router** | a delta-carrying, route-free group built with `createRouter`/`defineRoutes`, mounted into a server ([§12](#12-composition--scope)) |
-| **context contribution** | the typed slice a `defineMiddleware` publishes onto `event.context` for downstream handlers ([§13](#13-typed-event-context)) |
+| **router** | a delta-carrying route group built with `createRouter`/`defineRoutes`, optionally owning a literal prefix, then mounted into a server ([§12](#12-composition--scope)) |
+| **staged values** | middleware-private preparation returned by `staged`; visible only to that middleware's `bindings` and `handler` callbacks ([§13](#13-typed-middleware-bindings)) |
+| **bindings** | request-scoped values a typed middleware publishes to downstream middleware and handlers as `event.bindings` ([§13](#13-typed-middleware-bindings)) |
+| **requirements** | middleware or parent-path capabilities that a middleware, router, or endpoint consumes without registering them again ([§12](#12-composition--scope), [§13](#13-typed-middleware-bindings)) |
 
-`params`, `query`, `body`, `headers`, `response` keep their h3 / fetchdts meanings ([§2](#2-the-fetchdts-alignment)) and appear identically in the `validate` block, on `event.context`, and in the client call options.
+`params`, `query`, `body`, `headers`, `response` keep their h3 / fetchdts meanings ([§2](#2-the-fetchdts-alignment)). Validated request values live canonically on `event.context` and are exposed through the root aliases `event.params`, `event.query`, and `event.body`; the client uses the same request names.
 
 ---
 
@@ -91,14 +93,17 @@ The rule of thumb: **a re-exported name keeps its upstream spelling; a name we c
 
 ## 4. The validated-data model
 
-How a handler reads validated request data — and the one place h3-dux deliberately improves on upstream's `event.validated` bag. Two accessors, each with one honest job:
+How a handler reads request data — and the one place h3-dux deliberately improves on upstream's `event.validated` bag. The types describe what has actually been established, never what a client merely claimed:
 
-- **`event.context.<scope>`** — the neutral, always-typed read, aligned with [h3 core PR #1237](https://github.com/h3js/h3/pull/1237). In **eager** mode it holds the *validated* value; in **manual** mode `params`/`query` are typed-parsed and `body` is deferred until you ask for it. This is the default read.
-- **`event.valid('<scope>')`** — the deliberate, idempotent validator. It runs validation for that scope *at the call site*, returns the typed value, and throws → `422` on failure (Hono's `c.req.valid()`, but it also runs, not just reads). In **manual** mode it is how you opt in — your order, your conditions. In **eager** mode it simply returns the already-validated, cached value, so the same call works in both modes.
+- **Root aliases are the default read.** `event.params`, `event.query`, and `event.body` are getters over the same canonical values as `event.context.params/query/body`; there is one store and one type model, not two implementations.
+- **Eager schemas produce direct typed values.** With the default eager mode, a declared scope is validated before the handler and both aliases expose the schema's output type.
+- **Manual schemas are available through `event.valid(scope)`, not a premature property.** Under `eager: false`, a deferred `query`/`body`/`headers` schema does not make `event.query` or `event.body` claim the schema output before validation. The direct property remains raw/`unknown` for the handler; `await event.valid('body')` runs the schema, caches the value, returns its output type, and throws → `422` on failure. TypeScript cannot soundly narrow a separate property after an async method call, so use the returned value. In eager mode the same call returns the cached validated value.
+- **Undeclared input stays raw.** A body with no schema is `unknown`; a query with no schema has h3's raw query shape rather than an application object inferred from wishful property access. Declaring a schema is what turns untrusted client input into a trusted application type.
+- **Path-derived params are the narrow exception.** A literal route such as `/users/:id` proves that its local `id` exists as a `string`; a params schema may validate/coerce it to a different output. Params are resolved before the handler in both modes because routing already depends on them; manual mode controls query/body/headers. A child router only knows its own path plus parent params it explicitly declares ([§12](#12-composition--scope)).
 
 A request-validation failure is **`422` regardless of mode** ([§7](#7-validation-errors)): the status a client sees must not depend on a server-internal mode choice (principle 5 — no surprises between siblings).
 
-We **drop `event.validated`** from the surface — from the *types*, not just the docs. Under `eager: false` a `.validated.body` property is a lie (nothing was validated); `event.valid('body')` reads as the deliberate action it is, and `event.context.*` covers the neutral read. (Upstream's `event.validated` stays available underneath for diffing, but the dux `MethodEvent` does not expose it.)
+We **drop `event.validated`** from the surface — from the *types*, not just the docs. `event.valid('body')` reads as the deliberate action it is; eager direct reads use `event.body` (or its `event.context.body` alias). Upstream's accessor stays available underneath for diffing, but the dux `MethodEvent` does not expose it.
 
 `eager: false` lives **inside the `validate` block**, next to the schemas it governs. So does `params`: on the dux verb surface `validate.params` is where you declare the param schema, so the whole request contract reads from one block — even though params are *route-level* underneath (one schema per path, shared across methods), which is where they live for multi-method routes and grouped routers ([§12](#12-composition--scope)). Full contract and the pipeline order: [dux-spec.md §5](./dux-spec.md).
 
@@ -258,46 +263,106 @@ A server is authored by chaining (`createServer().get(…).post(…)`), and the 
 
 ```ts
 // fruits.routes.ts — a domain module, no server, deltas intact
-export const fruits = createRouter()
-  .get('/:id', { validate: { response: FruitSchema }, handler: e => orchard.get(e.context.params.id) })
-  .post('/', { status: 201, validate: { body: NewFruitSchema }, handler: e => orchard.create(e.context.body) })
+export const fruits = createRouter('/fruits')
+  .get('/:id', { validate: { response: FruitSchema }, handler: e => orchard.get(e.params.id) })
+  .post('/', { status: 201, validate: { body: NewFruitSchema }, handler: e => orchard.create(e.body) })
 
-// app.ts — aggregate and prefix-mount
+// app.ts — aggregate; each router already carries its domain prefix
 export const app = createServer()
-  .mount('/fruits', fruits) // routes become /fruits/:id, /fruits; contracts merge
-  .mount(checkout)          // no prefix; merge as-is
+  .mount(fruits)
+  .mount(checkout)
 export type App = typeof app
 ```
 
 The rules that make composition trustworthy:
 
-- **Routers carry the deltas.** A `createRouter`/`defineRoutes` group is *delta-aware* — verb authoring, validation modes, `sse()`, response/param inference, typed errors, typed context — so splitting a domain into its own file never drops you back to upstream ergonomics. (Composing via upstream's `defineRoute`/`mountRoutes` still works and still accumulates; the router is the form that keeps the deltas.)
-- **`mount(prefix?, sub)` merges kernels.** Routes are prefixed, contracts merged via the same mechanism the chain uses; the client sees one flat map. This is Hono's `app.route(prefix, sub)` / Elysia's `.group` parity, the dux way.
+- **Routers carry the deltas.** A `createRouter`/`defineRoutes` group is *delta-aware* — verb authoring, validation modes, `sse()`, response/param inference, typed errors, and typed middleware bindings — so splitting a domain into its own file never drops you back to upstream ergonomics. (Composing via upstream's `defineRoute`/`mountRoutes` still works and still accumulates; the router is the form that keeps the deltas.)
+- **A router owns its domain prefix.** `createRouter('/users/:userId')` carries that literal in its type, so every child handler knows `userId` and a hover over the router reveals the path it owns. `createRouter()` remains the prefix-free form.
+- **`mount(router)` merges the router as declared.** `mount('/v1', router)` may add a static outer prefix for versioning or deployment structure; the client still sees one flat route map. This is Hono's `app.route(prefix, sub)` / Elysia's `.group` parity with the domain prefix kept beside the domain definition.
+- **Dynamic params should normally be owned where they are consumed.** Prefer `createRouter('/users/:userId/friends')` when its handlers read `userId`. A dynamic outer mount cannot retroactively contextualize an already-authored router. For the uncommon case where the enclosing router must own that segment, use `createRouter('/friends', { parentParams: ['userId'] })` and mount it at `/users/:userId`; `.mount()` checks the requirement. Missing names and duplicate parent/local param names are cursor diagnostics. When validation or coercion is required, the endpoint's params schema describes the combined parent + owned + local shape and wins over string inference.
 - **Accumulation requires chaining.** `app.get(); app.get();` as separate statements loses the accumulated type — an industry-wide constraint (Hono and Elysia share it). The *escape* from a giant chain is exactly the router/`mount` split above; we say so rather than letting it surprise.
 - **Duplicate route+method is a diagnostic, not silent first-wins.** Defining the same endpoint twice is almost always a mistake; the builder surfaces it at the cursor.
 - **The native escape hatch is `.native`.** The underlying `H3Typed` is reachable as `app.native` (renamed from `.app` for clarity); routes added through it accumulate into the dux contract via `.register`, so the escape hatch doesn't silently desync the client's type.
 
 ---
 
-## 13. Typed event context
+## 13. Typed middleware bindings
 
-`middleware: [...]` is plain h3 — auth and cross-cutting concerns attach there, and that stays true (vision §6). What Generation 1 *couldn't* do is let a middleware tell the type system what it adds to `event.context`: if `requireKey` sets `event.context.user`, a downstream handler had to cast. Typed context closes that — as a **typing primitive, decoupled from auth**:
+Middleware keeps ordinary h3 semantics: it can continue, intercept, redirect, throw, or post-process a response. Typed bindings add one optional capability without redefining what middleware is:
 
 ```ts
-const withUser = defineMiddleware((e) => {
-  const user = authenticate(e) // throws 401 on failure — plain h3
-  return { user } //              the typed context contribution
+const withUser = defineMiddleware({
+  staged: event => ({
+    session: readSession(event),
+    token: event.req.headers.get('authorization'),
+  }),
+  bindings: event => ({
+    user: authenticate(event.staged.session, event.staged.token),
+  }),
+  async handler(event, next) {
+    if (event.bindings.user.suspended)
+      return redirect('/account-suspended')
+    return next()
+  },
 })
 
-app.use(withUser).get('/me', { handler: e => e.context.user }) // e.context.user: User, no cast
+app.use(withUser).get('/me', { handler: event => event.bindings.user })
 ```
 
-The model, kept deliberately small:
+After type requirements are satisfied, preparation happens before the middleware handler:
 
-- **A `defineMiddleware` publishes a contribution** — the object it returns is merged, typed, into `event.context` for everything registered after it. Returning nothing keeps it a pure side-effecting middleware (logging, headers), exactly as before.
-- **Scope follows registration.** `app.use(…)` contributes to every route after it; a router's `.use(…)` contributes within that router; a per-route `middleware` contributes to that route. Contributions merge in order, so `event.context` is precisely "what the middleware on this path have published" — route-specific intellisense, not a global bag.
-- **Auth is still not a concept.** `defineMiddleware` knows nothing about authentication; it is how *any* middleware — a DB handle, a request id, a resolved tenant, a user — becomes typed downstream. This is Hono's `Variables` / Elysia's `derive`·`decorate` parity, named for what it is.
-- **Plain h3 middleware still works untyped.** You opt into typing by reaching for `defineMiddleware`; an existing `(e, next) => …` keeps working and contributes nothing to the type (principle 9).
+```text
+staged → bindings → handler(event, next)
+```
+
+h3 middleware is onion-shaped, not parallel. `next` is an argument controlled by the handler: it may never call it and intercept the request, return it directly, or await it and continue afterward. The full flow when it is awaited is:
+
+```text
+staged
+→ bindings
+→ handler before next()
+→ downstream middleware / route
+→ handler after await next()
+```
+
+Bindings are established before the handler can pass control downstream.
+
+The model:
+
+- **`staged` prepares private values.** Its returned object is inferred and exposed as `event.staged` to that middleware's `bindings` and `handler` callbacks. It does not enter the router's accumulated type and is hidden while downstream middleware/handlers run. Its canonical temporary storage is `event.context.staged`; h3-dux restores any enclosing staged scope across `next()`.
+- **`bindings` publishes downstream capabilities.** Its returned object is inferred, merged into the request's bindings, and exposed as `event.bindings` to the middleware handler and everything downstream. Canonical storage is `event.context.bindings`; the root property is the delightful default.
+- **Bindings are mutable within one request, not across contracts or requests.** Code may update an existing key with an assignable value (`event.bindings.user = refreshedUser`). A mutation made before `next()` is visible to later middleware and the endpoint on that request; a mutation made by the endpoint or inner middleware is visible to outer middleware after `await next()`. It does not alter another request, publish a new key, or change which bindings other routes are typed to receive.
+- **There is no imperative binding setter.** Arbitrary mutation cannot yield a sound outgoing type. Reusable logic belongs in `staged`; the `bindings` return object is both the implementation and the inferred public contract.
+- **`handler` retains full h3 behavior.** It receives the staged values, inherited plus newly published bindings, and `next`. Omitting it means “publish bindings, then continue.” A direct `defineMiddleware((event, next) => …)` remains the smallest form for middleware that publishes nothing.
+- **Reusable and inline middleware share one object shape.** `app.use({ staged, bindings, handler })` is equivalent to defining that object separately with `defineMiddleware` and then using it. The inline form additionally receives the chain's current bindings automatically; a `requires` list may document and check specific capability dependencies.
+- **Requirements consume; middleware registers.** `middleware: [withUser]` on an endpoint or `.use(withUser)` on a router registers and executes it there. `requires: [withUser]` executes nothing: it states that an enclosing scope must already provide the middleware's bindings. Requirements are checked at the route or mount cursor.
+- **Routers may depend on their parent without importing the parent app.** `createRouter().requires(withUser)` types its handlers with `user` and records an external requirement; `.mount()` rejects a parent that has not already provided it.
+- **Binding providers do not overwrite one another.** If two middleware in a `.use()` chain or endpoint `middleware` tuple both publish the same key, registration fails at the cursor—even when their value types happen to agree. A `requires` list publishes nothing and therefore cannot collide; it only checks that the capability already exists. Runtime assignment to an existing key is the separate, request-local mutation described above.
+- **Runtime and type scope are distinguished.** h3 `app.use()` middleware is runtime-global even though chained TypeScript inference becomes available only after the call. For exact domain scope, own the middleware in a child router; for one endpoint, use its `middleware` key.
+- **Auth is still not a concept.** A binding may be a user, tenant, database handle, request id, feature set, or anything else request-scoped. `defineMiddleware` only describes middleware capabilities.
+- **Plain h3 middleware still works untyped.** An existing `(event, next) => …` contributes no bindings and pays no generic cost (principle 9).
+
+The public event layout follows the same separation:
+
+```ts
+event.req
+event.url
+event.res
+event.app
+event.runtime
+event.waitUntil()
+event.valid()
+event.error()
+
+event.params
+event.query
+event.body
+event.bindings
+
+event.context // canonical h3-compatible storage and escape hatch
+```
+
+There are no single-letter aliases. The first-class names are already concise and remain self-documenting.
 
 ---
 
@@ -317,15 +382,18 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `typedResponse(data, init?)` | `new Response(body, init)` | constructs a real native `Response` while carrying its inferred body contract end-to-end |
 | `validate: { eager: false }` | — (new) | switches the validation pipeline to manual/on-demand |
 | `event.valid('scope')` | — (new) | deliberate, idempotent validator; Hono `c.req.valid()` parity ([§4](#4-the-validated-data-model)) |
-| `event.context.<scope>` | `event.validated.<scope>` | neutral typed read; aligns with [h3 core PR #1237](https://github.com/h3js/h3/pull/1237) |
+| `event.params/query/body` | `event.context.<scope>` | root getters over the same canonical request values; direct types stay honest across eager/manual modes ([§4](#4-the-validated-data-model)) |
 | `{ data, error }` | — (new) | the honest default result; `data` on 2xx, typed `error` otherwise ([§9](#9-the-honest-client)) |
 | `.orThrow()` | ofetch `$fetch` (throws) | legible opt-out: bubble the error instead of returning it |
 | `.raw()` | ofetch `.raw` | native response metadata plus kind-aware `.parse()`; never throws on non-2xx |
 | `errors: { 409: … }` | upstream `errors` (kept, widened) | per-status failure schemas in the contract; feeds client + runtime + OpenAPI ([§10](#10-typed-errors--results)) |
 | `event.error(status, data)` | `HTTPError` / `createError` | typed thrower checked against the declared `errors` schema |
-| `createRouter()` / `defineRoutes()` | `defineRoute` + `register` | delta-carrying, route-free composition unit ([§12](#12-composition--scope)) |
-| `app.mount(prefix?, sub)` | `H3.mount` / `app.register` | prefix-mount a router, merging contracts; Hono `.route` / Elysia `.group` parity |
+| `createRouter(prefix?)` / `defineRoutes()` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([§12](#12-composition--scope)) |
+| `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
 | `app.native` | `DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
-| `defineMiddleware(fn)` | — (new) | middleware that publishes a typed context contribution ([§13](#13-typed-event-context)) |
+| `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([§13](#13-typed-middleware-bindings)) |
+| `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
+| `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
+| `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
 
 Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).
