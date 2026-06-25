@@ -67,6 +67,8 @@ These words carry exactly these meanings across the server, client, and Nitro su
 | **staged values** | middleware-private preparation returned by `staged`; visible only to that middleware's `bindings` and `handler` callbacks ([§13](#13-typed-middleware-bindings)) |
 | **bindings** | request-scoped values a typed middleware publishes to downstream middleware and handlers as `event.bindings` ([§13](#13-typed-middleware-bindings)) |
 | **requirements** | middleware or parent-path capabilities that a middleware, router, or endpoint consumes without registering them again ([§12](#12-composition--scope), [§13](#13-typed-middleware-bindings)) |
+| **file route** | a Nitro filesystem route whose path and optional method come from its filename, authored with `defineFileRoute` or a derived file-route factory ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
+| **file-route factory** | a callable route definition utility created by `createFileRouteFactory`; it carries typed middleware capabilities into independently authored Nitro route files ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
 
 `params`, `query`, `body`, `headers`, `response` keep their h3 / fetchdts meanings ([§2](#2-the-fetchdts-alignment)). Validated request values live canonically on `event.context` and are exposed through the root aliases `event.params`, `event.query`, and `event.body`; the client uses the same request names.
 
@@ -395,5 +397,9 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
 | `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
 | `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
+| `defineFileRoute(def)` | Nitro `defineHandler` / upstream `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
+| `createFileRouteFactory()` | — (new) | derive reusable file-route definers with typed middleware providers and requirements |
+| `factory.compose(feature)` | router `.mount()` | satisfy a feature factory's external capabilities and return a callable file-route factory without re-running required middleware |
+| `#h3-dux/routes` | Nitro generated route types | generated, type-only kernel route map consumed by `createClient<Routes>()` |
 
 Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).

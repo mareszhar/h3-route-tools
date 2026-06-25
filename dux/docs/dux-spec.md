@@ -25,7 +25,7 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 10 | Response kinds + SSE hardening | `response.ts`, `internal/route-types.ts`, `internal/contract.ts`, `client.ts`, `errors.ts`, `server.ts`, `sse.ts` | ☑ done |
 | 11 | Delta-aware composition (`createRouter`, `.mount`, `.native`) | `router.ts` (new), `server.ts` | ☑ done |
 | 12 | Typed middleware bindings (`defineMiddleware`, `event.bindings`, `requires`) | `middleware.ts` (new), `server.ts`, `router.ts`, `internal/route-types.ts` | ☑ done |
-| 13 | Nitro deltas via codegen | `nitro.ts`, `codegen.ts`, route-handler port | ☐ planned |
+| 13 | Nitro deltas via codegen | `file-route.ts` (new), `nitro.ts`, `codegen.ts`, contract projection | ☐ planned |
 | 14 | Symmetry extras (standalone OpenAPI, interceptors) | `openapi.ts` (new), `client.ts` | ☐ planned |
 
 ## Roadmap
@@ -222,8 +222,10 @@ app.get('/fruits/:id', { handler: e => orchard.get(e.context.params.id) })
 
 // Opt into either when you want it: a schema validates AND types (and coerces).
 app.get('/fruits/:id', {
-  params: v.object({ id: v.pipe(v.string(), v.toNumber()) }), // e.context.params.id: number
-  validate: { response: FruitSchema }, // runtime-validated + schema-typed
+  validate: {
+    params: v.object({ id: v.pipe(v.string(), v.toNumber()) }), // e.context.params.id: number
+    response: FruitSchema, // runtime-validated + schema-typed
+  },
   handler: e => orchard.get(e.context.params.id),
 })
 ```
@@ -294,7 +296,7 @@ interface EndpointContract {
 Two realities worth recording:
 
 - **Resolve before you compose, or the schema leaks.** A *conditional* type alias resolves in a hover, but a *union/object* alias prints its argument unresolved. Passing the raw `DuxEndpoint` to the result alias reintroduced the exact `ObjectSchema<…>` leak delta 6 fixed. The fix: pull the success body and error map out with `infer` first, and force the error map to evaluate with a homomorphic `{ [S in keyof Errors]: Errors[S] }`, so only resolved pieces reach the result. The verb hover now reads `DuxCall<HonestResult<SerializeObject<{…}>, ClientError<{ 422: ValidationErrorBody }>>, …>`.
-- **The kernel is half-realized by design.** The success/error split, the resolved request shapes, and the client projection are in. The `kind` tag landed with delta 10 (a per-endpoint success kind, projected to `data` by the client); the unified per-status `responses: { [status]: { body, kind } }` representation and the codegen/OpenAPI consumers arrive with deltas 13/14 — each builds on this spine without reshaping it.
+- **The kernel is half-realized until phase 9.** The success/error split, resolved request shapes, and client projection are in. The `kind` tag landed with delta 10 as a per-endpoint success kind. Phase 9 completes the canonical `{ request, responses, success }` representation before Nitro codegen consumes it; phase 10 adds the standalone OpenAPI consumer. Neither phase invents another endpoint shape.
 
 **Status:** ☑ done (phase 6).
 
@@ -519,19 +521,168 @@ app.mount(account) // checked: the parent already provides withUser
 
 ## 13. Nitro deltas via codegen
 
-**Why.** The Nitro demo hand-writes its `Routes` interface ([demo/nitro/client.ts:9](../h3-dux/demo/nitro/client.ts:9)) — exactly the boilerplate/drift principle 2 forbids — and file routes fall back to upstream `defineRouteHandler` with an *explicit* `params` schema, so the standalone deltas (response/param inference, validation modes, SSE, typed errors) don't reach them. Closing this turns Nitro's file routing — which neither Hono nor Elysia has — from underdelivered into a real moat.
+**Why.** The Nitro demo hand-writes its `Routes` interface ([demo/nitro/client.ts:9](../h3-dux/demo/nitro/client.ts:9)) — exactly the boilerplate/drift principle 2 forbids — and file routes fall back to upstream `defineRouteHandler`, so the standalone deltas (validation modes, response inference and kinds, SSE, typed errors, event accessors, middleware bindings) do not reach them. Closing this turns Nitro's filesystem routing — which neither Hono nor Elysia has — from underdelivered into a real moat.
 
-**Usage.**
+The filesystem already states the path and, when suffixed, the method. The delightful surface never repeats either.
+
+### Usage — method-locked files
 
 ```ts
-// generated — no hand-written interface, regenerated on nitro prepare/dev/build
+// routes/checkout.post.ts → POST /checkout
+export default defineFileRoute({
+  status: 201,
+  validate: {
+    body: CheckoutSchema,
+    response: ReceiptSchema,
+  },
+  errors: {
+    409: OutOfStockSchema,
+  },
+  handler: event => checkout(event.body),
+})
+```
+
+`defineFileRoute` has no `.get()`/`.post()` methods. A method suffix is filename-owned; repeating it in source would permit contradictions such as `defineFileRoute.get()` inside `checkout.put.ts`.
+
+`defineFileRoute` is the zero-provider convenience factory: it uses the same definition engine as `createFileRouteFactory()` with no middleware capabilities added.
+
+### Usage — unsuffixed files
+
+An unsuffixed file follows Nitro's all-method behavior. One method-neutral handler may be shared:
+
+```ts
+// routes/health.ts → every method at /health
+export default defineFileRoute({
+  validate: { response: HealthSchema },
+  handler: () => health(),
+})
+```
+
+Or the file may dispatch distinct method contracts:
+
+```ts
+// routes/checkout/[id].ts → multiple methods at /checkout/:id
+export default defineFileRoute({
+  validate: {
+    params: CheckoutParamsSchema,
+  },
+  get: {
+    handler: event => checkoutStatus(event.params.id),
+  },
+  post: {
+    status: 201,
+    validate: { body: CheckoutSchema, response: ReceiptSchema },
+    handler: event => checkout(event.params.id, event.body),
+  },
+  delete: {
+    status: 204,
+    handler: event => clearCheckout(event.params.id),
+  },
+})
+```
+
+The shared flat form forbids `validate.body`: request bodies are method-specific. Use the method map when any method accepts a body or has a distinct status, error, validation, response kind, or handler. `HEAD` is always projected as an empty client response even when it shares the runtime handler. A method-locked file using the method-map form fails generation with a filename-focused diagnostic instead of silently declaring unreachable methods.
+
+Params are route-wide in a method map, so `validate.params` lives in the outer definition; query/body/headers/response validation remains inside each method. This preserves one params schema per filename path without moving params back outside the validate vocabulary.
+
+### Usage — file-route capabilities
+
+```ts
+// utils/app-route.ts — no filename is reserved
+export const defineAppRoute = createFileRouteFactory()
+  .use(withRequestId)
+  .use(withDatabase)
+```
+
+```ts
+// routes/orders.get.ts
+export default defineAppRoute({
+  middleware: [withUser],
+  handler: event =>
+    listOrders(event.bindings.database, event.bindings.user),
+})
+```
+
+An independently authored feature may state what its eventual parent must provide:
+
+```ts
+// store.factory.ts — not callable while `withDatabase` is unresolved
+export const storeFeature = createFileRouteFactory()
+  .requires(withDatabase)
+  .use(withStore)
+
+// utils/app-route.ts — the checked composition boundary
+export const defineStoreRoute = defineAppRoute.compose(storeFeature)
+```
+
+`compose()` checks the same capability laws as router `.mount()`: requirements are present and assignable, providers do not collide, and the resulting middleware order is deterministic. Required middleware already supplied by the parent is not registered or executed twice.
+
+### Usage — generated client
+
+```ts
+// generated on nitro prepare/dev/build — no hand-written route interface
+import { createClient } from '@mszr/h3-dux'
 import type { Routes } from '#h3-dux/routes'
 
 export const api = createClient<Routes>({ baseURL })
-// routes/fruits/[id].get.ts → :id inferred string from the filename, no params schema
+
+const { data, error } = await api.get(`/fruits/${id}`)
 ```
 
-**Proposed approach.** Ride the `types:extend` hook upstream already fires ([nitro.ts:235](../../src/nitro.ts:235)). `collectRouteHandlers` ([nitro.ts:79](../../src/nitro.ts:79)) already knows each route's full path, import, and methods; emit a second virtual module (`#h3-dux/routes`) holding the generated kernel route map (`{ [route]: { [method]: EndpointContract } }`), and have `@mszr/h3-dux/nitro` re-export a `createClient` pre-bound to it. Codegen knows the complete filename path (`routes/users/[userId]/friends/[friendId].get.ts`), so it recovers both params at generation time with no hand-written repetition. Port the handler-time deltas (validation modes, SSE, typed errors, root event aliases, typed middleware bindings) into a generated route factory/`defineRouteHandler` contract so file routes gain the same event model. The dux contract type rides the same generation upstream already does for `InternalApi` and OpenAPI.
+### Contract
+
+Phase 9 delivers five connected pieces:
+
+1. **A dux-native file handler.** `defineFileRoute(def)` carries validation modes, response inference and kinds, SSE, typed errors, root event accessors, and route-local typed middleware into Nitro file routes. `createFileRouteFactory()` produces the same callable definition surface with accumulated middleware bindings.
+2. **Checked factory composition.** `.use()` executes providers; `.requires()` records capabilities and makes the factory non-callable until a parent satisfies them through `.compose()`. This is the lexical relationship TypeScript needs across files and the file-route counterpart of router `.mount()`.
+3. **One canonical endpoint kernel.** Before codegen consumes it, complete the phase-6 projection so standalone and file routes both expose `{ request, responses, success }`. Runtime schemas remain separately attached for validation and OpenAPI; the public route map contains only resolved shapes.
+4. **A generated route map.** `#h3-dux/routes` contains `{ [normalizedPath]: { [method]: EndpointContract } }`, using Nitro's own route table as path/method truth. It feeds the existing `createClient<Routes>()`; no second client implementation or pre-bound virtual client ships in phase 9.
+5. **Codegen diagnostics.** Generation rejects runtime-inspectable contradictions, and the generated declaration carries type assertions for shape-only checks. Together with project typecheck they reject unreachable methods, duplicate path+method contracts, unresolved factory requirements, capability collisions, body-bearing shared all-method handlers, and declared params whose keys disagree with the normalized filename path.
+
+### Filename inference: the honest boundary
+
+Codegen knows that `routes/users/[userId]/friends/[friendId].get.ts` is `GET /users/:userId/friends/:friendId`; an ordinary TypeScript function does not know the filename containing its call while the callback is contextually typed. Therefore:
+
+- the generated client receives exact filename-derived params with no repeated route declaration;
+- a handler receives exact/coerced params when it declares `validate.params`;
+- without `validate.params`, a file-route handler receives `Record<string, string>`;
+- generated type assertions compare an explicitly declared params shape with the filename path during project typecheck;
+- a source transform or language-service plugin for schema-free exact handler params is a possible later enhancement, not a phase-9 promise.
+
+This is deliberately asymmetric: codegen uses knowledge it genuinely has, while the source type never claims knowledge it does not.
+
+For the generated client, codegen replaces the broad raw handler params with the exact filename-derived string shape when no schema exists. A declared params schema wins with its logical/coerced client type after the generated key-agreement check.
+
+### Capability scope and performance
+
+Factory middleware is replayed inside the matched route's h3 pipeline. If one hundred routes use a factory, a request to one route executes each provider once; the other ninety-nine execute nothing. The repeated registration metadata is negligible and preserves full onion semantics, including work after `await next()`.
+
+Registering the same provider globally and through a factory may execute it twice. h3-dux diagnoses duplicate providers where both registrations are visible in its typed composition, but never silently deduplicates middleware: ordering and side effects are observable behavior. Plain Nitro global middleware contributes no scoped binding type; use factory `.use()`, route-local `middleware`, or explicit global h3 augmentation for genuinely universal external state.
+
+### Proposed implementation
+
+- Add `file-route.ts` with `defineFileRoute`, `createFileRouteFactory`, the callable/resolved factory brands, and the flat/shared versus method-map contracts. Reuse the phase-8 middleware brands, requirement checks, event accessors, validation pipeline, response processing, and error machinery rather than fork them.
+- Give every built file handler two projections: runtime schema/meta data for validation and OpenAPI, and a type-only normalized kernel method map for clients/codegen.
+- Ride the `types:extend` hook upstream already fires ([nitro.ts:235](../../src/nitro.ts:235)). `collectRouteHandlers` ([nitro.ts:79](../../src/nitro.ts:79)) already knows each normalized path, import, and Nitro method lock; extend it to recognize dux file handlers and emit `#h3-dux/routes`.
+- Keep graceful migration: inherited upstream `defineRouteHandler` and plain Nitro handlers continue to work and continue contributing to Nitro's own `InternalApi`/OpenAPI behavior, but only dux file handlers enter the generated h3-dux kernel map. An untyped route is omitted rather than assigned a fictional contract.
+- Regenerate during prepare, dev add/remove/rename, and build. The generated public endpoint types must stay schema-free and retain the diagnostic-quality contract established in phase 5.
+- Keep `@mszr/h3-dux/nitro` build-time only. Client code imports `createClient` from the root and the generated `Routes` type; no Nitro runtime or route implementation enters a browser bundle.
+
+### Implementation order
+
+1. **9A — shared route core.** Finish the canonical kernel and extract the standalone builder's validation/event/error/response execution into reusable internal functions. Existing standalone tests must stay green before file routing is added.
+2. **9B — file-route authoring.** Implement `defineFileRoute`, flat/shared and method-map dispatch, then `createFileRouteFactory` with `.use()`/`.requires()`/`.compose()`. Lock runtime, type-shape, and editor diagnostics without Nitro codegen.
+3. **9C — Nitro generation.** Teach the Nitro module to collect the dux handler brand, combine its method kernels with Nitro's normalized path/method table, and emit `#h3-dux/routes` plus the generated assertions.
+4. **9D — lifecycle and moat proof.** Add dev regeneration, the full W5 fixture, update the Nitro demo to remove its hand-written route map, and verify OpenAPI/InternalApi coexistence with inherited and plain Nitro routes.
+
+Each step leaves a testable surface and preserves one implementation of the route runtime. Codegen is a consumer of the handler kernel, never a second validator or dispatcher.
+
+### Deferred intentionally
+
+- **No special setup file.** Phase 9 does not reserve `dux.ts`, `h3-dux.ts`, or any project filename. File-route factories are ordinary project-owned server utilities.
+- **No checked bridge to arbitrary global Nitro middleware.** A requirement is satisfied through typed factory composition, where both runtime registration and type evidence are visible.
+- **No Nuxt-specific module, auto-import, `useDuxClient`, or app-side type bridge.** Nuxt 5 is not released; its final h3 v2/Nitro v3 integration surface is not a stable contract. Once released, a thin Nuxt adapter may consume this Nitro-native kernel and factory model without changing the phase-9 route API.
+- **No pre-bound `#h3-dux/client`.** `createClient<Routes>()` is explicit, small, and sufficient. A convenience module must earn its extra surface through real usage.
 
 **Status:** ☐ planned (phase 9). Higher risk — touches the codegen and a handler-surface port.
 
@@ -570,3 +721,6 @@ Settled as the deltas landed; kept here so they aren't re-litigated.
 - **Typed errors: now, not later** — *settled.* The status→schema response map is preserved in the kernel from the start (delta 7), not deferred — because the response-contract shape decides whether errors, raw, Nitro, and OpenAPI stay coherent. The honest default *subsumes* a separate `api.try` surface (it already is the typed result), so we ship one mechanism, not three.
 - **`params` placement** — *settled.* On the dux verb surface `params` is declared inside `validate` (one request block); it remains route-level underneath, where multi-method routes and grouped routers share one param schema ([dux-conventions.md §4](./dux-conventions.md#4-the-validated-data-model)).
 - **Middleware state vocabulary** — *settled.* `staged` is private preparation for one middleware; `bindings` are request-scoped capabilities published downstream. Middleware returns keep h3 response semantics. No imperative setter and no single-letter event aliases.
+- **File-route method ownership** — *settled.* Nitro's filename owns the method. A method-locked file uses flat `defineFileRoute({ handler, … })`; an unsuffixed file uses either a method-neutral shared handler or an explicit method map. There are no `defineFileRoute.get/post/…` methods.
+- **File-route capability boundary** — *settled.* Factories carry providers lexically. An unresolved `.requires()` factory is non-callable until a parent factory satisfies it through `.compose()`; arbitrary global Nitro middleware is not accepted as invisible type evidence.
+- **Nuxt integration** — *deferred intentionally.* Phase 9 is Nitro-native and reserves no setup filename. A Nuxt adapter, auto-imports, and app-side client helpers are designed only after Nuxt 5 publishes its stable h3 v2/Nitro v3 integration contract.

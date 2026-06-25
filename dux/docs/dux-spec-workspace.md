@@ -11,7 +11,7 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sy
 | W2 | Per-delta suites land with each delta (1–5) | ☐ |
 | W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☐ |
 | W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6) ☑ source mode; `forModes` parity + type-perf plane (100/500/1000 routes) ☐ | ◑ |
-| W5 | Nitro codegen harness: the generated kernel route map (`#h3-dux/routes`) regenerates and typechecks (delta 13) | ☐ |
+| W5 | Nitro file-route/codegen harness: `defineFileRoute`, factory composition, generated `#h3-dux/routes`, regeneration, and diagnostics (delta 13) | ☐ |
 
 ---
 
@@ -93,6 +93,22 @@ The editor-DX plane is the bar that the rest of the field doesn't test (delta 6)
 - `toHaveCompletionParity` pins completions between modes.
 
 Because every Generation-2 delta adds generic complexity, the diagnostic contract is also a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor. A new **type-performance** plane sanity-checks editor responsiveness at 100 / 500 / 1000 routes, so the kernel's flattening keeps large apps fast (Hono's RPC types have documented IDE-scaling costs; this is where we prove we don't inherit them).
+
+### Nitro codegen harness (phase W5)
+
+Phase 9 adds a real Nitro fixture rather than testing generated strings in isolation. The harness runs `nitro prepare`, typechecks the generated project, and exercises dev regeneration. It covers:
+
+- method-locked flat handlers and unsuffixed shared/method-map handlers;
+- validation modes, typed errors, every response kind, SSE, and route-local bindings;
+- file-route factory `.use()`/`.requires()`/`.compose()` capability flow;
+- generated exact client params for nested, optional, and catch-all filesystem segments;
+- explicit params-schema agreement with the normalized path;
+- duplicate path+method, method-lock mismatch, unresolved requirements, binding collisions, and invalid body-bearing shared handlers;
+- add, remove, and rename regeneration without restarting from a clean build;
+- `#h3-dux/routes` source/built declaration parity and leak guards (no schema implementation types);
+- graceful coexistence with plain Nitro and inherited upstream handlers, which remain valid but are omitted from the h3-dux client map.
+
+Nuxt integration is not a W5 target. It begins only after Nuxt 5 publishes a stable h3 v2/Nitro v3 module and type-generation contract.
 
 ---
 

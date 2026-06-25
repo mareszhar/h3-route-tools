@@ -38,4 +38,4 @@ bun run dev      # nitro dev on http://localhost:3000  (Scalar UI at /_scalar)
 
 Each [`routes/**`](./nitro/routes) file's default export is a `defineRouteHandler`; the Nitro module unions their contracts into nitro's `InternalApi` and the OpenAPI document. [`client.ts`](./nitro/client.ts) types a client from a **type-only** route map (`typeof import('./routes/...').default`) — no runtime import, no client-bundle cost.
 
-> The dux deltas (verb authoring, validation modes, SSE) live on the standalone `createServer` builder. Nitro file routes use the inherited upstream `defineRouteHandler` contract; bringing the deltas to file routes is a noted future enhancement ([dux-vision.md §4.3](../../docs/dux-vision.md)).
+> This demo shows the current inherited Nitro surface. Phase 9 replaces the hand-written client map with generated `#h3-dux/routes` and adds the dux-native `defineFileRoute` / `createFileRouteFactory` surface; see [dux-spec.md §13](../../docs/dux-spec.md#13-nitro-deltas-via-codegen).

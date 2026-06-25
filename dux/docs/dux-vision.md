@@ -114,7 +114,7 @@ Everything flows from **one contract per route** — the `validate` block plus t
 | Server | `H3Typed`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed middleware bindings, root event accessors, `event.error()`** |
 | Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator`, **honest `{ data, error }` surface, `.orThrow()`/`.raw()`, typed error channel, interceptors** |
 | Contract | per-method `Endpoint`, status→schema response map, `errors` | **the normalized kernel: plain shapes, per-status responses, response kinds** |
-| Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **generated kernel route map (no hand-written `Routes`), deltas in file routes, filename→param inference** |
+| Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **`defineFileRoute`/file-route factories, generated kernel route map (no hand-written `Routes`), filename-derived client params** |
 
 ### 4.4 The contract kernel
 
@@ -162,7 +162,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 10 | **Response kinds** — infer `json/text/empty/sse/binary`, type native bodies with `typedResponse`, add raw `.parse()`; harden SSE | 7 | ☑ done |
 | 11 | **Delta-aware composition** — prefix-carrying `createRouter`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☑ done |
 | 12 | **Typed middleware bindings** — `defineMiddleware` infers staged private values and downstream `event.bindings`; `requires` checks parent capabilities without re-registering middleware | 8 | ☑ done |
-| 13 | **Nitro deltas via codegen** — generate the kernel route map (no hand-written `Routes`); bring the deltas to file routes; filename→param inference | 9 | ☐ planned |
+| 13 | **Nitro deltas via codegen** — `defineFileRoute` + capability-carrying factories; generate the kernel route map; filename-derived client params | 9 | ☐ planned |
 | 14 | **Symmetry extras** — OpenAPI from the standalone `createServer`; client interceptors / `signal` / timeout / retry | 10 | ☐ planned |
 
 Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
