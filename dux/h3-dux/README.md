@@ -54,8 +54,9 @@ import { createServer, sse } from '@mszr/h3-dux'
 import { NewFruitSchema, RipenTickSchema } from '@orchard/domain'
 
 export const app = createServer()
-  // `:id` typed from the pattern, response inferred from the return — zero ceremony.
-  .get('/fruits/:id', { handler: e => orchard.get(e.context.params.id) })
+  // No options needed → pass the handler directly. `:id` typed from the pattern,
+  // response inferred from the return — zero ceremony.
+  .get('/fruits/:id', e => orchard.get(e.context.params.id))
   // validate.body → e.context.body is typed AND validated; status sets the success code.
   .post('/fruits', {
     status: 201,

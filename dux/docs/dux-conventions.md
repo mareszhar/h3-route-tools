@@ -122,6 +122,18 @@ api.get('/fruits/:id', { params: { id } }) // calling            (delta 2)
 
 `createServer` and `createClient` are named as counterparts for the same reason — one integrated system, read from both ends. The bare upstream forms (`.route({ … })`, `api(path, { method })`) stay valid; the verb forms are additive sugar.
 
+### The bare-handler shorthand
+
+When a route needs no options — no `validate`, `status`, `errors`, or `middleware` — pass the handler directly instead of `{ handler }`. It is sugar for the options form (defaults unchanged: eager validation, inferred response, inferred kind), and the response is still inferred from the return:
+
+```ts
+app.get('/health', e => ({ ok: true }))            // ≡ { handler: e => … }
+createRouter('/ping').get('/', () => ok)           // routers too
+export default defineFileRoute(e => listOrders())  // and Nitro file routes / factories
+```
+
+It is **one signature with a `options | handler` union parameter**, never a second overload — so a malformed options object still reports a single diagnostic at the offending property, never the "No overload matches this call" wall ([dux-spec.md §6](./dux-spec.md#6-cleaner-inference--diagnostics-as-contract)). The shorthand is for the defaults-only case; reach for `{ … }` the moment you need any option. (The client stays options-only: a call's `params`/`body`/`query` are data, not a callback.)
+
 ---
 
 ## 6. Response typing

@@ -17,6 +17,7 @@ import type {
   InferMethodResponse,
   JoinPath,
   MergePair,
+  MethodHandler,
   PathParamNames,
   Prettify,
 } from './internal/route-types.ts'
@@ -111,6 +112,13 @@ interface RuntimeOpts {
 
 type RouteCall = (def: Record<string, unknown>, options?: unknown) => unknown
 
+/** Normalize a verb argument (options object *or* a bare handler) to runtime options. */
+function toRuntimeOpts(arg: unknown): RuntimeOpts {
+  return typeof arg === 'function'
+    ? { handler: arg as (event: H3Event) => unknown }
+    : arg as RuntimeOpts
+}
+
 /**
  * Split a verb's flattened options into upstream's route/method def and mount it.
  * The per-method execution — validation mode, SSE, response kinds, the dux event
@@ -141,6 +149,29 @@ type ServerOpts<
   Mw extends readonly Middleware[],
   Req extends readonly TypedMiddleware<any, any>[],
 > = DuxVerbOpts<V, P, M, Ret, Route, Status, Err, Bindings, object, Mw, Req>
+
+/**
+ * What a verb method accepts: the full options object **or** a bare handler when
+ * defaults suffice (`app.get('/x', e => …)`). It is one *signature* with a union
+ * parameter — not two overloads — so a bad options object still reports a single
+ * diagnostic at the cursor instead of the "No overload matches" wall (delta 6).
+ * The bare-handler arm fixes the validate/params/status/errors to their defaults
+ * and infers only the response from the handler's return.
+ */
+type VerbArg<
+  Bindings,
+  Route extends string,
+  M extends RouteMethod,
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  Ret,
+  Status extends number | undefined,
+  Err extends ErrorsOption | undefined,
+  Mw extends readonly Middleware[],
+  Req extends readonly TypedMiddleware<any, any>[],
+>
+  = | ServerOpts<Bindings, Route, M, V, P, Ret, Status, Err, Mw, Req>
+    | MethodHandler<MethodValidate, undefined, Ret, Route, M, undefined, undefined, Bindings, object>
 
 /**
  * The dux server: a typed route builder around upstream's `H3Typed`. Author with
@@ -255,9 +286,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'get', Route>,
-    opts: ServerOpts<Bindings, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'get', V, P, Ret, Status, Err> {
-    mount(this.native, 'get', route, opts as RuntimeOpts)
+    mount(this.native, 'get', route, toRuntimeOpts(opts))
     return this as never
   }
 
@@ -271,9 +302,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'post', Route>,
-    opts: ServerOpts<Bindings, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'post', V, P, Ret, Status, Err> {
-    mount(this.native, 'post', route, opts as RuntimeOpts)
+    mount(this.native, 'post', route, toRuntimeOpts(opts))
     return this as never
   }
 
@@ -287,9 +318,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'put', Route>,
-    opts: ServerOpts<Bindings, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'put', V, P, Ret, Status, Err> {
-    mount(this.native, 'put', route, opts as RuntimeOpts)
+    mount(this.native, 'put', route, toRuntimeOpts(opts))
     return this as never
   }
 
@@ -303,9 +334,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'patch', Route>,
-    opts: ServerOpts<Bindings, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'patch', V, P, Ret, Status, Err> {
-    mount(this.native, 'patch', route, opts as RuntimeOpts)
+    mount(this.native, 'patch', route, toRuntimeOpts(opts))
     return this as never
   }
 
@@ -319,9 +350,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'delete', Route>,
-    opts: ServerOpts<Bindings, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'delete', V, P, Ret, Status, Err> {
-    mount(this.native, 'delete', route, opts as RuntimeOpts)
+    mount(this.native, 'delete', route, toRuntimeOpts(opts))
     return this as never
   }
 
@@ -335,9 +366,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'head', Route>,
-    opts: ServerOpts<Bindings, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'head', V, P, Ret, Status, Err> {
-    mount(this.native, 'head', route, opts as RuntimeOpts)
+    mount(this.native, 'head', route, toRuntimeOpts(opts))
     return this as never
   }
 
@@ -351,9 +382,9 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'options', Route>,
-    opts: ServerOpts<Bindings, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
+    opts: VerbArg<Bindings, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'options', V, P, Ret, Status, Err> {
-    mount(this.native, 'options', route, opts as RuntimeOpts)
+    mount(this.native, 'options', route, toRuntimeOpts(opts))
     return this as never
   }
 }

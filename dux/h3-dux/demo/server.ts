@@ -25,10 +25,10 @@ export const app = createServer()
     console.error(`  [orchard] ${e.req.method} ${new URL(e.req.url).pathname}`)
     return next()
   }))
-  // Response inferred from the return — no schema, no annotation.
-  .get('/health', { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) })
+  // No options needed → pass the handler directly. Response inferred from the return.
+  .get('/health', () => ({ status: 'ripe' as const, at: new Date().toISOString() }))
   // Response kinds (delta 10): strings infer as text — no marker or schema.
-  .get('/motd', { handler: () => 'Eat your fruits 🍎' })
+  .get('/motd', () => 'Eat your fruits 🍎')
   .get('/fruits', { validate: { response: v.array(FruitSchema) }, handler: () => orchard.list() })
   // status sets the success code; the validated body is on e.context.body.
   .post('/fruits', {

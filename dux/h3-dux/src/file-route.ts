@@ -263,7 +263,10 @@ object
  * factory's middleware already published; the handlers read them as `event.bindings`.
  */
 export interface FileRouteDefiner<Bindings = object> {
-  // Flat: one handler; the filename owns the method.
+  // Flat: one handler; the filename owns the method. The def is the full options
+  // object *or* a bare handler when defaults suffice (`defineFileRoute(e => …)`) —
+  // a union parameter on this one overload, so the shorthand never adds a third
+  // overload (the bad-def message stays as-is, never a longer "No overload" wall).
   <
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
@@ -273,7 +276,8 @@ export interface FileRouteDefiner<Bindings = object> {
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(
-    def: FlatDef<V, P, Ret, Status, Err, Bindings, Mw, Req>,
+    def: FlatDef<V, P, Ret, Status, Err, Bindings, Mw, Req>
+      | MethodHandler<MethodValidate, undefined, Ret, '/', 'post', undefined, undefined, Bindings, object>,
   ): DuxFileHandler<FlatEndpoint<V, P, Ret, Status, Err>, never>
 
   // Method map: distinct contracts per method on an unsuffixed file.
@@ -454,7 +458,12 @@ function runMiddleware(
 type DefineUpstream = (def: Record<string, unknown>, options?: unknown) => EventHandlerWithFetch & Record<string, unknown>
 
 /** Build the runtime handler for a file-route def, prepending the factory's middleware. */
-function buildFileHandler(def: RuntimeDef, factoryMiddleware: readonly Middleware[]): DuxFileHandler {
+function buildFileHandler(
+  input: RuntimeDef | ((event: H3Event) => unknown),
+  factoryMiddleware: readonly Middleware[],
+): DuxFileHandler {
+  // A def can be the options object or a bare handler when defaults suffice.
+  const def: RuntimeDef = typeof input === 'function' ? { handler: input } : input
   const routeMiddleware = (def.middleware ?? []).map(toMiddleware)
   const middleware = [...factoryMiddleware, ...routeMiddleware]
   const upstreamDef: Record<string, unknown> = {

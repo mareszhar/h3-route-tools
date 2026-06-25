@@ -27,6 +27,7 @@ import type {
   InferMethodResponse,
   JoinPath,
   MergePair,
+  MethodHandler,
   PathParamNames,
   Prettify,
 } from './internal/route-types.ts'
@@ -90,6 +91,28 @@ type RouterOpts<
   Mw extends readonly Middleware[],
   Req extends readonly TypedMiddleware<any, any>[],
 > = DuxVerbOpts<V, P, M, Ret, JoinPath<Prefix, Route>, Status, Err, Bindings, ParentParams, Mw, Req>
+
+/**
+ * What a router verb accepts: the full options object **or** a bare handler when
+ * defaults suffice. One signature with a union parameter (not two overloads), so a
+ * bad options object stays a single cursor diagnostic — see `VerbArg` in server.ts.
+ */
+type RouterArg<
+  Bindings,
+  ParentParams,
+  Prefix extends string,
+  Route extends string,
+  M extends RouteMethod,
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  Ret,
+  Status extends number | undefined,
+  Err extends ErrorsOption | undefined,
+  Mw extends readonly Middleware[],
+  Req extends readonly TypedMiddleware<any, any>[],
+>
+  = | RouterOpts<Bindings, ParentParams, Prefix, Route, M, V, P, Ret, Status, Err, Mw, Req>
+    | MethodHandler<MethodValidate, undefined, Ret, JoinPath<Prefix, Route>, M, undefined, undefined, Bindings, ParentParams>
 
 type DuplicateParamNames<Prefix extends string, Route extends string, ParentParams>
   = | Extract<PathParamNames<Prefix>, PathParamNames<Route>>
@@ -198,7 +221,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'get', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'get', V, P, Ret, Status, Err> {
     this.record('get', route, opts)
     return this as never
@@ -214,7 +237,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'post', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'post', V, P, Ret, Status, Err> {
     this.record('post', route, opts)
     return this as never
@@ -230,7 +253,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'put', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'put', V, P, Ret, Status, Err> {
     this.record('put', route, opts)
     return this as never
@@ -246,7 +269,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'patch', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'patch', V, P, Ret, Status, Err> {
     this.record('patch', route, opts)
     return this as never
@@ -262,7 +285,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'delete', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'delete', V, P, Ret, Status, Err> {
     this.record('delete', route, opts)
     return this as never
@@ -278,7 +301,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'head', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'head', V, P, Ret, Status, Err> {
     this.record('head', route, opts)
     return this as never
@@ -294,7 +317,7 @@ export class DuxRouter<
     const Mw extends readonly Middleware[] = [],
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: RouterRouteArgument<Routes, 'options', Prefix, Route, ParentParams>,
-    opts: RouterOpts<Bindings, ParentParams, Prefix, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
+    opts: RouterArg<Bindings, ParentParams, Prefix, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
   ): RouterNext<Prefix, Routes, Bindings, Requires, ParentParams, Route, 'options', V, P, Ret, Status, Err> {
     this.record('options', route, opts)
     return this as never
@@ -303,7 +326,8 @@ export class DuxRouter<
   /** Capture the middleware chain exactly as it exists when an endpoint is authored. */
   private record(method: RouteMethod, route: string, opts: unknown): void {
     const state = stateOf(this)
-    const options = opts as RouterEntry['options']
+    // A verb accepts an options object or a bare handler — normalize to options.
+    const options = (typeof opts === 'function' ? { handler: opts } : opts) as RouterEntry['options']
     state.entries.push({
       method,
       route: joinPath(state.prefix, route),
