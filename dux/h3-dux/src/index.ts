@@ -5,6 +5,13 @@ export type { Client, VerbFetch } from './client.ts'
 export { DuxHTTPError, DuxTransportError } from './errors.ts'
 export type { DuxError } from './errors.ts'
 export type { EndpointContract, ResponseKind } from './internal/contract.ts'
+export { defineMiddleware } from './middleware.ts'
+export type {
+  BindingsOf,
+  BoundEvent,
+  MiddlewareSpec,
+  TypedMiddleware,
+} from './middleware.ts'
 export {
   binary,
   type BinaryResponse,
@@ -14,6 +21,7 @@ export {
   type TypedNativeResponse,
   typedResponse,
 } from './response.ts'
+export { createRouter, defineRoutes, DuxRouter } from './router.ts'
 export { createServer, DuxServer } from './server.ts'
 export { type EventStream, sse } from './sse.ts'
 // ── upstream surface ──────────────────────────────────────────────────────────

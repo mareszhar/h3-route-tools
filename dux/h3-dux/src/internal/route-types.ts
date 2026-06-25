@@ -25,6 +25,7 @@ import type {
   SchemaWithJSON,
   StatusCodeKey,
 } from 'h3-route-tools'
+import type { TupleBindings } from '../middleware.ts'
 import type {
   BinaryBody,
   BinaryResponse,
@@ -193,6 +194,12 @@ type RouteParams<Route extends string> = Route extends `${string}:${infer Param}
 type ResolvedParams<P extends SchemaWithJSON | undefined, Route extends string>
   = P extends SchemaWithJSON ? InferOutput<P> : RouteParams<Route>
 
+// ── path composition (routers — delta 11) ─────────────────────────────────────
+
+/** Join a router prefix and a local route into the full pattern the client addresses. */
+export type JoinPath<Prefix extends string, Local extends string>
+  = Local extends '/' ? (Prefix extends '' ? '/' : Prefix) : `${Prefix}${Local}`
+
 // ── the handler event ─────────────────────────────────────────────────────────
 
 /** H3Event whose `context.params` is narrowed to the resolved params and required. */
@@ -212,15 +219,20 @@ type MethodRequest<
   routerParams: ResolvedParams<P, Route>
 }
 
-interface ValidatedData<
-  V extends AnyMethodValidate,
-  P extends SchemaWithJSON | undefined,
-  Route extends string,
-> {
-  query: InferMethodQuery<V>
-  params: ResolvedParams<P, Route>
-  headers: InferMethodHeaders<V>
-}
+/** Eager unless the validate block opts out with `eager: false`. */
+type IsEager<V extends AnyMethodValidate> = V extends { eager: false } ? false : true
+
+/** h3's untyped query shape, before a schema turns it into an application type. */
+type RawQuery = Partial<Record<string, string | string[]>>
+
+/**
+ * The *direct* read of body/query (`event.body`, `event.context.query`). In eager
+ * mode it is the validated output, established before the handler. In manual mode
+ * it stays raw — `unknown` for body, h3's query shape for query — because the
+ * trusted value only exists after `event.valid(scope)` runs (conventions §4).
+ */
+type DirectBody<V extends AnyMethodValidate> = IsEager<V> extends true ? InferMethodBody<V> : unknown
+type DirectQuery<V extends AnyMethodValidate> = IsEager<V> extends true ? InferMethodQuery<V> : RawQuery
 
 /** The validated value behind each scope. */
 interface ValidValues<
@@ -247,22 +259,37 @@ type ValidFn<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined, 
   = <S extends ValidScope<V, P>>(scope: S) => Promise<ValidValues<V, P, Route>[S]>
 
 /**
- * The `event` a method's handler receives. `context.params/query/body` are the
- * neutral, typed accessors (validated in eager mode, populated by `valid()` in
- * manual mode); `valid(scope)` is the deliberate, idempotent validator. See
- * docs/dux-conventions.md §4.
+ * The `event` a method's handler receives. Request values read two ways, over one
+ * canonical store: the root aliases `event.params/query/body` (and their
+ * `event.context.*` originals), validated in eager mode and raw until `valid()` in
+ * manual mode; and `event.valid(scope)`, the deliberate, idempotent validator.
+ * `event.bindings` exposes the typed capabilities upstream middleware published
+ * (delta 12). `ExtraParams` folds in params a router owns from a dynamic outer
+ * mount (`parentParams`, delta 11). See docs/dux-conventions.md §4, §13.
  */
 export type MethodEvent<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   Route extends string,
   Err = undefined,
-> = ValidatedH3Event<MethodRequest<V, P, Route>, ResolvedParams<P, Route>> & {
-  validated: ValidatedData<V, P, Route>
+  Bindings = object,
+  ExtraParams = object,
+> = ValidatedH3Event<MethodRequest<V, P, Route>, Prettify<ResolvedParams<P, Route> & ExtraParams>> & {
   valid: ValidFn<V, P, Route>
   /** Throw a declared error: `throw e.error(409, { … })`, checked against `errors[409]` (delta 9). */
   error: ErrorFn<Err>
-  context: { query: InferMethodQuery<V>, body: InferMethodBody<V> }
+  /** Request-scoped capabilities published by typed middleware (delta 12). */
+  bindings: Bindings
+  /** Root aliases over the canonical `event.context` storage (conventions §4, §13). */
+  params: Prettify<ResolvedParams<P, Route> & ExtraParams>
+  query: DirectQuery<V>
+  body: DirectBody<V>
+  context: {
+    params: Prettify<ResolvedParams<P, Route> & ExtraParams>
+    query: DirectQuery<V>
+    body: DirectBody<V>
+    bindings: Bindings
+  }
 }
 
 /** Relaxes a `const`-captured (deeply readonly) return so it still satisfies the mutable schema output. */
@@ -285,8 +312,10 @@ export type MethodHandler<
   M extends RouteMethod,
   Status extends number | undefined,
   Err = undefined,
+  Bindings = object,
+  ExtraParams = object,
 > = (
-  event: MethodEvent<V, P, Route, Err>,
+  event: MethodEvent<V, P, Route, Err, Bindings, ExtraParams>,
 ) => IsEmptyResponse<M, Status> extends true
   ? void | null | undefined | Promise<void | null | undefined>
   : ResponseSchema<V> extends EventStream<infer T>
@@ -320,8 +349,9 @@ export interface DuxEndpoint<
   M extends RouteMethod,
   Status extends number | undefined,
   Err = undefined,
+  ExtraParams = object,
 > {
-  params: ResolvedParams<P, Route>
+  params: Prettify<ResolvedParams<P, Route> & ExtraParams>
   query: InferMethodQuery<V>
   headers: InferMethodHeaders<V>
   body: InferMethodBodyDir<V, 'input'>
@@ -342,9 +372,20 @@ export type DuxRouteRecord<
   Ret,
   Status extends number | undefined,
   Err = undefined,
-> = { [R in Route]: { [Method in M]: DuxEndpoint<V, P, Ret, Route, M, Status, Err> } }
+  ExtraParams = object,
+> = { [R in Route]: { [Method in M]: DuxEndpoint<V, P, Ret, Route, M, Status, Err, ExtraParams> } }
 
-/** The options a verb method accepts — route-level params/middleware flattened in, plus `status`/`errors`. */
+/** The bindings a handler ultimately sees: the chain's, plus any its own middleware/requires add. */
+export type HandlerBindings<Bindings, Mw extends readonly any[], Req extends readonly any[]>
+  = Prettify<Bindings & TupleBindings<Mw> & TupleBindings<Req>>
+
+/**
+ * The options a verb method accepts — route-level params/middleware flattened in,
+ * plus `status`/`errors`. `Bindings` is the chain's accumulated middleware
+ * capabilities (delta 12); `Mw`/`Req` are this endpoint's own middleware and
+ * type-only requirements, whose published bindings also reach the handler.
+ * `ExtraParams` carries a router's dynamically-mounted parent params (delta 11).
+ */
 export interface DuxVerbOpts<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
@@ -353,11 +394,17 @@ export interface DuxVerbOpts<
   Route extends string,
   Status extends number | undefined,
   Err extends ErrorsOption | undefined = undefined,
+  Bindings = object,
+  ExtraParams = object,
+  Mw extends readonly Middleware[] = readonly Middleware[],
+  Req extends readonly any[] = readonly any[],
 > {
   /** A schema for the route's `:params` — typed/coerced params opt in here (else they're `string`). */
   params?: P
-  /** Plain h3 middleware — this is how auth attaches (never a kit concept). */
-  middleware?: Middleware[]
+  /** Middleware to register and run for this endpoint; typed ones add to `event.bindings`. */
+  middleware?: Mw
+  /** Type-only capability requirements an enclosing scope must already provide (delta 12). */
+  requires?: Req
   meta?: H3RouteMeta
   /** Success status code; sets `event.res.status` before the handler runs. */
   status?: Status
@@ -374,8 +421,24 @@ export interface DuxVerbOpts<
    * eager-sequential — params → query → headers → body, short-circuit).
    */
   validate?: ([M] extends [BodylessMethod] ? V & { body?: never } : V) & { eager?: boolean }
-  handler: MethodHandler<V, P, Ret, Route, M, Status, Err>
+  handler: MethodHandler<V, P, Ret, Route, M, Status, Err, HandlerBindings<Bindings, Mw, Req>, ExtraParams>
 }
+
+/**
+ * A duplicate-route guard on the *route* argument (delta 11). When the full path
+ * already declares this method, the expected type becomes a self-describing
+ * sentinel the real path isn't assignable to — so the duplicate is reported at
+ * the cursor, with a readable message and no schema leak, instead of being
+ * silently kept first-wins. `Full` is the accumulated key; `Local` is what the
+ * argument should still be in the non-duplicate case (they differ under a router
+ * prefix).
+ */
+export type DuplicateRoute<Routes, M extends string, Full extends string, Local extends string = Full>
+  = Full extends keyof Routes
+    ? M extends keyof Routes[Full]
+      ? '⚠ this route + method is already defined — remove the duplicate'
+      : Local
+    : Local
 
 /** Merge two route maps: different paths/methods compose; a method in both keeps the first. */
 export type MergePair<A, B> = {

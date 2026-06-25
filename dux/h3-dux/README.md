@@ -20,6 +20,10 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 
 🚦 **Validation you control** — eager and sequential by default (params → query → body, short-circuit); flip `eager: false` for deliberate, on-demand validation via `event.valid('body')`.
 
+🧩 **Composition that carries the deltas** — split a domain into `createRouter('/fruits').get(…)` and `createServer().mount(router)`; the prefix infers child params and the client still sees one flat map. Duplicate route+method is a cursor error, not silent first-wins.
+
+🪪 **Typed middleware bindings** — `defineMiddleware({ bindings })` publishes request-scoped values that downstream handlers read as `event.bindings`, fully typed. `requires` consumes a parent capability without re-registering it; `.mount` checks it.
+
 🔓 **Auth is not a concept here** — a protected route is `middleware: [...]`; an authenticated call is a header. Nothing app-specific leaks into the kit.
 
 ## Install
@@ -89,7 +93,7 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 **Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
 
-**Generation 2** — in progress. Shipped (deltas 6–10, all three test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, and response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser. Planned (deltas 11–14): delta-aware composition, typed middleware bindings, root event accessors, OpenAPI from the standalone server, and the Nitro file-routing moat made real. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
+**Generation 2** — in progress. Shipped (deltas 6–12, all three test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), and **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors). Planned (deltas 13–14): the Nitro file-routing moat made real, and OpenAPI from the standalone server. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
 
 ## Development
 

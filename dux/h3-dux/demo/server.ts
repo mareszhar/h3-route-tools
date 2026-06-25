@@ -3,7 +3,7 @@
  * display: per-verb authoring, response + param inference, validation modes,
  * typed SSE, and typed errors. `App = typeof app` is the single source of truth.
  */
-import { createServer, sse } from '@mszr/h3-dux'
+import { createServer, defineMiddleware, sse } from '@mszr/h3-dux'
 import * as v from 'valibot'
 import {
   CheckoutSchema,
@@ -19,12 +19,12 @@ import {
 const orchard = createOrchard()
 
 export const app = createServer()
-  // Plain h3 middleware — chainable via .use(). (Logs to stderr so it stays out
-  // of the trip's stdout.)
-  .use((e, next) => {
+  // Middleware — chainable via .use(). `defineMiddleware` is the smallest typed
+  // form; this one publishes nothing. (Logs to stderr so it stays out of stdout.)
+  .use(defineMiddleware((e, next) => {
     console.error(`  [orchard] ${e.req.method} ${new URL(e.req.url).pathname}`)
     return next()
-  })
+  }))
   // Response inferred from the return — no schema, no annotation.
   .get('/health', { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) })
   // Response kinds (delta 10): strings infer as text — no marker or schema.
