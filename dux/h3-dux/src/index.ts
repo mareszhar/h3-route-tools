@@ -6,11 +6,16 @@ export { DuxHTTPError, DuxTransportError } from './errors.ts'
 export type { DuxError } from './errors.ts'
 export { createFileRouteFactory, defineFileRoute } from './file-route.ts'
 export type {
+  AsMethod,
+  AssertFileRoute,
   DuxFileHandler,
+  Expect,
+  FileFlatContract,
   FileMethods,
   FileRouteDefiner,
   FileRouteFactory,
   FlatContract,
+  FlatSource,
   ResolveFileParams,
   WithFilenameParams,
 } from './file-route.ts'

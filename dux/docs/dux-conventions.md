@@ -412,7 +412,7 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
 | `defineFileRoute(def)` | Nitro `defineHandler` / upstream `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
 | `createFileRouteFactory()` | — (new) | derive reusable file-route definers with typed middleware providers and requirements |
-| `factory.compose(feature)` | router `.mount()` | satisfy a feature factory's external capabilities and return a callable file-route factory without re-running required middleware |
+| `factory.compose(feature)` | router `.mount()` | satisfy a feature factory's external capabilities and return a callable file-route factory; checks the same laws as `.mount` (requirements present and assignable, registered providers don't collide) and doesn't re-run required middleware |
 | `#h3-dux/routes` | Nitro generated route types | generated, type-only kernel route map consumed by `createClient<Routes>()` |
 
 Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).

@@ -32,11 +32,14 @@ import type {
   DuxEndpoint,
   DuxVerbOpts,
   ErrorsOption,
+  HandlerBindings,
   InferMethodResponse,
   MethodHandler,
 } from './internal/route-types.ts'
 import type {
   BindingsOf,
+  MiddlewareTupleIssue,
+  RequirementsIssue,
   TypedMiddleware,
   UnsatisfiedKeys,
   UsableMiddleware,
@@ -68,18 +71,34 @@ export interface DuxFileHandler<Flat = never, Methods = never> extends EventHand
 // The Nitro codegen reads these to turn a built file handler into kernel endpoints
 // keyed by the *filename*'s path/method. They live here so the source of the kernel
 // shape and its projection stay together (one source of truth, dux-vision.md §4.4).
+// Codegen emits only data (path → handler import, filename params, locked methods);
+// these types do all projection, method re-keying, filtering, and the filename-truth
+// assertions, so generation never executes a route module (delta 13 reality).
 
-/** The flat form's method-neutral contract, recovered from a built handler. */
+/** The flat form's method-neutral source — the ingredients codegen re-keys per method. */
 export type FlatContract<H> = H extends { '~duxFlat'?: infer F } ? Exclude<F, undefined> : never
 
 /** The method-map form's per-method contracts, recovered from a built handler. */
 export type FileMethods<H> = H extends { '~duxMethods'?: infer M } ? Exclude<M, undefined> : never
 
 /**
+ * Instantiate the flat source as a concrete endpoint kernel for the filename's
+ * method `M`. The same `DuxEndpoint` the standalone builder produces, so the
+ * method-owned facts a filename carries — `head`/`204`/`205` answer empty, the
+ * success kind — are applied *once*, here, instead of being re-encoded (principle 2).
+ * Authoring is method-neutral (the filename isn't known at the cursor); the method
+ * is bound at generation, when codegen knows the path.
+ */
+export type AsMethod<Source, M extends RouteMethod>
+  = Source extends FlatSource<infer V, infer P, infer Ret, infer Status, infer Err>
+    ? DuxEndpoint<V, P, Ret, '/', M, Status, Err, object>
+    : never
+
+/**
  * Resolve a file route's client params: the *filename*-derived `{ name: string }`
  * when the handler declared none (a broad `Record<string, string>`), else the
- * declared schema's logical/coerced type. Codegen's key-agreement assertion checks
- * a declared schema's keys against the filename separately (the honest boundary).
+ * declared schema's logical/coerced type. The key-agreement assertion ({@link
+ * AssertFileRoute}) checks a declared schema's keys against the filename separately.
  */
 export type ResolveFileParams<Declared, FromFilename>
   = string extends keyof Declared ? FromFilename : Declared
@@ -93,11 +112,54 @@ export type WithFilenameParams<E, Params> = E extends { request: infer Req }
   }
   : E
 
+/** A flat endpoint kernel re-keyed to the filename's method, with filename params applied. */
+export type FileFlatContract<H, M extends RouteMethod, Params>
+  = WithFilenameParams<AsMethod<FlatContract<H>, M>, Params>
+
+// ── the filename-truth assertion (emitted by codegen; fails project typecheck) ─
+// `WithFilenameParams` keeps the *client* honest (it applies the filename params);
+// this keeps the *author* honest — a declared params schema must agree with the
+// filename path, so `/fruits/[id].get.ts` cannot quietly declare `params: { slug }`.
+// The reachability and shared-body contradictions are runtime-inspectable, so the
+// Nitro module rejects them at generation; this shape-only check rides the project
+// typecheck. Codegen records each file's form, so the right brand is read directly —
+// the type does not have to (and cannot) tell the forms apart on its own.
+
+/** Filename param names (`'id'`) from the literal codegen emits (`{ id: string }`); `never` if static. */
+type FilenameNames<Params> = Extract<keyof Params, string>
+
+/** A declared params schema must cover exactly the filename's `:params` — no more, no fewer. */
+type AssertFilenameParams<Declared, Names extends string>
+  = string extends keyof Declared
+    ? true // no params schema → the filename wins; nothing to verify
+    : [Exclude<Extract<keyof Declared, string>, Names>] extends [never]
+        ? [Exclude<Names, keyof Declared>] extends [never]
+            ? true
+            : { '⚠ params schema is missing a key the filename path declares': Exclude<Names, keyof Declared> }
+        : { '⚠ params schema declares a key the filename path does not have': Exclude<Extract<keyof Declared, string>, Names> }
+
+/** The route's declared params, read from whichever brand the file's form populates. */
+type FlatParams<H> = AsMethod<FlatContract<H>, 'post'> extends { request: { params: infer P } } ? P : object
+type MapParams<H> = FileMethods<H>[keyof FileMethods<H>] extends { request: { params: infer P } } ? P : object
+
+/**
+ * The per-file params assertion codegen emits, wrapped in `Expect<…>` so a schema
+ * that disagrees with the filename path fails typecheck at the cursor. `Form` is the
+ * authoring form codegen recorded, so the matching brand is read.
+ */
+export type AssertFileRoute<H, Params, Form extends 'flat' | 'methods'>
+  = AssertFilenameParams<Form extends 'flat' ? FlatParams<H> : MapParams<H>, FilenameNames<Params>>
+
+/** Fails to instantiate (and so fails typecheck) unless `T` is exactly `true`. */
+export type Expect<T extends true> = T
+
 // ── the flat form ─────────────────────────────────────────────────────────────
 // Reuses the standalone verb options verbatim (`DuxVerbOpts`), typed for a generic
 // body-bearing method at the route-free pattern `'/'`: with no params schema the
 // handler sees `Record<string, string>` (codegen replaces it with the exact
 // filename params), and the success/kind/errors are inferred exactly as a verb's.
+// A `get`/`head` filename forbidding a body is a generation assertion, not a cursor
+// error, because the filename isn't visible while the handler is authored.
 
 /** The flat-form definition — one handler; the filename owns the method and path. */
 type FlatDef<
@@ -111,14 +173,25 @@ type FlatDef<
   Req extends readonly TypedMiddleware<any, any>[],
 > = DuxVerbOpts<V, P, 'post', Ret, '/', Status, Err, Bindings, object, Mw, Req>
 
-/** The flat form's contract kernel — what codegen keys under the filename's method. */
-type FlatEndpoint<
+/**
+ * The flat form's method-neutral source brand — the ingredients codegen re-keys
+ * into a concrete `DuxEndpoint` for the filename's method via {@link AsMethod}.
+ * Carrying the source (not a pre-baked `'post'` endpoint) is what lets a `*.get.ts`
+ * and a `*.head.ts` project honestly from one authored handler. Type-only.
+ */
+export interface FlatSource<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   Ret,
   Status extends number | undefined,
   Err extends ErrorsOption | undefined,
-> = DuxEndpoint<V, P, Ret, '/', 'post', Status, Err, object>
+> {
+  readonly '~v'?: V
+  readonly '~p'?: P
+  readonly '~ret'?: Ret
+  readonly '~status'?: Status
+  readonly '~err'?: Err
+}
 
 // ── the method-map form ───────────────────────────────────────────────────────
 // One contract per method on an unsuffixed file. Params are route-wide (outer);
@@ -183,11 +256,17 @@ interface MethodErrs<GetE, PostE, PutE, PatchE, DelE, HeadE, OptionsE> {
 
 /**
  * The method-map definition. `K` (inferred via `Record<K, unknown>`) is the set of
- * declared method keys, so only declared methods enter the kernel brand.
+ * declared method keys, so only declared methods enter the kernel brand. Route-level
+ * `middleware`/`requires` run for *every* method and publish typed bindings into all
+ * the handlers — parity with the flat form and the verb surface. For middleware that
+ * differs *per method* (public `GET`, authenticated `POST`), give each its own
+ * `*.<method>.ts` file; one file, one method is the delightful expression of that.
  */
 interface MethodMapDef<
   P extends SchemaWithJSON | undefined,
   Bindings,
+  Mw extends readonly Middleware[],
+  Req extends readonly TypedMiddleware<any, any>[],
   Get extends AnyMethodValidate,
   Post extends AnyMethodValidate,
   Put extends AnyMethodValidate,
@@ -220,17 +299,23 @@ interface MethodMapDef<
   /** A schema for the route's `:params` — route-wide across every method. */
   params?: P
   meta?: H3RouteMeta
-  /** Route-level middleware (run for every method). Typed bindings come from the factory `.use()`. */
-  middleware?: Middleware[]
+  /** Middleware run for every method; typed providers publish into every handler's `event.bindings`. */
+  middleware?: Mw & ([MiddlewareTupleIssue<Mw, Bindings>] extends [never]
+    ? unknown
+    : MiddlewareTupleIssue<Mw, Bindings>)
+  /** Type-only capability requirements an enclosing scope must already provide (delta 12). */
+  requires?: Req & ([RequirementsIssue<Req, Bindings>] extends [never]
+    ? unknown
+    : RequirementsIssue<Req, Bindings>)
   /** Default validation-error hook for every method; a method's own overrides it. */
   onValidationError?: OnValidationError
-  get?: MethodDef<Get, P, 'get', GetRet, GetS, GetE, Bindings>
-  post?: MethodDef<Post, P, 'post', PostRet, PostS, PostE, Bindings>
-  put?: MethodDef<Put, P, 'put', PutRet, PutS, PutE, Bindings>
-  patch?: MethodDef<Patch, P, 'patch', PatchRet, PatchS, PatchE, Bindings>
-  delete?: MethodDef<Del, P, 'delete', DelRet, DelS, DelE, Bindings>
-  head?: MethodDef<Head, P, 'head', HeadRet, HeadS, HeadE, Bindings>
-  options?: MethodDef<Options, P, 'options', OptionsRet, OptionsS, OptionsE, Bindings>
+  get?: MethodDef<Get, P, 'get', GetRet, GetS, GetE, HandlerBindings<Bindings, Mw, Req>>
+  post?: MethodDef<Post, P, 'post', PostRet, PostS, PostE, HandlerBindings<Bindings, Mw, Req>>
+  put?: MethodDef<Put, P, 'put', PutRet, PutS, PutE, HandlerBindings<Bindings, Mw, Req>>
+  patch?: MethodDef<Patch, P, 'patch', PatchRet, PatchS, PatchE, HandlerBindings<Bindings, Mw, Req>>
+  delete?: MethodDef<Del, P, 'delete', DelRet, DelS, DelE, HandlerBindings<Bindings, Mw, Req>>
+  head?: MethodDef<Head, P, 'head', HeadRet, HeadS, HeadE, HandlerBindings<Bindings, Mw, Req>>
+  options?: MethodDef<Options, P, 'options', OptionsRet, OptionsS, OptionsE, HandlerBindings<Bindings, Mw, Req>>
 }
 
 /** The method-map form's per-method contract kernels — only the declared methods. */
@@ -259,6 +344,7 @@ type MethodMapAuthorKey
   = | 'params'
     | 'meta'
     | 'middleware'
+    | 'requires'
     | 'onValidationError'
     | CallableMethod
 
@@ -307,6 +393,8 @@ type FileRouteArg<
   : MethodMapDef<
     P,
     Bindings,
+    Mw,
+    Req,
     Get,
     Post,
     Put,
@@ -374,7 +462,7 @@ type FileRouteReturn<
   HeadE extends ErrorsOption | undefined,
   OptionsE extends ErrorsOption | undefined,
 > = Form extends 'flat'
-  ? DuxFileHandler<FlatEndpoint<V, P, Ret, Status, Err>, never>
+  ? DuxFileHandler<FlatSource<V, P, Ret, Status, Err>, never>
   : DuxFileHandler<never, MethodMapEndpoints<
     K,
     P,
@@ -535,17 +623,29 @@ interface FactoryOps<Bindings, Requires> {
    * Satisfy a feature factory's open requirements and fold in its providers,
    * returning a callable factory. Checked like router `.mount()`: the requirements
    * must be present and assignable, and providers may not collide. Middleware the
-   * parent already runs is not registered again.
+   * parent already runs (a feature `requires`) is not registered again; a provider
+   * both factories *register* (`.use`) is a collision, since it would run twice.
    */
   compose: <FB, FR>(
-    feature: FileRouteFactory<FB, FR> & ComposeSatisfied<FR, Bindings>,
+    feature: FileRouteFactory<FB, FR> & ComposeIssue<FB, FR, Bindings, Requires>,
   ) => FileRouteFactory<Prettify<Bindings & FB>, Requires>
 }
 
-/** Guard `.compose(feature)`: the feature's requirements must be met by this factory's bindings. */
-type ComposeSatisfied<Requires, Bindings> = [UnsatisfiedKeys<Requires, Bindings>] extends [never]
-  ? unknown
-  : { '⚠ compose is missing a required binding the feature depends on': UnsatisfiedKeys<Requires, Bindings> }
+/** A factory's *locally registered* providers: its bindings minus the ones it only requires. */
+type LocalProviders<Bindings, Requires> = Omit<Bindings, keyof Requires>
+
+/**
+ * Guard `.compose(feature)`. First the feature's requirements must be present and
+ * assignable in the parent's bindings; then the two factories' *registered* providers
+ * (each minus what it merely requires) must not overlap, because both would run — the
+ * same law `.use` and router `.mount` enforce ([dux-conventions.md §12](../docs/dux-conventions.md)).
+ */
+type ComposeIssue<FB, FR, Bindings, Requires>
+  = [UnsatisfiedKeys<FR, Bindings>] extends [never]
+    ? [Extract<keyof LocalProviders<FB, FR>, keyof LocalProviders<Bindings, Requires>>] extends [never]
+        ? unknown
+        : { '⚠ compose: both factories already register this binding — only one may provide it': Extract<keyof LocalProviders<FB, FR>, keyof LocalProviders<Bindings, Requires>> }
+    : { '⚠ compose is missing a required binding the feature depends on': UnsatisfiedKeys<FR, Bindings> }
 
 /**
  * A file-route factory. It is **callable** (the same surface as `defineFileRoute`,
@@ -663,9 +763,11 @@ function buildFileHandler(
 
   return Object.assign(handler, {
     '~duxFile': true as const,
-    // Runtime markers the Nitro codegen reads (the `~duxFlat`/`~duxMethods` brands
-    // are type-only and absent at runtime): the authoring form, and — for a method
-    // map — which methods were declared (so it can spot an unreachable-method file).
+    // Runtime form markers the Nitro module reads to pick a route's projection and to
+    // diagnose runtime-inspectable contradictions (an unreachable-method file, a
+    // body-bearing shared handler). They exist because the *type* cannot tell the two
+    // authoring forms apart — the definer infers both kernel brands as a union, so the
+    // form is genuinely ambiguous in the type and only the value records which was written.
     '~duxForm': form,
     '~duxDeclared': form === 'methods' ? mapped : [],
     '~duxFlatHasBody': form === 'flat' && !!def.validate?.body,

@@ -3,7 +3,7 @@
  * typing exactly as the options form: the response is inferred from the return, the
  * event is typed (pattern params, bindings), and the client reads it from `typeof app`.
  */
-import type { FlatContract, WithFilenameParams } from '@mszr/h3-dux'
+import type { FileFlatContract } from '@mszr/h3-dux'
 import { createClient, createFileRouteFactory, createRouter, createServer, defineFileRoute, defineMiddleware } from '@mszr/h3-dux'
 import { expectTypeOf, test } from 'vitest'
 
@@ -31,7 +31,7 @@ test('a bare router handler sees the prefix params', () => {
 
 test('a bare file-route handler infers the response through the generated map', async () => {
   const _r = defineFileRoute(() => ({ status: 'ripe' as const }))
-  interface Routes { '/health': { get: WithFilenameParams<FlatContract<typeof _r>, object> } }
+  interface Routes { '/health': { get: FileFlatContract<typeof _r, 'get', object> } }
   const api = createClient<Routes>({ baseURL: '' })
   expectTypeOf(await api.get('/health').orThrow()).toEqualTypeOf<{ status: 'ripe' }>()
 })

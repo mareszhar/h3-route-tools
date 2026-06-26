@@ -1,8 +1,11 @@
 /**
  * Nitro codegen (delta 13) — generation plane. The pure `generateRoutesModule`
- * maps collected dux file routes to the `#h3-dux/routes` source and surfaces the
- * runtime-inspectable contradictions, with no Nitro build in the loop. The live
- * prepare/dev lifecycle is exercised by the Nitro fixture (phase 9D).
+ * maps collected dux file routes to the `#h3-dux/routes` source: a flat file re-keyed
+ * to its filename method(s) via `FileFlatContract` (an unsuffixed file under every
+ * method, HEAD included), a method map projected per declared method, plus a per-file
+ * `Expect<AssertFileRoute<…>>` carrying params/filename agreement into the typecheck.
+ * It also surfaces the runtime-inspectable contradictions. The live prepare/dev
+ * lifecycle is exercised by the Nitro fixture (phase 9D).
  */
 import type { DuxFileRouteInfo } from './internal/nitro-codegen.ts'
 import { describe, expect, it } from 'vitest'
@@ -13,31 +16,29 @@ function route(partial: Partial<DuxFileRouteInfo> & Pick<DuxFileRouteInfo, 'rout
 }
 
 describe('generateRoutesModule', () => {
-  it('maps a method-locked flat file to a single method entry with filename params', () => {
+  it('re-keys a method-locked flat file to its filename method', () => {
     const { source, diagnostics } = generateRoutesModule([
       route({ routePath: '/checkout', importSpecifier: './routes/checkout.post', form: 'flat', methods: ['post'] }),
     ])
     expect(diagnostics).toEqual([])
     expect(source).toContain('\'/checkout\': {')
-    expect(source).toContain('\'post\': WithFilenameParams<FlatContract<typeof import(\'./routes/checkout.post\').default>, object>')
-    // A static route's filename params are `object` (no required params).
-    expect(source).not.toContain('post\': WithFilenameParams<FlatContract<typeof import(\'./routes/checkout.post\').default>, {')
+    expect(source).toContain('\'post\': FileFlatContract<typeof import(\'./routes/checkout.post\').default, \'post\', object>')
   })
 
   it('derives the filename params type from the route pattern', () => {
     const { source } = generateRoutesModule([
       route({ routePath: '/fruits/:id', importSpecifier: './routes/fruits/[id].get', form: 'flat', methods: ['get'] }),
     ])
-    expect(source).toContain('WithFilenameParams<FlatContract<typeof import(\'./routes/fruits/[id].get\').default>, { id: string }>')
+    expect(source).toContain('FileFlatContract<typeof import(\'./routes/fruits/[id].get\').default, \'get\', { id: string }>')
   })
 
-  it('projects a shared all-method flat file to every client method', () => {
+  it('projects a shared all-method flat file to every client method, HEAD included', () => {
     const { source, diagnostics } = generateRoutesModule([
       route({ routePath: '/health', importSpecifier: './routes/health', form: 'flat', methods: 'all' }),
     ])
     expect(diagnostics).toEqual([])
-    for (const method of ['get', 'post', 'put', 'patch', 'delete', 'options'])
-      expect(source).toContain(`'${method}': WithFilenameParams<FlatContract<`)
+    for (const method of ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'])
+      expect(source).toContain(`'${method}': FileFlatContract<typeof import('./routes/health').default, '${method}', object>`)
   })
 
   it('rejects a shared all-method handler that declares a body', () => {
@@ -46,6 +47,14 @@ describe('generateRoutesModule', () => {
     ])
     expect(diagnostics.length).toBe(1)
     expect(diagnostics[0]).toMatch(/validate\.body/)
+  })
+
+  it('rejects a GET-locked flat handler that declares a body (bodyless method)', () => {
+    const { diagnostics } = generateRoutesModule([
+      route({ routePath: '/search', importSpecifier: './routes/search.get', form: 'flat', methods: ['get'], flatHasBody: true }),
+    ])
+    expect(diagnostics.length).toBe(1)
+    expect(diagnostics[0]).toMatch(/bodyless/)
   })
 
   it('maps a method map to one entry per declared method, sharing route params', () => {
@@ -86,11 +95,18 @@ describe('generateRoutesModule', () => {
     expect(diagnostics[0]).toMatch(/more than once/)
   })
 
+  it('emits a params/filename agreement assertion per file', () => {
+    const { source } = generateRoutesModule([
+      route({ routePath: '/fruits/:id', importSpecifier: './routes/fruits/[id].get', form: 'flat', methods: ['get'] }),
+    ])
+    expect(source).toContain('type _Assert0 = Expect<AssertFileRoute<typeof import(\'./routes/fruits/[id].get\').default, { id: string }, \'flat\'>>')
+  })
+
   it('emits an importable, schema-free module shell', () => {
     const { source } = generateRoutesModule([
       route({ routePath: '/health', importSpecifier: './routes/health', form: 'flat', methods: ['get'] }),
     ])
-    expect(source).toContain('import type { FileMethods, FlatContract, WithFilenameParams } from \'@mszr/h3-dux\'')
+    expect(source).toContain('import type { AssertFileRoute, Expect, FileFlatContract, FileMethods, WithFilenameParams } from \'@mszr/h3-dux\'')
     expect(source).toContain('export interface Routes {')
     expect(source).not.toMatch(/ObjectSchema|SchemaWithPipe/)
   })

@@ -36,6 +36,6 @@ bun run dev      # nitro dev on http://localhost:3000  (Scalar UI at /_scalar)
 
 > Requires the package to be built first (`bun run sdk:build:ours` from the dux workspace), because Nitro resolves `@mszr/h3-dux/nitro` from the package's `dist`, not from source.
 
-Each [`routes/**`](./nitro/routes) file's default export is a `defineRouteHandler`; the Nitro module unions their contracts into nitro's `InternalApi` and the OpenAPI document. [`client.ts`](./nitro/client.ts) types a client from a **type-only** route map (`typeof import('./routes/...').default`) — no runtime import, no client-bundle cost.
+Each [`routes/**`](./nitro/routes) file's default export is a dux-native `defineFileRoute` (delta 13): the filename owns the path and method, and the handler carries every standalone delta. On `nitro prepare`/`dev`/`build` the Nitro module generates `#h3-dux/routes` from those files — a schema-free kernel route map, re-keyed per filename method — and [`client.ts`](./nitro/client.ts) types its client straight from it (`createClient<Routes>()`), with no hand-written route interface. The same files still feed nitro's `InternalApi` and the OpenAPI document.
 
-> This demo shows the current inherited Nitro surface. Phase 9 replaces the hand-written client map with generated `#h3-dux/routes` and adds the dux-native `defineFileRoute` / `createFileRouteFactory` surface; see [dux-spec.md §13](../../docs/dux-spec.md#13-nitro-deltas-via-codegen).
+> The generated module is emitted as a `.ts` (not a `.d.ts`) so its filename-truth assertions are checked even under Nitro's `skipLibCheck` — declare `params: { slug }` on `routes/fruits/[id].get.ts` and `tsc` reports the disagreement at the cursor. See [dux-spec.md §13](../../docs/dux-spec.md#13-nitro-deltas-via-codegen).

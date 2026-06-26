@@ -1,4 +1,4 @@
-import type { FileMethods, FlatContract, WithFilenameParams } from '@mszr/h3-dux'
+import type { AssertFileRoute, FileFlatContract, FileMethods, WithFilenameParams } from '@mszr/h3-dux'
 /**
  * Nitro file routes (delta 13) — type plane. The flat and method-map forms infer
  * the same kernel as the standalone builder, the handler `event` is typed from the
@@ -79,9 +79,11 @@ const _fruitRoute = defineFileRoute({
 
 // Codegen builds this map from Nitro's path/method table + the handler kernels,
 // substituting the filename-derived params. Here we assemble it by hand to prove
-// the projection types the client correctly.
+// the projection types the client correctly. The flat route is re-keyed to the
+// filename's method via `FileFlatContract` (so a `*.head.ts` would project empty);
+// the method map projects each declared method directly.
 interface Routes {
-  '/checkout': { post: WithFilenameParams<FlatContract<typeof _checkoutRoute>, object> }
+  '/checkout': { post: FileFlatContract<typeof _checkoutRoute, 'post', object> }
   '/fruits/:id': {
     get: WithFilenameParams<FileMethods<typeof _fruitRoute>['get'], { id: string }>
     delete: WithFilenameParams<FileMethods<typeof _fruitRoute>['delete'], { id: string }>
@@ -146,9 +148,66 @@ test('compose rejects a parent that does not satisfy the feature requirement', (
   createFileRouteFactory().compose(storeFeature)
 })
 
+test('compose rejects two factories that both register the same provider', () => {
+  // #5: a requirement satisfied by the parent is fine; a provider both *register* is
+  // a collision (it would run twice), exactly like `.use` and router `.mount`.
+  const feature = createFileRouteFactory().use(withDatabase).use(withStore)
+  // @ts-expect-error — both factories register withDatabase
+  createFileRouteFactory().use(withDatabase).compose(feature)
+})
+
+// ── the params/filename agreement assertion (#3) — what codegen wraps in `Expect<…>` ─
+
+const _withParams = defineFileRoute({
+  params: v.object({ id: v.string() }),
+  handler: e => orchard.get(e.params.id),
+})
+
+test('a flat params schema agreeing with the filename passes; a disagreeing one fails', () => {
+  // The filename literal codegen emits is the second-position `Params`; the form it
+  // records is the third. A schema keyed `id` satisfies `:id`, not `:slug`.
+  expectTypeOf<AssertFileRoute<typeof _withParams, { id: string }, 'flat'>>().toEqualTypeOf<true>()
+  expectTypeOf<AssertFileRoute<typeof _withParams, { slug: string }, 'flat'>>().not.toEqualTypeOf<true>()
+})
+
+test('a method-map params schema is checked against the filename the same way', () => {
+  // _fruitRoute declares params { id }, matching a `:id` filename but not `:slug`.
+  expectTypeOf<AssertFileRoute<typeof _fruitRoute, { id: string }, 'methods'>>().toEqualTypeOf<true>()
+  expectTypeOf<AssertFileRoute<typeof _fruitRoute, { slug: string }, 'methods'>>().not.toEqualTypeOf<true>()
+})
+
+test('a route with no params schema lets the filename win (nothing to assert)', () => {
+  // _checkoutRoute declares no params; the filename's params apply unchallenged.
+  expectTypeOf<AssertFileRoute<typeof _checkoutRoute, { anything: string }, 'flat'>>().toEqualTypeOf<true>()
+})
+
 test('the flat brand carries a single contract; the method map carries per-method', () => {
-  // The flat route exposes one contract (its success status); the method map a
-  // per-method kernel keyed by the declared methods.
-  expectTypeOf<FlatContract<typeof _checkoutRoute>['success']>().toEqualTypeOf<201>()
+  // The flat route, re-keyed to a method, exposes one contract (its success status);
+  // the method map a per-method kernel keyed by the declared methods.
+  expectTypeOf<FileFlatContract<typeof _checkoutRoute, 'post', object>['success']>().toEqualTypeOf<201>()
   expectTypeOf<keyof FileMethods<typeof _fruitRoute>>().toEqualTypeOf<'get' | 'delete'>()
+})
+
+test('a flat route re-keyed to HEAD projects an empty response; GET keeps the body', () => {
+  // #1/#2: the flat source is method-neutral; codegen binds the filename method. A
+  // HEAD projection answers empty (no body) even though one handler serves both.
+  expectTypeOf<FileFlatContract<typeof _checkoutRoute, 'head', object>['responses'][201]['kind']>()
+    .toEqualTypeOf<'empty'>()
+  expectTypeOf<FileFlatContract<typeof _checkoutRoute, 'get', object>['responses'][201]['kind']>()
+    .toEqualTypeOf<'json'>()
+})
+
+test('a method-map route-level middleware publishes typed bindings into every handler', () => {
+  // #6: route-wide typed middleware reaches each method's handler as event.bindings.
+  const withTenant = defineMiddleware({ bindings: () => ({ tenant: 'acme' }) })
+  defineFileRoute({
+    params: v.object({ id: v.string() }),
+    middleware: [withTenant],
+    get: {
+      handler: (e) => {
+        expectTypeOf(e.bindings.tenant).toEqualTypeOf<string>()
+        return orchard.get(e.params.id)
+      },
+    },
+  })
 })
