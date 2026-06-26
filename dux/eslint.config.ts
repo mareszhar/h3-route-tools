@@ -11,10 +11,6 @@ export default antfu(
       '**/.output/**',
       '**/.turbo/**',
       '**/packs/**',
-      // The archive is a frozen reference kept in its original upstream/ox
-      // formatting — we don't reformat it to our house style. See
-      // docs/dux-spec-workspace.md §2.
-      'archive/**',
     ],
   },
   {
@@ -42,7 +38,7 @@ export default antfu(
   {
     // Maintainer scripts and runnable demos log progress, use top-level await,
     // and touch the global `process` — all intentional there.
-    files: ['scripts/**', 'h3-dux/demo/**'],
+    files: ['scripts/**', 'sandbox/**'],
     rules: {
       'no-console': 'off',
       'node/prefer-global/process': 'off',

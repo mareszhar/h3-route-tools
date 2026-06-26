@@ -7,7 +7,7 @@ The deltas that make h3-dux more than a rename, in two generations. Each is **co
 
 Everything not listed here is inherited from `h3-route-tools` and re-exported unchanged — see [dux-vision.md §4.3](./dux-vision.md#43-inherited-vs-ours). Vocabulary, the validated-data model, the kernel, the honest client, and the naming map are defined once in [dux-conventions.md](./dux-conventions.md) and referenced, not repeated.
 
-Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirrored in [`archive/`](../archive)) so the examples are concrete.
+Snippets use valibot schemas from the Orchard comparison fixtures (`@orchard/domain`, in [`sandbox/demo-comparisons/fixtures`](../sandbox/demo-comparisons/fixtures)) so the examples are concrete.
 
 ## Implementation status
 
@@ -525,7 +525,7 @@ app.mount(account) // checked: the parent already provides withUser
 
 ## 13. Nitro deltas via codegen
 
-**Why.** The Nitro demo hand-writes its `Routes` interface ([demo/nitro/client.ts:9](../h3-dux/demo/nitro/client.ts:9)) — exactly the boilerplate/drift principle 2 forbids — and file routes fall back to upstream `defineRouteHandler`, so the standalone deltas (validation modes, response inference and kinds, SSE, typed errors, event accessors, middleware bindings) do not reach them. Closing this turns Nitro's filesystem routing — which neither Hono nor Elysia has — from underdelivered into a real moat.
+**Why.** The early Nitro demo hand-wrote its `Routes` interface — exactly the boilerplate/drift principle 2 forbids — and file routes fell back to upstream `defineRouteHandler`, so the standalone deltas (validation modes, response inference and kinds, SSE, typed errors, event accessors, middleware bindings) did not reach them. Closing this turns Nitro's filesystem routing — which neither Hono nor Elysia has — from underdelivered into a real moat.
 
 The filesystem already states the path and, when suffixed, the method. The delightful surface never repeats either.
 

@@ -14,7 +14,8 @@ This is the dux maintainer area inside the **h3-route-tools** fork.
 
 - `h3-dux/` — the publishable package, `@mszr/h3-dux`
 - `docs/` — the vision, conventions, spec, and maintainer manual that drive it
-- `archive/` — the Orchard reference (six backends, frozen) showing the unsafe status quo we improve on
+- `sandbox/demo-main/` — the focused h3-dux demo, split into standalone and Nitro
+- `sandbox/demo-comparisons/` — Orchard comparison demos for h3, h3-dux, Hono, and Elysia across standalone and Nitro
 - `scripts/` — maintainer automation
 
 ## Start here
@@ -34,3 +35,4 @@ Run from `dux/` (bun + turbo):
 3. `bun run sdk:typecheck` — typecheck the package against the fork's upstream source
 4. `bun run sdk:test` — every assertion plane (runtime, types, editor DX)
 5. `bun run lint` / `lint:fix` — ESLint across `dux/`
+6. `bun run demo:main:standalone` — run the focused h3-dux standalone trip

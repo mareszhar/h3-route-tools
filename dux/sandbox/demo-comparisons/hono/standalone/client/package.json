@@ -1,0 +1,23 @@
+{
+  "name": "@orchard/client-hono",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": "./index.ts",
+    "./trip": "./trip.ts"
+  },
+  "scripts": {
+    "dev": "bun index.ts",
+    "start": "bun index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orchard/backend-hono": "workspace:*",
+    "@orchard/domain": "workspace:*",
+    "hono": "^4.12.26"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

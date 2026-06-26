@@ -7,8 +7,13 @@
   "description": "Maintainer workspace for @mszr/h3-dux",
   "workspaces": [
     "h3-dux",
-    "h3-dux/demo",
-    "h3-dux/demo/nitro"
+    "sandbox/demo-main/standalone",
+    "sandbox/demo-main/nitro",
+    "sandbox/demo-comparisons/fixtures",
+    "sandbox/demo-comparisons/*/standalone",
+    "sandbox/demo-comparisons/*/standalone/client",
+    "sandbox/demo-comparisons/*/nitro",
+    "sandbox/demo-comparisons/*/nitro/client"
   ],
   "scripts": {
     "postinstall": "bun scripts/install-git-hooks.ts --optional",
@@ -32,7 +37,31 @@
     "sdk:test:watch": "bun --cwd=h3-dux run test:watch",
     "sdk:build:upstream": "cd .. && pnpm install --silent && pnpm build",
     "sdk:build:ours": "rm -rf h3-dux/dist && bun --cwd=h3-dux run build",
-    "sdk:build:all": "bun run sdk:build:upstream && bun run sdk:build:ours"
+    "sdk:build:all": "bun run sdk:build:upstream && bun run sdk:build:ours",
+
+    "demo:main:standalone": "bun --cwd=sandbox/demo-main/standalone run trip",
+    "demo:main:standalone:serve": "bun --cwd=sandbox/demo-main/standalone run serve",
+    "demo:main:nitro": "bun --cwd=sandbox/demo-main/nitro run dev",
+
+    "demo:comparisons:h3:standalone": "bun --cwd=sandbox/demo-comparisons/h3/standalone/client run dev",
+    "demo:comparisons:h3:standalone:serve": "bun --cwd=sandbox/demo-comparisons/h3/standalone run dev",
+    "demo:comparisons:h3:nitro": "bun --cwd=sandbox/demo-comparisons/h3/nitro/client run dev",
+    "demo:comparisons:h3:nitro:serve": "bun --cwd=sandbox/demo-comparisons/h3/nitro run build && bun --cwd=sandbox/demo-comparisons/h3/nitro run start",
+
+    "demo:comparisons:h3-dux:standalone": "bun --cwd=sandbox/demo-comparisons/h3-dux/standalone/client run dev",
+    "demo:comparisons:h3-dux:standalone:serve": "bun --cwd=sandbox/demo-comparisons/h3-dux/standalone run dev",
+    "demo:comparisons:h3-dux:nitro": "bun --cwd=sandbox/demo-comparisons/h3-dux/nitro/client run dev",
+    "demo:comparisons:h3-dux:nitro:serve": "bun --cwd=sandbox/demo-comparisons/h3-dux/nitro run build && bun --cwd=sandbox/demo-comparisons/h3-dux/nitro run start",
+
+    "demo:comparisons:hono:standalone": "bun --cwd=sandbox/demo-comparisons/hono/standalone/client run dev",
+    "demo:comparisons:hono:standalone:serve": "bun --cwd=sandbox/demo-comparisons/hono/standalone run dev",
+    "demo:comparisons:hono:nitro": "bun --cwd=sandbox/demo-comparisons/hono/nitro/client run dev",
+    "demo:comparisons:hono:nitro:serve": "bun --cwd=sandbox/demo-comparisons/hono/nitro run build && bun --cwd=sandbox/demo-comparisons/hono/nitro run start",
+
+    "demo:comparisons:elysia:standalone": "bun --cwd=sandbox/demo-comparisons/elysia/standalone/client run dev",
+    "demo:comparisons:elysia:standalone:serve": "bun --cwd=sandbox/demo-comparisons/elysia/standalone run dev",
+    "demo:comparisons:elysia:nitro": "bun --cwd=sandbox/demo-comparisons/elysia/nitro/client run dev",
+    "demo:comparisons:elysia:nitro:serve": "bun --cwd=sandbox/demo-comparisons/elysia/nitro run build && bun --cwd=sandbox/demo-comparisons/elysia/nitro run start"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.0.0",

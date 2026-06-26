@@ -1,0 +1,24 @@
+{
+  "name": "@orchard/backend-h3-dux",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": "./server/app.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch server/index.ts",
+    "start": "bun server/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mszr/h3-dux": "workspace:*",
+    "@orchard/domain": "workspace:*",
+    "h3": "^2.0.1-rc.22",
+    "srvx": "^0.11.15",
+    "valibot": "^1.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

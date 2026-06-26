@@ -175,7 +175,7 @@ A garden's wall is a promise: opting into h3-dux never locks you out of somethin
 
 - **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed middleware bindings**, **dux-aware OpenAPI for standalone and Nitro file routes**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
 - **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific. Typed middleware bindings (delta 12) are the general capability mechanism through which any middleware — auth or otherwise — publishes request-scoped values; auth remains an app concern.
-- **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points and competitive bars in `archive/` — we study what they do best and adopt it the dux way (or better) — but they are not compatibility targets.
+- **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points and competitive bars in `sandbox/demo-comparisons/` — we study what they do best and adopt it the dux way (or better) — but they are not compatibility targets.
 
 ---
 

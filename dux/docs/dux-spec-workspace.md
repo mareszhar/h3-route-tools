@@ -21,7 +21,7 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sy
 
 ```
 dux/
-  package.json            orchestrator manifest (h3-dux-workspace); workspaces: ["h3-dux"]
+  package.json            orchestrator manifest (h3-dux-workspace); package + sandbox workspaces
   turbo.json              dev / build / typecheck / test pipelines
   tsconfig.base.json      shared compiler options (members extend this)
   bunfig.toml             hoisted linker (Node tools resolve transitive deps)
@@ -32,7 +32,9 @@ dux/
   scripts/                maintainer scripts (git-hook install, …)
   docs/                   vision · conventions · spec · this manual
   h3-dux/                 the published package, @mszr/h3-dux
-  archive/                the Orchard reference (frozen; see §2)
+  sandbox/
+    demo-main/            focused h3-dux demo, split into standalone and Nitro
+    demo-comparisons/     Orchard SDK comparisons, all managed by this workspace
 ```
 
 ### Tooling, and why it differs from upstream
@@ -41,11 +43,11 @@ The outer repo uses **ox** (oxlint + oxfmt). Inside `dux/` we use **ESLint** (`@
 
 ---
 
-## 2. The archive
+## 2. Sandbox Demos
 
-`archive/` is the Orchard reference — one fruit-market API across six backends (h3, Hono, Elysia, each also under Nitro) and their clients. It exists to show *what we used to have to do* and how unsafe the hand-typed h3 client was. It is the source of the concrete schemas the spec snippets use, and the future home of test fixtures.
+`sandbox/demo-main/` is the focused h3-dux showcase. It is intentionally outside `h3-dux/` because it depends on workspace-local package links and shared maintainer context that will not exist when `dux/h3-dux` is published as a subtree to `mareszhar/h3-dux`. Its `standalone/` and `nitro/` folders keep the two runtime modes separate while sharing small local fixtures.
 
-It is a **frozen reference, not a live build target.** Its own toolchain config was hoisted up to `dux/` (so the config lives in one place), and every member `tsconfig` was repointed to the hoisted `tsconfig.base.json`. It is *not* listed in the workspace `workspaces`, so `bun install` stays lean and we never build six bleeding-edge backends to work on the package, and it is **excluded from our ESLint** (`archive/**`) so its original formatting is preserved rather than churned into our house style. Re-wiring it into turbo and lint later is a one-line change (add its globs back, drop the ignore) — the seams are intact.
+`sandbox/demo-comparisons/` is the Orchard comparison matrix — h3, h3-dux, Hono, and Elysia, each in standalone and Nitro form. The shared business logic and narrated trips live in `fixtures/` (`@orchard/domain`), while each SDK folder owns its HTTP wiring and typed client surface. These demos are live workspace members, so one bun install and one Turbo setup manages the package, focused demo, comparison fixtures, backends, and clients.
 
 ---
 
@@ -78,7 +80,7 @@ One runner (Vitest), three assertion planes, one fixture set. No delta is "done"
 | Type shapes | `*.test-d.ts` | inferred response types, the accumulated `typeof app`, client narrowing, typed `error` discrimination, merged context | Vitest `--typecheck` |
 | Editor DX | `*.dx.test.ts` | completions and diagnostics land on the intended cursor with the intended message | [selenita](https://github.com/mareszhar/selenita) on Vitest |
 
-`vitest run --typecheck` locks all three. Tests collocate beside the code they exercise; the Orchard schemas in `archive/` are the shared fixture. A **parity** check pins that h3-dux's inherited behavior still matches `h3-route-tools` for the routes both express — when upstream moves, parity fails before a user does.
+`vitest run --typecheck` locks all three. Tests collocate beside the code they exercise; the larger Orchard comparison schemas live in `sandbox/demo-comparisons/fixtures/`. A **parity** check pins that h3-dux's inherited behavior still matches `h3-route-tools` for the routes both express — when upstream moves, parity fails before a user does.
 
 ### Diagnostics are a contract, not an accident (Generation 2)
 
@@ -147,7 +149,7 @@ Run from `dux/`.
 
 | Command | Does |
 | --- | --- |
-| `bun run lint` / `lint:fix` | ESLint across `dux/` (incl. archive source and markdown) |
+| `bun run lint` / `lint:fix` | ESLint across `dux/` |
 | `bun run sdk:build:ours` | build `@mszr/h3-dux` (obuild → `dist`) |
 | `bun run sdk:build:all` | build upstream `h3-route-tools`, then ours |
 | `bun run sdk:typecheck` | `tsc --noEmit` for the package |
@@ -155,6 +157,8 @@ Run from `dux/`.
 | `bun run sdk:dev` | obuild stub for fast iteration |
 | `bun run typecheck` / `test` / `build` | turbo across the workspace |
 | `bun run validate` / `val` | lint + typecheck + test |
+| `bun run demo:main:standalone` | focused h3-dux standalone demo trip |
+| `bun run demo:main:nitro` | focused h3-dux Nitro demo server |
 
 ---
 

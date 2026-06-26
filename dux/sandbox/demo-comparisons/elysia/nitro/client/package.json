@@ -1,0 +1,21 @@
+{
+  "name": "@orchard/client-nitro-elysia",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun index.ts",
+    "start": "bun index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elysiajs/eden": "^1.4.9",
+    "@orchard/backend-nitro-elysia": "workspace:*",
+    "@orchard/client-elysia": "workspace:*",
+    "@orchard/domain": "workspace:*",
+    "elysia": "^1.4.29"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

@@ -96,15 +96,12 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 **Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
 
-**Generation 2** — in progress. Shipped (deltas 6–13, all test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), and the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface. The contract kernel is now canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. Planned (delta 14): OpenAPI from the standalone server; client interceptors. Per-delta contracts, usage, and phasing: [the spec](../docs/dux-spec.md).
+**Generation 2** — in progress. Shipped (deltas 6–13, all test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), and the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface. The contract kernel is now canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. Planned (delta 14): OpenAPI from the standalone server; client interceptors.
 
 ## Development
 
-This published package is the front door, not the workspace. Build, lint, test, and release commands live in the dux maintainer workspace one level up — see [`dux/`](..) and its [README](../README.md).
+This published package is the front door. The maintainer workspace, design docs, and runnable sandbox demos live in the `dux/` folder of the development fork.
 
 ## Docs
 
-- [dux-vision.md](../docs/dux-vision.md) — what h3-dux is, why a fork, the principles, the roadmap
-- [dux-conventions.md](../docs/dux-conventions.md) — vocabulary, the fetchdts alignment, the naming map
-- [dux-spec.md](../docs/dux-spec.md) — the deltas, contract by contract
-- [dux-spec-workspace.md](../docs/dux-spec-workspace.md) — how the workspace is built, tested, and shipped
+- [Development fork](https://github.com/mareszhar/h3-route-tools/tree/dux/dux) — maintainer workspace, design docs, and sandbox demos

@@ -1,0 +1,19 @@
+{
+  "name": "@orchard/client-nitro-h3-dux",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun index.ts",
+    "start": "bun index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mszr/h3-dux": "workspace:*",
+    "@orchard/backend-nitro-h3-dux": "workspace:*",
+    "@orchard/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
