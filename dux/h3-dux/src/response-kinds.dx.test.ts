@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const project = duxProject()
 
 /** The schema/endpoint internals a response-kind diagnostic must never leak (delta 6 bar). */
-const LEAK = /ObjectSchema|SchemaWithPipe|DuxEndpoint|TextResponse|BinaryResponse|EventStream|No overload|Overload \d/
+const LEAK = /ObjectSchema|SchemaWithPipe|H3DuxEndpoint|TextResponse|BinaryResponse|EventStream|No overload|Overload \d/
 
 function expectNoLeak(messages: Array<Diagnostic | string>): void {
   for (const m of messages)

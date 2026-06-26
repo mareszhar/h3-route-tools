@@ -7,11 +7,11 @@
  * It also surfaces the runtime-inspectable contradictions. The live prepare/dev
  * lifecycle is exercised by the Nitro fixture (phase 9D).
  */
-import type { DuxFileRouteInfo } from './internal/nitro-codegen.ts'
+import type { H3DuxFileRouteInfo } from './internal/nitro-codegen.ts'
 import { describe, expect, it } from 'vitest'
 import { generateNitroRouteTypes, generateRoutesModule } from './internal/nitro-codegen.ts'
 
-function route(partial: Partial<DuxFileRouteInfo> & Pick<DuxFileRouteInfo, 'routePath' | 'importSpecifier'>): DuxFileRouteInfo {
+function route(partial: Partial<H3DuxFileRouteInfo> & Pick<H3DuxFileRouteInfo, 'routePath' | 'importSpecifier'>): H3DuxFileRouteInfo {
   return { form: 'flat', declared: [], flatHasBody: false, methods: 'all', ...partial }
 }
 

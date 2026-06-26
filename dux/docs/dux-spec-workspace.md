@@ -7,9 +7,9 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sy
 | Phase | Scope | Status |
 | --- | --- | --- |
 | W0 | Workspace scaffold: orchestrator manifest, tooling, package skeleton, docs | ☑ done |
-| W1 | Test foundations: vitest planes, selenita wiring, Orchard fixtures | ☐ |
-| W2 | Per-delta suites land with each delta (1–5) | ☐ |
-| W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☐ |
+| W1 | Test foundations: vitest planes, selenita wiring, Orchard fixtures | ☑ done |
+| W2 | Per-delta suites land with each delta (1–5) | ☑ done |
+| W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☑ done |
 | W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6) ☑ source mode; `forModes` parity + type-perf plane (100/500/1000 routes) ☐ | ◑ |
 | W5 | Nitro file-route/codegen harness (delta 13): `defineFileRoute`, factory composition, and generation diagnostics are unit/type/DX-tested; the Nitro demo is migrated to file routes + generated `#h3-dux/routes` and verified through `nitro prepare` + project typecheck ☑. A standalone automated dev-regeneration (add/remove/rename) harness is ◑ pending | ◑ |
 
@@ -29,7 +29,9 @@ dux/
   .markdownlint.json      markdown rules for the editor extension
   .vscode/                eslint fix-on-save, no Prettier; eslint + Volar recommended
   .githooks/pre-commit    lint guard for staged dux changes
-  scripts/                maintainer scripts (git-hook install, …)
+  .gitignore              ignores `.dux/` (release-machinery scratch state)
+  scripts/                maintainer scripts (git-hook install, publishing, …)
+    publish/              prepublish gate, npm release, subtree squash ([§9](#9-publishing))
   docs/                   vision · conventions · spec · this manual
   h3-dux/                 the published package, @mszr/h3-dux
   sandbox/
@@ -59,6 +61,7 @@ The outer repo uses **ox** (oxlint + oxfmt). Inside `dux/` we use **ESLint** (`@
 - **Exports:** `.`, `./nitro`, `./codegen`, all named, `sideEffects: false` for tree-shaking.
 - **Upstream dependency:** `h3-route-tools` is a runtime `dependency`. For typecheck, `h3-dux/tsconfig.json` maps it to the fork source (`../../src/*`) via `paths`, so we always typecheck against *our* upstream, not whatever is on npm — the whole point of forking. obuild resolves it as an external package name at build time.
 - **Peers:** `h3` is the one needed by every user → it stays a required peer. `nitro` and `srvx` are needed only by a subpath → optional peers. The rule: needed by everyone → dependency/peer; needed by a subpath → optional peer.
+- **Manifest stays npm-only.** `h3-dux/package.json` carries no `scripts` — only what npm needs to describe and resolve the published artifact (name, exports, files, peer/runtime deps, the devDependencies that pull build/test tools into `h3-dux/node_modules`). The orchestrator (`dux/package.json`, [§8](#8-scripts)) is the one place that controls how the package is built, linted, tested, and published, invoking those tools directly (`cd h3-dux && bun x <tool>`) rather than through package-local scripts.
 
 ---
 
@@ -159,9 +162,28 @@ Run from `dux/`.
 | `bun run validate` / `val` | lint + typecheck + test |
 | `bun run demo:main:standalone` | focused h3-dux standalone demo trip |
 | `bun run demo:main:nitro` | focused h3-dux Nitro demo server |
+| `bun run prepublish:verify` | shared gate, standalone: build · lint · typecheck · test |
+| `bun run publish:sdk:dry-run` | gate + packaging rehearsal (`npm publish --dry-run`); no bump, nothing published |
+| `bun run publish:sdk:patch` / `:minor` / `:major` | the release: gate → bump → build → `npm publish` → commit + tag → subtree squash |
+| `bun run publish:subtree:squash` | ad hoc: squash-push `h3-dux/` to the public repo on its own |
+
+`@mszr/h3-dux`'s own `package.json` carries no scripts — every command above invokes the underlying tool directly (`cd h3-dux && bun x <tool>`), so the orchestrator's manifest stays the single place that controls how the package is built, linted, tested, and published. The package manifest itself holds only what npm needs to describe the published artifact: name, exports, files, peer/runtime deps.
 
 ---
 
 ## 9. Publishing
 
-The published `mareszhar/h3-dux` repo is the package + docs face, not the development home — development stays in this fork, because typechecking against the fork's upstream source is the point. Releases push the `h3-dux/` subtree to the public repo and publish `@mszr/h3-dux` to npm under the `@mszr` scope. The pipeline (phase W3) will follow the idb-dux model: a single verification gate (build · lint · typecheck · test · parity), then version bump, npm publish, and subtree push.
+The published `mareszhar/h3-dux` repo is the package + docs face, not the development home — development stays in this fork, because typechecking against the fork's upstream source is the point. Releases push the `h3-dux/` subtree to the public repo as a single squashed commit and publish `@mszr/h3-dux` to npm under the `@mszr` scope. The pipeline lives in `dux/scripts/publish/`.
+
+There is no demo-deploy step and no workspace-dependency pinning dance: h3-dux has no Vercel-hosted demo, and `h3-route-tools` is already a plain npm semver range in `h3-dux/package.json` rather than a `workspace:*` link — so a release's only mutation is the version bump itself.
+
+**The flow** (`bun run publish:sdk:<patch|minor|major>`):
+
+1. **Shared gate**, once — build · lint · typecheck · test (`scripts/publish/lib/gates.ts`). A green run leaves a content-keyed receipt (`scripts/publish/lib/verify-stamp.ts`) so an immediately-following step (or a resumed release) doesn't re-verify unchanged inputs. `H3DUX_FORCE_VERIFY=1` ignores the receipt; the deliberately awkward `H3DUX_UNSAFE_PUBLISH_SKIP_CHECKS=1` skips the gate outright — there is no flag for that, on purpose.
+2. **npm auth check**, then bump `h3-dux/package.json`'s version (a direct write — `npm version` would try to reify the outer pnpm workspace and crash on it).
+3. **Build, then `npm publish --access public`.** A failure up to and including this step restores the original `package.json`; nothing is recorded as released.
+4. Once published, the bump is permanent. The remaining steps are guarded by an in-flight **release record** (`scripts/publish/lib/release-state.ts`, gitignored under `dux/.dux/`) so a later failure resumes from the first incomplete step instead of re-publishing or re-bumping: wait for npm registry propagation, commit `🔖 release v<version>` and tag it, then squash-push the public subtree (`scripts/publish/publish-subtree.ts`) with the same message.
+
+`bun run publish:sdk:dry-run` rehearses the gate and packaging (`npm publish --dry-run`) without bumping or publishing anything. `bun run publish:subtree:squash` runs the squash on its own — useful for re-pushing the public mirror without cutting a new npm version; it opens `$GIT_EDITOR` on a prefilled `🔖 release v<version>` message unless `--message` is passed.
+
+The gitmoji convention (`🔖 release vX.Y.Z`), the squash-to-public-repo model, and the resumable release-state machinery follow the same maintainer mechanics across every dux fork.

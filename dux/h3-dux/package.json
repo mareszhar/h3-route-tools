@@ -2,7 +2,7 @@
   "name": "@mszr/h3-dux",
   "type": "module",
   "version": "0.0.0",
-  "description": "End-to-end type-safe routes for h3 v2 and Nitro v3 — a DX-first layer over h3-route-tools.",
+  "description": "End-to-end type-safe routes for h3 v2 and Nitro v3",
   "author": "Mares (https://github.com/mareszhar)",
   "license": "MIT",
   "homepage": "https://github.com/mareszhar/h3-dux",
@@ -44,21 +44,17 @@
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build": "obuild",
-    "stub": "obuild --stub",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run --typecheck --passWithNoTests",
-    "test:watch": "vitest --typecheck"
-  },
   "peerDependencies": {
-    "h3": "^1.15.4 || >=2.0.1-rc.22 || ^2.0.1",
-    "nitro": ">=3.0.1",
+    "h3": "^2.0.1",
+    "nitro": "^3.0.1",
     "srvx": "^0.11.15",
     "typescript": ">=5.0.0"
   },
   "peerDependenciesMeta": {
     "nitro": {
+      "optional": true
+    },
+    "srvx": {
       "optional": true
     },
     "typescript": {

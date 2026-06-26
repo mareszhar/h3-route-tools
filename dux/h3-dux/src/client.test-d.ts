@@ -1,4 +1,4 @@
-import type { DuxHTTPError, DuxRawResponse, DuxTransportError } from '@mszr/h3-dux'
+import type { H3DuxHTTPError, H3DuxRawResponse, H3DuxTransportError } from '@mszr/h3-dux'
 import type { App, ErrorBody, Fruit, NewFruit } from '@test'
 import { createClient } from '@mszr/h3-dux'
 import { expectTypeOf, test } from 'vitest'
@@ -45,7 +45,7 @@ test('the default await is the honest { data, error } result', async () => {
 
 test('.raw() returns the native typed response', async () => {
   const res = await api.get('/fruits/:id', { params: { id: 'm' } }).raw()
-  expectTypeOf(res).toEqualTypeOf<DuxRawResponse<Fruit, 'json'>>()
+  expectTypeOf(res).toEqualTypeOf<H3DuxRawResponse<Fruit, 'json'>>()
   expectTypeOf(await res.parse()).toEqualTypeOf<Fruit>()
   expectTypeOf(await res.json()).toEqualTypeOf<Fruit>()
 })
@@ -101,6 +101,6 @@ test('transport options are accepted without changing endpoint data types', asyn
 
 test('the runtime error instances match the contract error union', () => {
   // The thrown/returned errors are the exported classes.
-  expectTypeOf<DuxHTTPError>().toMatchTypeOf<{ kind: 'http', status: number, response: Response }>()
-  expectTypeOf<DuxTransportError>().toMatchTypeOf<{ kind: 'transport' }>()
+  expectTypeOf<H3DuxHTTPError>().toMatchTypeOf<{ kind: 'http', status: number, response: Response }>()
+  expectTypeOf<H3DuxTransportError>().toMatchTypeOf<{ kind: 'transport' }>()
 })

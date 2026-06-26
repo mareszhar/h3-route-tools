@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const project = duxProject()
 
 /** Schema/kernel internals a file-route diagnostic must never leak (delta 6 bar). */
-const LEAK = /ObjectSchema|SchemaWithPipe|DuxEndpoint\b|DuxFileHandler|No overload|Overload \d/
+const LEAK = /ObjectSchema|SchemaWithPipe|H3DuxEndpoint\b|H3DuxFileHandler|No overload|Overload \d/
 
 function expectNoLeak(messages: Array<Diagnostic | string>): void {
   for (const m of messages)

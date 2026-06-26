@@ -8,7 +8,7 @@ function json(data: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(data), { ...init, headers })
 }
 
-it('a DuxCall shares one in-flight request across await/orThrow/raw', async () => {
+it('a H3DuxCall shares one in-flight request across await/orThrow/raw', async () => {
   let calls = 0
   const api = createClient<App>({
     fetch: () => {

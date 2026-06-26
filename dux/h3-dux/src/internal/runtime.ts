@@ -14,7 +14,7 @@ import type { H3Event } from 'h3'
 import type { OnValidationError, RouteMethod, SchemaWithJSON, ValidateSource } from 'h3-route-tools'
 import type { AnyMethodValidate, ErrorsOption } from './route-types.ts'
 import { createEventStream, getQuery, HTTPError } from 'h3'
-import { ensureDuxAccessors } from '../middleware.ts'
+import { ensureH3DuxAccessors } from '../middleware.ts'
 import {
   isBinaryResponse,
   isTextResponse,
@@ -171,7 +171,7 @@ export function buildMethod(method: RouteMethod, options: MethodRuntimeOpts): Bu
       event.res.status = status
     // Install the root aliases (`event.params/query/body/bindings`) over the
     // canonical `event.context` store — idempotent with any middleware that ran.
-    ensureDuxAccessors(event)
+    ensureH3DuxAccessors(event)
     attachValid(event, eager, schemas, onError)
     // `throw event.error(status, data)` — a typed thrower for the declared `errors` (delta 9).
     ;(event as { error?: unknown }).error = (errStatus: number, data?: unknown) =>

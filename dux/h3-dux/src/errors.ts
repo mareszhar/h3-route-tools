@@ -1,16 +1,16 @@
 import type { ResponseKind } from './internal/contract.ts'
-import type { DuxRawResponse } from './response.ts'
+import type { H3DuxRawResponse } from './response.ts'
 import { responseKindFromHeaders } from './response.ts'
 
 /**
  * The honest client's failure channel (delta 8/9). A call resolves to a result
- * `{ data, error }`; `error` is a `DuxError` — either a typed non-2xx response
- * (`DuxHTTPError`) or a request that never completed (`DuxTransportError`). The
+ * `{ data, error }`; `error` is a `H3DuxError` — either a typed non-2xx response
+ * (`H3DuxHTTPError`) or a request that never completed (`H3DuxTransportError`). The
  * `.orThrow()` opt-out rejects with the same instances.
  */
 
 /** A non-2xx HTTP response. `data` is the parsed error body — typed per status from the contract. */
-export class DuxHTTPError<Data = unknown> extends Error {
+export class H3DuxHTTPError<Data = unknown> extends Error {
   readonly kind = 'http' as const
   constructor(
     readonly status: number,
@@ -18,24 +18,24 @@ export class DuxHTTPError<Data = unknown> extends Error {
     readonly response: Response,
   ) {
     super(`Request failed with status ${status}`)
-    this.name = 'DuxHTTPError'
+    this.name = 'H3DuxHTTPError'
   }
 }
 
 /** The request never reached a response — network down, DNS, CORS, aborted. */
-export class DuxTransportError extends Error {
+export class H3DuxTransportError extends Error {
   readonly kind = 'transport' as const
   constructor(cause: unknown) {
     super('Request did not complete', { cause })
-    this.name = 'DuxTransportError'
+    this.name = 'H3DuxTransportError'
   }
 }
 
 /** Either failure a client call can surface. */
-export type DuxError<Data = unknown> = DuxHTTPError<Data> | DuxTransportError
+export type H3DuxError<Data = unknown> = H3DuxHTTPError<Data> | H3DuxTransportError
 
 /** The neutral result shape, before the contract narrows `data`/`error`. */
-export type RawResult = { data: unknown, error: undefined } | { data: undefined, error: DuxError }
+export type RawResult = { data: unknown, error: undefined } | { data: undefined, error: H3DuxError }
 
 /**
  * Recover the declared error payload from an h3 error response. h3 serializes a
@@ -120,7 +120,7 @@ export async function parseBody(response: Response): Promise<unknown> {
 /** Add the kind-aware `.parse()` method while preserving a genuine Response. */
 export function withParser<Data, Kind extends ResponseKind>(
   response: Response,
-): DuxRawResponse<Data, Kind> {
+): H3DuxRawResponse<Data, Kind> {
   const nativeClone = response.clone.bind(response)
   Object.defineProperties(response, {
     parse: {
@@ -132,13 +132,13 @@ export function withParser<Data, Kind extends ResponseKind>(
       value: () => withParser<Data, Kind>(nativeClone()),
     },
   })
-  return response as DuxRawResponse<Data, Kind>
+  return response as H3DuxRawResponse<Data, Kind>
 }
 
 /**
  * Run a fetch and fold it into the honest result. A non-2xx becomes a
- * `DuxHTTPError` (not a throw); a fetch that rejects becomes a
- * `DuxTransportError`. Only the body is read — once.
+ * `H3DuxHTTPError` (not a throw); a fetch that rejects becomes a
+ * `H3DuxTransportError`. Only the body is read — once.
  */
 export async function buildResult(fetchResponse: () => Promise<Response>): Promise<RawResult> {
   let response: Response
@@ -146,10 +146,10 @@ export async function buildResult(fetchResponse: () => Promise<Response>): Promi
     response = await fetchResponse()
   }
   catch (cause) {
-    return { data: undefined, error: new DuxTransportError(cause) }
+    return { data: undefined, error: new H3DuxTransportError(cause) }
   }
   const body = await parseBody(response)
   if (response.ok)
     return { data: body, error: undefined }
-  return { data: undefined, error: new DuxHTTPError(response.status, unwrapErrorData(body), response) }
+  return { data: undefined, error: new H3DuxHTTPError(response.status, unwrapErrorData(body), response) }
 }

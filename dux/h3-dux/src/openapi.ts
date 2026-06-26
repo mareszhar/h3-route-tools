@@ -13,7 +13,7 @@ import type {
   SchemaWithJSON,
   StatusCodeKey,
 } from 'h3-route-tools'
-import type { DuxOpenAPIObject } from './internal/openapi-types.ts'
+import type { H3DuxOpenAPIObject } from './internal/openapi-types.ts'
 import type { AnyMethodValidate } from './internal/route-types.ts'
 import { isBinaryResponse, isTextResponse } from './response.ts'
 import { isEventStream } from './sse.ts'
@@ -42,7 +42,7 @@ export interface MapSchemaContext {
   status?: StatusCodeKey
 }
 
-export interface DuxOpenAPIDocument {
+export interface H3DuxOpenAPIDocument {
   openapi: '3.1.0'
   info: OpenAPIInfo
   paths: Record<string, OpenAPIPathItem>
@@ -52,32 +52,32 @@ export interface DuxOpenAPIDocument {
   security?: Array<Record<string, string[]>>
 }
 
-export interface DuxOpenAPIRoute {
+export interface H3DuxOpenAPIRoute {
   route: string
   method: RouteMethod
   params?: SchemaWithJSON
   validate?: AnyMethodValidate & { eager?: boolean }
   status?: number
   errors?: Partial<Record<StatusCodeKey, SchemaWithJSON>>
-  openapi?: DuxOpenAPIObject
+  openapi?: H3DuxOpenAPIObject
 }
 
-const ROUTES = new WeakMap<object, DuxOpenAPIRoute[]>()
-export function recordOpenAPIRoute(owner: object, route: DuxOpenAPIRoute): void {
+const ROUTES = new WeakMap<object, H3DuxOpenAPIRoute[]>()
+export function recordOpenAPIRoute(owner: object, route: H3DuxOpenAPIRoute): void {
   const routes = ROUTES.get(owner) ?? []
   routes.push(route)
   ROUTES.set(owner, routes)
 }
 
-export function openAPIRoutesOf(owner: object): readonly DuxOpenAPIRoute[] {
+export function openAPIRoutesOf(owner: object): readonly H3DuxOpenAPIRoute[] {
   return ROUTES.get(owner) ?? []
 }
 
-export function toOpenAPI(app: object, options: ToOpenAPIOptions): DuxOpenAPIDocument {
+export function toOpenAPI(app: object, options: ToOpenAPIOptions): H3DuxOpenAPIDocument {
   return buildOpenAPI(openAPIRoutesOf(app), options)
 }
 
-export function buildOpenAPI(routes: readonly DuxOpenAPIRoute[], options: ToOpenAPIOptions): DuxOpenAPIDocument {
+export function buildOpenAPI(routes: readonly H3DuxOpenAPIRoute[], options: ToOpenAPIOptions): H3DuxOpenAPIDocument {
   const paths: Record<string, OpenAPIPathItem> = {}
   let components: ComponentsRegistry = { ...(options.components?.schemas ?? {}) }
 
@@ -108,7 +108,7 @@ export function buildOpenAPI(routes: readonly DuxOpenAPIRoute[], options: ToOpen
     paths[path] = item
   }
 
-  const doc: DuxOpenAPIDocument = { openapi: '3.1.0', info: options.info, paths }
+  const doc: H3DuxOpenAPIDocument = { openapi: '3.1.0', info: options.info, paths }
   const mergedComponents = { ...options.components, ...(Object.keys(components).length ? { schemas: components } : {}) }
   if (Object.keys(mergedComponents).length)
     doc.components = mergedComponents
@@ -122,7 +122,7 @@ export function buildOpenAPI(routes: readonly DuxOpenAPIRoute[], options: ToOpen
 }
 
 function toOperation(
-  route: DuxOpenAPIRoute,
+  route: H3DuxOpenAPIRoute,
   schema: (value: StandardTypedV1, context: MapSchemaContext) => JSONSchemaDocument | undefined,
 ): OpenAPIOperation {
   const operation: OpenAPIOperation = {}
@@ -147,7 +147,7 @@ function toOperation(
 }
 
 function pathParameters(
-  route: DuxOpenAPIRoute,
+  route: H3DuxOpenAPIRoute,
   schema: (value: StandardTypedV1, context: MapSchemaContext) => JSONSchemaDocument | undefined,
 ): OpenAPIParameter[] {
   if (route.params) {
@@ -165,7 +165,7 @@ function pathParameters(
 function schemaToParameters(
   value: SchemaWithJSON,
   where: 'path' | 'query' | 'header',
-  route: DuxOpenAPIRoute,
+  route: H3DuxOpenAPIRoute,
   schema: (value: StandardTypedV1, context: MapSchemaContext) => JSONSchemaDocument | undefined,
 ): OpenAPIParameter[] {
   const json = schema(value, { direction: 'input', source: where === 'path' ? 'params' : where === 'header' ? 'headers' : 'query', route: route.route, method: route.method })
@@ -182,7 +182,7 @@ function schemaToParameters(
 }
 
 function toRequestBody(
-  route: DuxOpenAPIRoute,
+  route: H3DuxOpenAPIRoute,
   body: BodyValidation,
   schema: (value: StandardTypedV1, context: MapSchemaContext) => JSONSchemaDocument | undefined,
 ): OpenAPIRequestBody {
@@ -203,7 +203,7 @@ function toRequestBody(
 }
 
 function toResponses(
-  route: DuxOpenAPIRoute,
+  route: H3DuxOpenAPIRoute,
   schema: (value: StandardTypedV1, context: MapSchemaContext) => JSONSchemaDocument | undefined,
 ): Record<string, OpenAPIResponse> {
   const out: Record<string, OpenAPIResponse> = {}
@@ -235,7 +235,7 @@ function toResponses(
 function responseObject(
   status: string,
   value: unknown,
-  route: DuxOpenAPIRoute,
+  route: H3DuxOpenAPIRoute,
   schema: (value: StandardTypedV1, context: MapSchemaContext) => JSONSchemaDocument | undefined,
   errorEnvelope = false,
 ): OpenAPIResponse {
@@ -267,7 +267,7 @@ function responseObject(
   }
 }
 
-function hasRequestValidation(route: DuxOpenAPIRoute): boolean {
+function hasRequestValidation(route: H3DuxOpenAPIRoute): boolean {
   return !!(route.params || route.validate?.query || route.validate?.headers || route.validate?.body)
 }
 
@@ -302,7 +302,7 @@ function httpErrorSchema(status: number, data: JSONSchemaDocument | undefined): 
   }
 }
 
-function applyOperationMeta(operation: OpenAPIOperation, meta: DuxOpenAPIObject | undefined): void {
+function applyOperationMeta(operation: OpenAPIOperation, meta: H3DuxOpenAPIObject | undefined): void {
   if (!meta)
     return
   for (const key of ['summary', 'description', 'operationId', 'tags', 'deprecated', 'security', 'externalDocs'] as const) {

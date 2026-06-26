@@ -18,13 +18,13 @@ import type {
   RouteMethod,
   SchemaWithJSON,
 } from 'h3-route-tools'
-import type { DuxOpenAPI } from './internal/openapi-types.ts'
+import type { H3DuxOpenAPI } from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
   DuplicateRoute,
-  DuxRouteRecord,
-  DuxVerbOpts,
   ErrorsOption,
+  H3DuxRouteRecord,
+  H3DuxVerbOpts,
   InferMethodResponse,
   JoinPath,
   MergePair,
@@ -52,7 +52,7 @@ interface RouterEntry {
 
 interface RouterState {
   prefix: string
-  openapi?: DuxOpenAPI
+  openapi?: H3DuxOpenAPI
   middlewares: Middleware[]
   entries: RouterEntry[]
 }
@@ -67,8 +67,8 @@ function stateOf(router: object): RouterState {
   return state
 }
 
-/** Internal replay boundary consumed by `DuxServer.mount`; not exported by the package. */
-export function routerEntries(router: DuxRouter): readonly RouterEntry[] {
+/** Internal replay boundary consumed by `H3DuxServer.mount`; not exported by the package. */
+export function routerEntries(router: H3DuxRouter): readonly RouterEntry[] {
   return stateOf(router).entries
 }
 
@@ -93,7 +93,7 @@ type RouterOpts<
   Err extends ErrorsOption | undefined,
   Mw extends readonly Middleware[],
   Req extends readonly TypedMiddleware<any, any>[],
-> = DuxVerbOpts<V, P, M, Ret, JoinPath<Prefix, Route>, Status, Err, Bindings, ParentParams, Mw, Req>
+> = H3DuxVerbOpts<V, P, M, Ret, JoinPath<Prefix, Route>, Status, Err, Bindings, ParentParams, Mw, Req>
 
 /**
  * What a router verb accepts: the full options object **or** a bare handler when
@@ -145,9 +145,9 @@ type RouterNext<
   Ret,
   Status extends number | undefined,
   Err,
-> = DuxRouter<
+> = H3DuxRouter<
   Prefix,
-  Prettify<MergePair<Routes, DuxRouteRecord<JoinPath<Prefix, Route>, M, V, P, Ret, Status, Err, ParentParams>>>,
+  Prettify<MergePair<Routes, H3DuxRouteRecord<JoinPath<Prefix, Route>, M, V, P, Ret, Status, Err, ParentParams>>>,
   Bindings,
   Requires,
   ParentParams
@@ -160,7 +160,7 @@ type RouterNext<
  * capabilities it depends on via `.requires(...)` (checked at the mount cursor);
  * `ParentParams` are params a dynamic outer mount owns (`parentParams`).
  */
-export class DuxRouter<
+export class H3DuxRouter<
   Prefix extends string = '',
   Routes = object,
   Bindings = object,
@@ -173,7 +173,7 @@ export class DuxRouter<
   declare readonly '~bindings': Bindings
   declare readonly '~requires': Requires
 
-  constructor(prefix: Prefix = '' as Prefix, _parentParams: readonly string[] = [], openapi?: DuxOpenAPI) {
+  constructor(prefix: Prefix = '' as Prefix, _parentParams: readonly string[] = [], openapi?: H3DuxOpenAPI) {
     ROUTER_STATE.set(this, {
       prefix,
       openapi,
@@ -192,14 +192,14 @@ export class DuxRouter<
   use(middleware: InlineCallback<Bindings>): this
   use<M extends TypedMiddleware<any, any>>(
     middleware: UsableMiddleware<M, Bindings>,
-  ): DuxRouter<Prefix, Routes, Prettify<Bindings & BindingsOf<M>>, Requires, ParentParams>
+  ): H3DuxRouter<Prefix, Routes, Prettify<Bindings & BindingsOf<M>>, Requires, ParentParams>
   use<
     const Req extends readonly TypedMiddleware<any, any>[] = [],
     Staged = undefined,
     B extends object = object,
   >(
     spec: InlineSpec<Bindings, Req, Staged, B> & InlineSpecIssue<Bindings, Req, B>,
-  ): DuxRouter<Prefix, Routes, Prettify<Bindings & B>, Requires, ParentParams>
+  ): H3DuxRouter<Prefix, Routes, Prettify<Bindings & B>, Requires, ParentParams>
   use(spec: unknown): unknown {
     stateOf(this).middlewares.push(toMiddleware(spec as Middleware))
     return this
@@ -213,7 +213,7 @@ export class DuxRouter<
    */
   requires<M extends TypedMiddleware<any, any>>(
     _provider: M,
-  ): DuxRouter<Prefix, Routes, Prettify<Bindings & BindingsOf<M>>, Prettify<Requires & BindingsOf<M>>, ParentParams> {
+  ): H3DuxRouter<Prefix, Routes, Prettify<Bindings & BindingsOf<M>>, Prettify<Requires & BindingsOf<M>>, ParentParams> {
     return this as never
   }
 
@@ -339,7 +339,7 @@ export class DuxRouter<
       route: joinPath(state.prefix, route),
       options: {
         ...options,
-        openapi: mergeOpenAPI(state.openapi, options.openapi as DuxOpenAPI | undefined),
+        openapi: mergeOpenAPI(state.openapi, options.openapi as H3DuxOpenAPI | undefined),
         middleware: [...state.middlewares, ...(options.middleware ?? [])],
       },
     })
@@ -351,7 +351,7 @@ interface RouterOptions<ParentParams extends readonly string[]> {
   /** Param names a *dynamic* outer mount owns and supplies to this router (delta 11). */
   parentParams?: ParentParams
   /** OpenAPI metadata inherited by routes authored inside this router. */
-  openapi?: DuxOpenAPI
+  openapi?: H3DuxOpenAPI
 }
 
 /**
@@ -359,19 +359,19 @@ interface RouterOptions<ParentParams extends readonly string[]> {
  * `createRouter()` is prefix-free. The counterpart to `createServer` for grouping:
  * author with the same verbs, then `createServer().mount(router)`.
  */
-export function createRouter(): DuxRouter<''>
-export function createRouter<const Prefix extends string>(prefix: Prefix): DuxRouter<Prefix>
+export function createRouter(): H3DuxRouter<''>
+export function createRouter<const Prefix extends string>(prefix: Prefix): H3DuxRouter<Prefix>
 export function createRouter<const Prefix extends string>(
   prefix: Prefix,
-  options: { openapi: DuxOpenAPI },
-): DuxRouter<Prefix>
+  options: { openapi: H3DuxOpenAPI },
+): H3DuxRouter<Prefix>
 export function createRouter<const Prefix extends string, const PP extends readonly string[]>(
   prefix: Prefix,
   options: RouterOptions<PP> & { parentParams: PP },
-): DuxRouter<Prefix, object, object, object, Record<PP[number], string>>
+): H3DuxRouter<Prefix, object, object, object, Record<PP[number], string>>
 export function createRouter(
   prefix = '',
   options?: RouterOptions<readonly string[]>,
-): DuxRouter<string> {
-  return new DuxRouter(prefix, options?.parentParams, options?.openapi)
+): H3DuxRouter<string> {
+  return new H3DuxRouter(prefix, options?.parentParams, options?.openapi)
 }

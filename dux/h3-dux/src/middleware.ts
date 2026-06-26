@@ -10,7 +10,7 @@
  * registers with `.use(...)` / `middleware: [...]` exactly like any other.
  */
 import type { H3Event, Middleware } from 'h3'
-import type { DuxOpenAPI } from './internal/openapi-types.ts'
+import type { H3DuxOpenAPI } from './internal/openapi-types.ts'
 import { getQuery } from 'h3'
 
 /** A value or a promise of it — h3's middleware return shape, not re-exported by h3. */
@@ -31,7 +31,7 @@ declare const META: unique symbol
 export interface TypedMiddleware<Requires = object, Bindings = object> {
   (event: H3Event, next: () => MaybePromise<unknown>): MaybePromise<unknown>
   readonly [META]: { requires: Requires, bindings: Bindings }
-  readonly '~duxOpenAPI'?: DuxOpenAPI
+  readonly '~duxOpenAPI'?: H3DuxOpenAPI
 }
 
 /**
@@ -86,7 +86,7 @@ export interface MiddlewareSpec<
   Bindings extends object,
 > {
   /** Docs-only OpenAPI metadata, usually security requirements for auth middleware. */
-  openapi?: DuxOpenAPI
+  openapi?: H3DuxOpenAPI
   /** Providers an enclosing scope must already supply — consumed, never executed. */
   requires?: Requires
   /** Private preparation, exposed as `event.staged` to this middleware only. */
@@ -104,7 +104,7 @@ export interface MiddlewareSpec<
 const ACCESSORS = Symbol.for('h3dux.accessors')
 
 /** Mutable view of an h3 event's context for the canonical dux storage slots. */
-interface DuxContext {
+interface H3DuxContext {
   bindings?: Record<string, unknown>
   staged?: unknown
   params?: Record<string, string>
@@ -118,7 +118,7 @@ interface DuxContext {
  * and the route handler both call it, and only the first one defines the getters.
  * `bindings` lazily creates its store so reading it before any provider is safe.
  */
-export function ensureDuxAccessors(event: H3Event): void {
+export function ensureH3DuxAccessors(event: H3Event): void {
   const target = event as unknown as Record<PropertyKey, unknown>
   if (target[ACCESSORS])
     return
@@ -127,14 +127,14 @@ export function ensureDuxAccessors(event: H3Event): void {
     bindings: {
       configurable: true,
       get(this: H3Event) {
-        const ctx = this.context as DuxContext
+        const ctx = this.context as H3DuxContext
         return (ctx.bindings ??= {})
       },
     },
     staged: {
       configurable: true,
       get(this: H3Event) {
-        return (this.context as DuxContext).staged
+        return (this.context as H3DuxContext).staged
       },
     },
     params: {
@@ -146,14 +146,14 @@ export function ensureDuxAccessors(event: H3Event): void {
     query: {
       configurable: true,
       get(this: H3Event) {
-        const ctx = this.context as DuxContext
+        const ctx = this.context as H3DuxContext
         return Object.hasOwn(ctx, 'query') ? ctx.query : getQuery(this)
       },
     },
     body: {
       configurable: true,
       get(this: H3Event) {
-        return (this.context as DuxContext).body
+        return (this.context as H3DuxContext).body
       },
     },
   })
@@ -181,11 +181,11 @@ export function defineMiddleware(
   return withOpenAPI(runSpec(input), input.openapi) as unknown as TypedMiddleware<any, any>
 }
 
-export function middlewareOpenAPI(input: unknown): DuxOpenAPI | undefined {
-  return (input as { readonly '~duxOpenAPI'?: DuxOpenAPI } | undefined)?.['~duxOpenAPI']
+export function middlewareOpenAPI(input: unknown): H3DuxOpenAPI | undefined {
+  return (input as { readonly '~duxOpenAPI'?: H3DuxOpenAPI } | undefined)?.['~duxOpenAPI']
 }
 
-function withOpenAPI<T extends Middleware>(middleware: T, openapi: DuxOpenAPI | undefined): T {
+function withOpenAPI<T extends Middleware>(middleware: T, openapi: H3DuxOpenAPI | undefined): T {
   if (openapi !== undefined)
     Object.defineProperty(middleware, '~duxOpenAPI', { value: openapi })
   return middleware
@@ -201,8 +201,8 @@ function withOpenAPI<T extends Middleware>(middleware: T, openapi: DuxOpenAPI | 
 function runSpec(spec: MiddlewareSpec<any, any, any>): Middleware {
   const { staged, bindings, handler } = spec
   return async (event, next) => {
-    ensureDuxAccessors(event)
-    const ctx = event.context as DuxContext
+    ensureH3DuxAccessors(event)
+    const ctx = event.context as H3DuxContext
     const enclosingStaged = ctx.staged
     try {
       ctx.staged = staged ? await staged(event as BoundEvent) : undefined
@@ -241,7 +241,7 @@ export function toMiddleware(input: Middleware | MiddlewareSpec<any, any, any>):
   if (typeof input !== 'function')
     return withOpenAPI(runSpec(input), input.openapi)
   return withOpenAPI((event, next) => {
-    ensureDuxAccessors(event)
+    ensureH3DuxAccessors(event)
     return (input as Middleware)(event, next)
   }, middlewareOpenAPI(input))
 }

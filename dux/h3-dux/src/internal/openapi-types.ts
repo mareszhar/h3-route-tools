@@ -1,6 +1,6 @@
 import type { H3RouteMeta } from 'h3'
 
-export interface DuxOpenAPIObject extends Record<string, unknown> {
+export interface H3DuxOpenAPIObject extends Record<string, unknown> {
   hide?: boolean
   summary?: string
   description?: string
@@ -11,20 +11,20 @@ export interface DuxOpenAPIObject extends Record<string, unknown> {
   externalDocs?: Record<string, unknown>
 }
 
-export type DuxOpenAPI = DuxOpenAPIObject | false
+export type H3DuxOpenAPI = H3DuxOpenAPIObject | false
 
-export type DuxMeta = H3RouteMeta & {
-  openapi?: DuxOpenAPI
+export type H3DuxMeta = H3RouteMeta & {
+  openapi?: H3DuxOpenAPI
 }
 
-export function normalizeOpenAPI(value: DuxOpenAPI | undefined): DuxOpenAPIObject | undefined {
+export function normalizeOpenAPI(value: H3DuxOpenAPI | undefined): H3DuxOpenAPIObject | undefined {
   if (value === false)
     return { hide: true }
   return value
 }
 
-export function mergeOpenAPI(...items: Array<DuxOpenAPI | undefined>): DuxOpenAPIObject | undefined {
-  let merged: DuxOpenAPIObject | undefined
+export function mergeOpenAPI(...items: Array<H3DuxOpenAPI | undefined>): H3DuxOpenAPIObject | undefined {
+  let merged: H3DuxOpenAPIObject | undefined
   for (const item of items) {
     const next = normalizeOpenAPI(item)
     if (!next)
@@ -34,8 +34,8 @@ export function mergeOpenAPI(...items: Array<DuxOpenAPI | undefined>): DuxOpenAP
   return merged
 }
 
-function mergeOpenAPIObject(base: DuxOpenAPIObject | undefined, next: DuxOpenAPIObject): DuxOpenAPIObject {
-  const merged: DuxOpenAPIObject = { ...(base ?? {}), ...next }
+function mergeOpenAPIObject(base: H3DuxOpenAPIObject | undefined, next: H3DuxOpenAPIObject): H3DuxOpenAPIObject {
+  const merged: H3DuxOpenAPIObject = { ...(base ?? {}), ...next }
   if (base?.tags || next.tags)
     merged.tags = unique([...(base?.tags ?? []), ...(next.tags ?? [])])
   if (base?.security || next.security)

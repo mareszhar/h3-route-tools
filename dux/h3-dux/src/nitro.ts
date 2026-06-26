@@ -17,9 +17,9 @@
  * to phase 10's refined design. The full upstream Nitro surface is re-exported below.
  */
 import type { NitroModule, NitroTypes } from 'nitro/types'
-import type { DuxFileHandler } from './file-route.ts'
-import type { DuxFileRouteInfo } from './internal/nitro-codegen.ts'
-import type { DuxOpenAPIDocument, DuxOpenAPIRoute, ToOpenAPIOptions } from './openapi.ts'
+import type { H3DuxFileHandler } from './file-route.ts'
+import type { H3DuxFileRouteInfo } from './internal/nitro-codegen.ts'
+import type { H3DuxOpenAPIDocument, H3DuxOpenAPIRoute, ToOpenAPIOptions } from './openapi.ts'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { generateNitroRouteTypes, generateRoutesModule } from './internal/nitro-codegen.ts'
@@ -33,7 +33,7 @@ export * from 'h3-route-tools/nitro'
 type RouteMethodTypes = readonly string[] | undefined
 
 /** The runtime form markers a built dux file handler carries (see file-route.ts). */
-interface DuxFileMarkers {
+interface H3DuxFileMarkers {
   '~duxFile'?: true
   '~duxForm'?: 'flat' | 'methods'
   '~duxDeclared'?: readonly string[]
@@ -50,7 +50,7 @@ interface UpstreamRouteInfo {
 
 /** The result of collecting file routes: the dux routes, plus modules we could not inspect. */
 export interface CollectResult {
-  infos: DuxFileRouteInfo[]
+  infos: H3DuxFileRouteInfo[]
   upstream: UpstreamRouteInfo[]
   /** Specifiers whose module threw on import — surfaced as a warning, never dropped in silence. */
   unreadable: string[]
@@ -75,10 +75,10 @@ function declaredMethods(routeDef: Record<string, unknown>): string[] {
  * it: the definer infers both kernel brands as a union, so only the runtime value
  * records it.
  */
-async function loadDuxMarkers(spec: string, typesDir: string): Promise<DuxFileMarkers | undefined | 'error'> {
+async function loadDuxMarkers(spec: string, typesDir: string): Promise<H3DuxFileMarkers | undefined | 'error'> {
   try {
     const mod = await import(resolve(typesDir, `${spec}.ts`))
-    const def = mod.default as DuxFileMarkers | undefined
+    const def = mod.default as H3DuxFileMarkers | undefined
     return def?.['~duxFile'] || def?.['~routeDef'] ? def : undefined
   }
   catch {
@@ -94,7 +94,7 @@ async function loadDuxMarkers(spec: string, typesDir: string): Promise<DuxFileMa
  * dropped without a trace; a module that imports but isn't a dux route is skipped.
  */
 export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: string): Promise<CollectResult> {
-  const infos: DuxFileRouteInfo[] = []
+  const infos: H3DuxFileRouteInfo[] = []
   const upstream: UpstreamRouteInfo[] = []
   const unreadable: string[] = []
   for (const [routePath, methods] of Object.entries(routes)) {
@@ -223,17 +223,17 @@ function applyUpstreamRouteTypes(routes: NitroTypes['routes'], upstream: readonl
 
 const NITRO_OPENAPI_BASE_ROUTE = '/_openapi.__h3dux-base.json'
 
-async function loadRouteDefault(spec: string, typesDir: string): Promise<DuxFileHandler | undefined> {
+async function loadRouteDefault(spec: string, typesDir: string): Promise<H3DuxFileHandler | undefined> {
   try {
     const mod = await import(resolve(typesDir, `${spec}.ts`))
-    return mod.default as DuxFileHandler | undefined
+    return mod.default as H3DuxFileHandler | undefined
   }
   catch {
     return undefined
   }
 }
 
-function openAPIMethods(info: DuxFileRouteInfo, handler: DuxFileHandler): string[] {
+function openAPIMethods(info: H3DuxFileRouteInfo, handler: H3DuxFileHandler): string[] {
   const docs = handler['~duxOpenAPI']
   if (!docs)
     return []
@@ -243,11 +243,11 @@ function openAPIMethods(info: DuxFileRouteInfo, handler: DuxFileHandler): string
 }
 
 async function buildDuxOpenAPIOverlay(
-  infos: readonly DuxFileRouteInfo[],
+  infos: readonly H3DuxFileRouteInfo[],
   typesDir: string,
   options: ToOpenAPIOptions,
-): Promise<DuxOpenAPIDocument> {
-  const routes: DuxOpenAPIRoute[] = []
+): Promise<H3DuxOpenAPIDocument> {
+  const routes: H3DuxOpenAPIRoute[] = []
   for (const info of infos) {
     const handler = await loadRouteDefault(info.importSpecifier, typesDir)
     const docs = handler?.['~duxOpenAPI']
@@ -260,7 +260,7 @@ async function buildDuxOpenAPIOverlay(
         continue
       routes.push({
         route: info.routePath,
-        method: method as DuxOpenAPIRoute['method'],
+        method: method as H3DuxOpenAPIRoute['method'],
         params: docs.params,
         validate: entry.validate,
         status: entry.status,

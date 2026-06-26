@@ -9,16 +9,16 @@ import type {
   SchemaWithJSON,
 } from 'h3-route-tools'
 import type {
-  DuxMeta,
-  DuxOpenAPI,
-  DuxOpenAPIObject,
+  H3DuxMeta,
+  H3DuxOpenAPI,
+  H3DuxOpenAPIObject,
 } from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
   DuplicateRoute,
-  DuxRouteRecord,
-  DuxVerbOpts,
   ErrorsOption,
+  H3DuxRouteRecord,
+  H3DuxVerbOpts,
   InferMethodResponse,
   JoinPath,
   MergePair,
@@ -35,7 +35,7 @@ import type {
   UnsatisfiedKeys,
   UsableMiddleware,
 } from './middleware.ts'
-import type { DuxRouter } from './router.ts'
+import type { H3DuxRouter } from './router.ts'
 import { H3Typed } from 'h3-route-tools'
 import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { buildMethod } from './internal/runtime.ts'
@@ -44,7 +44,7 @@ import { recordOpenAPIRoute } from './openapi.ts'
 import { routerEntries } from './router.ts'
 
 /** The server type after adding one route+method — accumulates into `typeof app`. */
-type DuxNext<
+type H3DuxNext<
   Routes,
   Bindings,
   Route extends string,
@@ -54,7 +54,7 @@ type DuxNext<
   Ret,
   Status extends number | undefined,
   Err,
-> = DuxServer<Prettify<MergePair<Routes, DuxRouteRecord<Route, M, V, P, Ret, Status, Err>>>, Bindings>
+> = H3DuxServer<Prettify<MergePair<Routes, H3DuxRouteRecord<Route, M, V, P, Ret, Status, Err>>>, Bindings>
 
 /** Prefix every key of a router's route map with a static outer mount prefix. */
 type PrefixRoutes<Outer extends string, RR> = Outer extends ''
@@ -109,8 +109,8 @@ interface RuntimeOpts {
   middleware?: Middleware[]
   // `requires` is type-only (delta 12): it consumes a capability, registers nothing.
   requires?: unknown
-  meta?: DuxMeta
-  openapi?: DuxOpenAPI
+  meta?: H3DuxMeta
+  openapi?: H3DuxOpenAPI
   status?: number
   onValidationError?: OnValidationError
   errors?: ErrorsOption
@@ -144,15 +144,15 @@ function mount(app: H3Typed, method: RouteMethod, route: string, options: Runtim
   })
 }
 
-function middlewareDocs(middleware: readonly Middleware[] | undefined): Array<DuxOpenAPI | undefined> {
+function middlewareDocs(middleware: readonly Middleware[] | undefined): Array<H3DuxOpenAPI | undefined> {
   return (middleware ?? []).map(middlewareOpenAPI)
 }
 
-function routeDocs(inherited: readonly DuxOpenAPI[], options: RuntimeOpts): DuxOpenAPIObject | undefined {
+function routeDocs(inherited: readonly H3DuxOpenAPI[], options: RuntimeOpts): H3DuxOpenAPIObject | undefined {
   return mergeOpenAPI(...inherited, ...middlewareDocs(options.middleware), options.meta?.openapi, options.openapi)
 }
 
-/** The per-verb options a `DuxServer<Routes, Bindings>` accepts. */
+/** The per-verb options a `H3DuxServer<Routes, Bindings>` accepts. */
 type ServerOpts<
   Bindings,
   Route extends string,
@@ -164,7 +164,7 @@ type ServerOpts<
   Err extends ErrorsOption | undefined,
   Mw extends readonly Middleware[],
   Req extends readonly TypedMiddleware<any, any>[],
-> = DuxVerbOpts<V, P, M, Ret, Route, Status, Err, Bindings, object, Mw, Req>
+> = H3DuxVerbOpts<V, P, M, Ret, Route, Status, Err, Bindings, object, Mw, Req>
 
 /**
  * What a verb method accepts: the full options object **or** a bare handler when
@@ -204,7 +204,7 @@ type VerbArg<
  * with `.use(...)` (delta 12); each handler's `event.bindings` reads it. Domains
  * compose through routers — `.mount(createRouter('/fruits')…)` (delta 11).
  */
-export class DuxServer<Routes = object, Bindings = object> {
+export class H3DuxServer<Routes = object, Bindings = object> {
   /** Type-only marker carrying the accumulated route map; read by `createClient`. */
   declare readonly '~duxRoutes': Routes
 
@@ -217,7 +217,7 @@ export class DuxServer<Routes = object, Bindings = object> {
   /** In-process request, for a typed client hitting the app directly. */
   readonly request: (input: string, init?: RequestInit) => Response | Promise<Response>
 
-  readonly #openapi: DuxOpenAPI[] = []
+  readonly #openapi: H3DuxOpenAPI[] = []
 
   constructor(config?: H3TypedConfig) {
     this.native = new H3Typed(config)
@@ -240,14 +240,14 @@ export class DuxServer<Routes = object, Bindings = object> {
   use(middleware: InlineCallback<Bindings>): this
   use<M extends TypedMiddleware<any, any>>(
     middleware: UsableMiddleware<M, Bindings>,
-  ): DuxServer<Routes, Prettify<Bindings & BindingsOf<M>>>
+  ): H3DuxServer<Routes, Prettify<Bindings & BindingsOf<M>>>
   use<
     const Req extends readonly TypedMiddleware<any, any>[] = [],
     Staged = undefined,
     B extends object = object,
   >(
     spec: InlineSpec<Bindings, Req, Staged, B> & InlineSpecIssue<Bindings, Req, B>,
-  ): DuxServer<Routes, Prettify<Bindings & B>>
+  ): H3DuxServer<Routes, Prettify<Bindings & B>>
   use(route: string, handler: Middleware, opts?: unknown): this
   use(...args: unknown[]): unknown {
     if (typeof args[0] === 'string') {
@@ -269,21 +269,21 @@ export class DuxServer<Routes = object, Bindings = object> {
    * the server has not provided is rejected at the cursor.
    */
   mount<RR, Req, PP>(
-    router: DuxRouter<any, RR, any, Req, PP>
+    router: H3DuxRouter<any, RR, any, Req, PP>
       & RequireSatisfied<Req, Bindings>
       & ParentParamsSatisfied<'', RR, PP>
       & NoRouteCollisions<Routes, RR>,
-  ): DuxServer<Prettify<MergePair<Routes, RR>>, Bindings>
+  ): H3DuxServer<Prettify<MergePair<Routes, RR>>, Bindings>
   mount<Outer extends string, RR, Req, PP>(
     outerPrefix: Outer,
-    router: DuxRouter<any, RR, any, Req, PP>
+    router: H3DuxRouter<any, RR, any, Req, PP>
       & RequireSatisfied<Req, Bindings>
       & ParentParamsSatisfied<Outer, RR, PP>
       & NoRouteCollisions<Routes, PrefixRoutes<Outer, RR>>,
-  ): DuxServer<Prettify<MergePair<Routes, PrefixRoutes<Outer, RR>>>, Bindings>
+  ): H3DuxServer<Prettify<MergePair<Routes, PrefixRoutes<Outer, RR>>>, Bindings>
   mount(first: unknown, second?: unknown): unknown {
     const outer = typeof first === 'string' ? first : ''
-    const router = (typeof first === 'string' ? second : first) as DuxRouter
+    const router = (typeof first === 'string' ? second : first) as H3DuxRouter
     for (const entry of routerEntries(router)) {
       const route = joinMountedPath(outer, entry.route)
       const options = entry.options as unknown as RuntimeOpts
@@ -308,7 +308,7 @@ export class DuxServer<Routes = object, Bindings = object> {
    */
   register<P extends RoutePlugin>(
     plugin: P & NoRouteCollisions<Routes, InferRoutes<P>>,
-  ): DuxServer<Prettify<MergePair<Routes, InferRoutes<P>>>, Bindings>
+  ): H3DuxServer<Prettify<MergePair<Routes, InferRoutes<P>>>, Bindings>
   register(plugin: H3Plugin & { readonly '~routePlugin'?: never }): this
   register(plugin: H3Plugin): unknown {
     this.native.register(plugin)
@@ -326,7 +326,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'get', Route>,
     opts: VerbArg<Bindings, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'get', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'get', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'get', route, options)
     recordOpenAPIRoute(this, { route, method: 'get', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -344,7 +344,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'post', Route>,
     opts: VerbArg<Bindings, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'post', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'post', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'post', route, options)
     recordOpenAPIRoute(this, { route, method: 'post', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -362,7 +362,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'put', Route>,
     opts: VerbArg<Bindings, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'put', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'put', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'put', route, options)
     recordOpenAPIRoute(this, { route, method: 'put', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -380,7 +380,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'patch', Route>,
     opts: VerbArg<Bindings, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'patch', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'patch', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'patch', route, options)
     recordOpenAPIRoute(this, { route, method: 'patch', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -398,7 +398,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'delete', Route>,
     opts: VerbArg<Bindings, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'delete', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'delete', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'delete', route, options)
     recordOpenAPIRoute(this, { route, method: 'delete', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -416,7 +416,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'head', Route>,
     opts: VerbArg<Bindings, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'head', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'head', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'head', route, options)
     recordOpenAPIRoute(this, { route, method: 'head', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -434,7 +434,7 @@ export class DuxServer<Routes = object, Bindings = object> {
     const Req extends readonly TypedMiddleware<any, any>[] = [],
   >(route: DuplicateRoute<Routes, 'options', Route>,
     opts: VerbArg<Bindings, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
-  ): DuxNext<Routes, Bindings, Route, 'options', V, P, Ret, Status, Err> {
+  ): H3DuxNext<Routes, Bindings, Route, 'options', V, P, Ret, Status, Err> {
     const options = toRuntimeOpts(opts)
     mount(this.native, 'options', route, options)
     recordOpenAPIRoute(this, { route, method: 'options', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
@@ -447,6 +447,6 @@ export class DuxServer<Routes = object, Bindings = object> {
  * build here is the single source of truth the client is typed from
  * (`createClient<typeof app>()`). See docs/dux-conventions.md §5.
  */
-export function createServer(config?: H3TypedConfig): DuxServer {
-  return new DuxServer(config)
+export function createServer(config?: H3TypedConfig): H3DuxServer {
+  return new H3DuxServer(config)
 }

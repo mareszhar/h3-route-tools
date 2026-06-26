@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { ResponseKind } from './internal/contract.ts'
-import type { DuxRawResponse } from './response.ts'
-import { buildResult, DuxHTTPError, withParser } from './errors.ts'
+import type { H3DuxRawResponse } from './response.ts'
+import { buildResult, H3DuxHTTPError, withParser } from './errors.ts'
 
 /** Runtime + type marker key branding a response schema as a typed SSE stream. */
 const BRAND = '~h3dux/eventStream'
@@ -54,13 +54,13 @@ function parseFrame<T>(frame: string): T | undefined {
 
 /**
  * Parse a `text/event-stream` response body into typed events. Hardened (delta 10):
- * it refuses a non-2xx response (throwing a {@link DuxHTTPError}), handles `\n`,
+ * it refuses a non-2xx response (throwing a {@link H3DuxHTTPError}), handles `\n`,
  * `\r\n`, and `\r` line endings, accumulates multi-line `data:` payloads, ignores
  * comments and `id`/`event`/`retry` lines, and flushes a final unterminated frame.
  */
 export async function* parseEventStream<T>(response: Response): AsyncGenerator<T> {
   if (!response.ok)
-    throw new DuxHTTPError(response.status, undefined, response)
+    throw new H3DuxHTTPError(response.status, undefined, response)
   const body = response.body
   if (!body)
     return
@@ -97,11 +97,11 @@ export async function* parseEventStream<T>(response: Response): AsyncGenerator<T
  * The lazy handle every verb call returns (delta 8). One mechanism, four ways to
  * consume it — the type decides which is valid, and only the consumed path fetches:
  *  - `await call` → the honest result `{ data, error }` (`Result`);
- *  - `await call.orThrow()` → `Data`, rejecting with a `DuxError` on failure;
+ *  - `await call.orThrow()` → `Data`, rejecting with a `H3DuxError` on failure;
  *  - `await call.raw()` → the native kind-aware Response (never throws on non-2xx);
  *  - `for await (… of call)` → a typed SSE `AsyncGenerator`.
  */
-export class DuxCall<Result, Data, Kind extends ResponseKind> implements PromiseLike<Result> {
+export class H3DuxCall<Result, Data, Kind extends ResponseKind> implements PromiseLike<Result> {
   readonly #fetch: () => Promise<Response>
   readonly #stream: () => AsyncGenerator<unknown>
   #response?: Promise<Response>
@@ -137,7 +137,7 @@ export class DuxCall<Result, Data, Kind extends ResponseKind> implements Promise
   }
 
   /** The web-standard escape hatch: the native response, never throwing on a non-2xx status. */
-  async raw(): Promise<DuxRawResponse<Data, Kind>> {
+  async raw(): Promise<H3DuxRawResponse<Data, Kind>> {
     return withParser<Data, Kind>(await this.#cloneResponse())
   }
 

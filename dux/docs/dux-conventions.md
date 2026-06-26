@@ -61,7 +61,7 @@ These words carry exactly these meanings across the server, client, and Nitro su
 | **EventStream** | a response branded by `sse(schema)` — a typed `text/event-stream`, consumed as `AsyncGenerator<T>` |
 | **endpoint contract / kernel** | the normalized, schema-free projection of an endpoint that every plane reads: `{ request, responses, success }` ([§8](#8-the-contract-kernel)) |
 | **result** | what a default client call resolves to: `{ data, error }` — `data` on 2xx, a typed `error` otherwise ([§9](#9-the-honest-client)) |
-| **DuxError** | the client-side failure: `DuxHTTPError` (a typed non-2xx response) or `DuxTransportError` (the request never completed) ([§10](#10-typed-errors--results)) |
+| **H3DuxError** | the client-side failure: `H3DuxHTTPError` (a typed non-2xx response) or `H3DuxTransportError` (the request never completed) ([§10](#10-typed-errors--results)) |
 | **response kind** | how a response body crosses the wire — `json \| text \| empty \| sse \| binary` ([§11](#11-response-kinds)) |
 | **router** | a delta-carrying route group built with `createRouter`, optionally owning a literal prefix, then mounted into a server ([§12](#12-composition--scope)) |
 | **staged values** | middleware-private preparation returned by `staged`; visible only to that middleware's `bindings` and `handler` callbacks ([§13](#13-typed-middleware-bindings)) |
@@ -194,7 +194,7 @@ A default client call resolves to a **result**, not a bare value:
 ```ts
 const { data, error } = await api.get('/fruits/:id', { params: { id } })
 if (error)
-  return handle(error) // error: DuxError — you must deal with it
+  return handle(error) // error: H3DuxError — you must deal with it
 data // Fruit — narrowed only after error is cleared
 ```
 
@@ -205,8 +205,8 @@ Three consumption modes hang off the **call handle** — one mechanism, no paral
 | Call | Resolves to | When |
 | --- | --- | --- |
 | `await api.get(path, opts)` | `{ data, error }` | the default — honest about failure |
-| `await api.get(path, opts).orThrow()` | `Data` (throws `DuxError`) | you *want* it to bubble (scripts, SSR loaders, server-to-server) |
-| `await api.get(path, opts).raw()` | `DuxRawResponse<Data, Kind>` | native status/headers plus kind-aware `.parse()` |
+| `await api.get(path, opts).orThrow()` | `Data` (throws `H3DuxError`) | you *want* it to bubble (scripts, SSR loaders, server-to-server) |
+| `await api.get(path, opts).raw()` | `H3DuxRawResponse<Data, Kind>` | native status/headers plus kind-aware `.parse()` |
 | `for await (… of api.get(path, opts))` | `AsyncGenerator<T>` | an `sse()` endpoint, unchanged |
 
 `.orThrow()` keeps the one-liner for cases where bubbling is correct — but you have to *name* the choice to discard the error, which reads as the decision it is (Go's `_`, made legible). `.raw()` never throws on a non-2xx; it hands you the native `Response` to inspect, augmented with one method: `.parse()` returns the endpoint's inferred body whether it is JSON, text, binary, or empty. The standard `.json()`/`.text()`/`.blob()` methods remain available; `.json()` is typed as the body only for an actual JSON endpoint.
@@ -219,10 +219,10 @@ The result is an object (`{ data, error }`), not a Go tuple (`[error, data]`): T
 
 ## 10. Typed errors & results
 
-`error` in a result is a discriminated `DuxError`:
+`error` in a result is a discriminated `H3DuxError`:
 
 ```ts
-type DuxError
+type H3DuxError
   = | { kind: 'http', status: number, data: unknown, response: Response } // server answered non-2xx; data is typed per status
     | { kind: 'transport', cause: unknown } // request never completed
 ```
@@ -245,7 +245,7 @@ app.post('/fruits', {
 })
 ```
 
-`event.error(status, data)` is the typed thrower: `status` must be a declared error status, and `data` is checked against that status's schema — the inverse of the client's typed `error`, closing the loop. For SSE, a mid-stream `DuxError` surfaces as a throw from the async iterator, so `for await` can `try/catch` it.
+`event.error(status, data)` is the typed thrower: `status` must be a declared error status, and `data` is checked against that status's schema — the inverse of the client's typed `error`, closing the loop. For SSE, a mid-stream `H3DuxError` surfaces as a throw from the async iterator, so `for await` can `try/catch` it.
 
 One declaration of `errors`/`response` feeds four consumers — runtime validation, client `data`/`error` types, `event.error`, and OpenAPI. That is the three-for-one (here four) that puts h3-dux at or past Elysia Treaty while staying on Standard Schema.
 
@@ -405,7 +405,7 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `event.error(status, data)` | `HTTPError` / `createError` | typed thrower checked against the declared `errors` schema |
 | `createRouter(prefix?, options?)` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([§12](#12-composition--scope)) |
 | `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
-| `app.native` | `DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
+| `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
 | `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([§13](#13-typed-middleware-bindings)) |
 | `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
 | `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
@@ -416,3 +416,5 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `#h3-dux/routes` | Nitro generated route types | generated, type-only kernel route map consumed by `createClient<Routes>()` |
 
 Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).
+
+**The `H3Dux` prefix.** Every shipped type/class that needs a project-specific name — because it has no upstream counterpart and isn't a generic verb (`H3DuxError`, `H3DuxHTTPError`, `H3DuxTransportError`, `H3DuxServer`, `H3DuxRouter`, `H3DuxCall`, …) — is named `H3Dux*`, never bare `Dux*`. The maintainer forks several libraries this way (`idb-dux`, `h3-dux`, …); a bare `Dux*` name is ambiguous the moment two of those forks are imported into the same project, while `H3Dux*` says which one at the name itself. This applies to the shipped surface only — `dux` stays the plain, simple word for this repo, this workspace, and this doc set (`dux/`, "the dux branch", *dux-vision*, *dux-spec*, …).

@@ -38,7 +38,7 @@ import type {
   TypedNativeResponse,
 } from '../response.ts'
 import type { EventStream } from '../sse.ts'
-import type { DuxOpenAPI } from './openapi-types.ts'
+import type { H3DuxOpenAPI } from './openapi-types.ts'
 
 /** Flatten an intersection into a plain object type (display only). */
 export type Prettify<T> = { [K in keyof T]: T[K] }
@@ -383,7 +383,7 @@ export type EndpointResponses<
  * `createServer`'s `typeof app` and Nitro's generated `#h3-dux/routes` produce it,
  * so one client is typed from either.
  */
-export interface DuxEndpoint<
+export interface H3DuxEndpoint<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   Ret,
@@ -404,7 +404,7 @@ export interface DuxEndpoint<
 }
 
 /** A single route+method's contribution to the accumulated route map. */
-export type DuxRouteRecord<
+export type H3DuxRouteRecord<
   Route extends string,
   M extends RouteMethod,
   V extends AnyMethodValidate,
@@ -413,7 +413,7 @@ export type DuxRouteRecord<
   Status extends number | undefined,
   Err = undefined,
   ExtraParams = object,
-> = { [R in Route]: { [Method in M]: DuxEndpoint<V, P, Ret, Route, M, Status, Err, ExtraParams> } }
+> = { [R in Route]: { [Method in M]: H3DuxEndpoint<V, P, Ret, Route, M, Status, Err, ExtraParams> } }
 
 /** The bindings a handler ultimately sees: the chain's, plus any its own middleware/requires add. */
 export type HandlerBindings<Bindings, Mw extends readonly any[], Req extends readonly any[]>
@@ -426,7 +426,7 @@ export type HandlerBindings<Bindings, Mw extends readonly any[], Req extends rea
  * type-only requirements, whose published bindings also reach the handler.
  * `ExtraParams` carries a router's dynamically-mounted parent params (delta 11).
  */
-export interface DuxVerbOpts<
+export interface H3DuxVerbOpts<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
   M extends RouteMethod,
@@ -451,7 +451,7 @@ export interface DuxVerbOpts<
     : RequirementsIssue<Req, Bindings>)
   meta?: H3RouteMeta
   /** OpenAPI operation metadata; `false` hides this operation from dux OpenAPI. */
-  openapi?: DuxOpenAPI
+  openapi?: H3DuxOpenAPI
   /** Success status code; sets `event.res.status` before the handler runs. */
   status?: Status
   /** Shape this method's validation errors (overrides the route/app hook). */

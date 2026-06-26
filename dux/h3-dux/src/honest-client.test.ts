@@ -1,5 +1,5 @@
 import type { App } from '@test'
-import { createClient, createTestClient, DuxHTTPError, DuxTransportError } from '@mszr/h3-dux'
+import { createClient, createTestClient, H3DuxHTTPError, H3DuxTransportError } from '@mszr/h3-dux'
 import { app } from '@test'
 import { expect, it } from 'vitest'
 
@@ -34,17 +34,17 @@ it('.orThrow() returns data on success', async () => {
   expect(data.status).toBe('ripe')
 })
 
-it('.orThrow() rejects with a DuxHTTPError on a non-2xx', async () => {
+it('.orThrow() rejects with a H3DuxHTTPError on a non-2xx', async () => {
   await expect(api.post('/fruits/:id/reserve', { params: { id: 'taken' } }).orThrow())
     .rejects
-    .toBeInstanceOf(DuxHTTPError)
+    .toBeInstanceOf(H3DuxHTTPError)
   try {
     await api.post('/fruits/:id/reserve', { params: { id: 'taken' } }).orThrow()
   }
   catch (error) {
-    expect(error).toBeInstanceOf(DuxHTTPError)
-    expect((error as DuxHTTPError).status).toBe(409)
-    expect((error as DuxHTTPError<{ error: string }>).data.error).toBe('conflict')
+    expect(error).toBeInstanceOf(H3DuxHTTPError)
+    expect((error as H3DuxHTTPError).status).toBe(409)
+    expect((error as H3DuxHTTPError<{ error: string }>).data.error).toBe('conflict')
   }
 })
 
@@ -66,10 +66,10 @@ it('a request validation failure is a typed 422 (eager, standardized)', async ()
   }
 })
 
-it('a transport failure is a DuxTransportError, never an HTTP error', async () => {
+it('a transport failure is a H3DuxTransportError, never an HTTP error', async () => {
   const offline = createClient<App>({ fetch: () => Promise.reject(new Error('network down')) })
   const { data, error } = await offline.get('/health')
   expect(data).toBeUndefined()
-  expect(error).toBeInstanceOf(DuxTransportError)
+  expect(error).toBeInstanceOf(H3DuxTransportError)
   expect(error?.kind).toBe('transport')
 })

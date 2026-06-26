@@ -10,7 +10,7 @@ const project = duxProject()
  * `.use` is legitimately multi-form (typed middleware, inline object, plain fn),
  * so a binding collision surfaces overload framing — honest, not schema soup.
  */
-const LEAK = /ObjectSchema|SchemaWithPipe|DuxEndpoint/
+const LEAK = /ObjectSchema|SchemaWithPipe|H3DuxEndpoint/
 
 function expectNoLeak(messages: Array<Diagnostic | string>): void {
   for (const m of messages)

@@ -11,7 +11,7 @@ const project = duxProject()
  * the router's route map — but with *resolved* members (`{ id: string }`), never
  * the valibot schema generics this guard forbids.
  */
-const LEAK = /ObjectSchema|SchemaWithPipe|DuxEndpoint\b/
+const LEAK = /ObjectSchema|SchemaWithPipe|H3DuxEndpoint\b/
 
 function expectNoLeak(messages: Array<Diagnostic | string>): void {
   for (const m of messages)

@@ -1,6 +1,6 @@
 /**
  * The contract kernel (delta 7, completed in phase 9): the normalized, schema-free
- * shape every plane reads. `DuxEndpoint` (internal/route-types.ts) now *is* the
+ * shape every plane reads. `H3DuxEndpoint` (internal/route-types.ts) now *is* the
  * kernel — `{ request, responses, success }`, computed once at accumulation time —
  * and both `createServer`'s `typeof app` and Nitro's generated `#h3-dux/routes`
  * produce it. This module projects that kernel into what the *client* consumes:
@@ -10,7 +10,7 @@
  * The kernel is a projection, not a replacement: runtime validation still runs
  * off the original schema, so there is one source of truth.
  */
-import type { DuxError } from '../errors.ts'
+import type { H3DuxError } from '../errors.ts'
 import type { EventStream } from '../sse.ts'
 import type { Serialize } from './serialize.ts'
 
@@ -88,5 +88,5 @@ export type HonestResult<Data, Err>
   = | { data: Data, error: undefined }
     | { data: undefined, error: Err }
 
-/** Narrow {@link DuxError} (runtime) to the contract's error union (display/return typing). */
-export type { DuxError }
+/** Narrow {@link H3DuxError} (runtime) to the contract's error union (display/return typing). */
+export type { H3DuxError }

@@ -28,12 +28,12 @@ import type {
   SchemaWithJSON,
 } from 'h3-route-tools'
 import type { ClientData } from './internal/contract.ts'
-import type { DuxMeta, DuxOpenAPI, DuxOpenAPIObject } from './internal/openapi-types.ts'
+import type { H3DuxMeta, H3DuxOpenAPI, H3DuxOpenAPIObject } from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
-  DuxEndpoint,
-  DuxVerbOpts,
   ErrorsOption,
+  H3DuxEndpoint,
+  H3DuxVerbOpts,
   HandlerBindings,
   InferMethodResponse,
   MethodHandler,
@@ -61,7 +61,7 @@ type CallableMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'op
  * form — codegen assigns it the filename's method[s]); `~duxMethods` carries a
  * per-method map (the method-map form). Exactly one is populated.
  */
-export interface DuxFileHandler<Flat = never, Methods = never> extends EventHandlerWithFetch {
+export interface H3DuxFileHandler<Flat = never, Methods = never> extends EventHandlerWithFetch {
   /** Runtime marker: this is a dux file route (read by the Nitro module). */
   readonly '~duxFile': true
   /** Type-only: the flat form's method-neutral contract kernel. */
@@ -69,16 +69,16 @@ export interface DuxFileHandler<Flat = never, Methods = never> extends EventHand
   /** Type-only: the method-map form's per-method contract kernels. */
   readonly '~duxMethods'?: Methods
   /** Runtime OpenAPI metadata for the Nitro OpenAPI collector. */
-  readonly '~duxOpenAPI'?: DuxFileOpenAPI
+  readonly '~duxOpenAPI'?: H3DuxFileOpenAPI
 }
 
-export interface DuxFileOpenAPI {
+export interface H3DuxFileOpenAPI {
   params?: SchemaWithJSON
   methods: Partial<Record<RouteMethod, {
     validate?: AnyMethodValidate & { eager?: boolean }
     status?: number
     errors?: ErrorsOption
-    openapi?: DuxOpenAPIObject
+    openapi?: H3DuxOpenAPIObject
   }>>
 }
 
@@ -99,7 +99,7 @@ export type FileMethods<H> = H extends { '~duxMethods'?: infer M } ? Exclude<M, 
 
 /**
  * Instantiate the flat source as a concrete endpoint kernel for the filename's
- * method `M`. The same `DuxEndpoint` the standalone builder produces, so the
+ * method `M`. The same `H3DuxEndpoint` the standalone builder produces, so the
  * method-owned facts a filename carries — `head`/`204`/`205` answer empty, the
  * success kind — are applied *once*, here, instead of being re-encoded (principle 2).
  * Authoring is method-neutral (the filename isn't known at the cursor); the method
@@ -107,7 +107,7 @@ export type FileMethods<H> = H extends { '~duxMethods'?: infer M } ? Exclude<M, 
  */
 export type AsMethod<Source, M extends RouteMethod>
   = Source extends FlatSource<infer V, infer P, infer Ret, infer Status, infer Err>
-    ? DuxEndpoint<V, P, Ret, '/', M, Status, Err, object>
+    ? H3DuxEndpoint<V, P, Ret, '/', M, Status, Err, object>
     : never
 
 /**
@@ -173,7 +173,7 @@ export type AssertFileRoute<H, Params, Form extends 'flat' | 'methods'>
 export type Expect<T extends true> = T
 
 // ── the flat form ─────────────────────────────────────────────────────────────
-// Reuses the standalone verb options verbatim (`DuxVerbOpts`), typed for a generic
+// Reuses the standalone verb options verbatim (`H3DuxVerbOpts`), typed for a generic
 // body-bearing method at the route-free pattern `'/'`: with no params schema the
 // handler sees `Record<string, string>` (codegen replaces it with the exact
 // filename params), and the success/kind/errors are inferred exactly as a verb's.
@@ -190,11 +190,11 @@ type FlatDef<
   Bindings,
   Mw extends readonly Middleware[],
   Req extends readonly TypedMiddleware<any, any>[],
-> = DuxVerbOpts<V, P, 'post', Ret, '/', Status, Err, Bindings, object, Mw, Req>
+> = H3DuxVerbOpts<V, P, 'post', Ret, '/', Status, Err, Bindings, object, Mw, Req>
 
 /**
  * The flat form's method-neutral source brand — the ingredients codegen re-keys
- * into a concrete `DuxEndpoint` for the filename's method via {@link AsMethod}.
+ * into a concrete `H3DuxEndpoint` for the filename's method via {@link AsMethod}.
  * Carrying the source (not a pre-baked `'post'` endpoint) is what lets a `*.get.ts`
  * and a `*.head.ts` project honestly from one authored handler. Type-only.
  */
@@ -231,7 +231,7 @@ interface MethodDef<
   status?: Status
   onValidationError?: OnValidationError
   errors?: Err
-  openapi?: DuxOpenAPI
+  openapi?: H3DuxOpenAPI
   validate?: ([M] extends [BodylessMethod] ? V & { body?: never } : V) & { eager?: boolean }
   handler: MethodHandler<V, P, Ret, '/', M, Status, Err, Bindings, object>
 }
@@ -347,7 +347,7 @@ type MethodMapEndpoints<
   S extends MethodStatuses<any, any, any, any, any, any, any>,
   E extends MethodErrs<any, any, any, any, any, any, any>,
 > = {
-  [M in CallableMethod as M extends K ? M : never]: DuxEndpoint<
+  [M in CallableMethod as M extends K ? M : never]: H3DuxEndpoint<
     V[M],
     P,
     R[M],
@@ -482,8 +482,8 @@ type FileRouteReturn<
   HeadE extends ErrorsOption | undefined,
   OptionsE extends ErrorsOption | undefined,
 > = Form extends 'flat'
-  ? DuxFileHandler<FlatSource<V, P, Ret, Status, Err>, never>
-  : DuxFileHandler<never, MethodMapEndpoints<
+  ? H3DuxFileHandler<FlatSource<V, P, Ret, Status, Err>, never>
+  : H3DuxFileHandler<never, MethodMapEndpoints<
     K,
     P,
     MethodValidates<Get, Post, Put, Patch, Del, Head, Options>,
@@ -685,8 +685,8 @@ type Prettify<T> = { [K in keyof T]: T[K] }
 /** The runtime view of a file-route def — both shapes, read permissively. */
 interface RuntimeDef {
   params?: SchemaWithJSON
-  meta?: DuxMeta
-  openapi?: DuxOpenAPI
+  meta?: H3DuxMeta
+  openapi?: H3DuxOpenAPI
   middleware?: Middleware[]
   onValidationError?: OnValidationError
   status?: number
@@ -705,7 +705,7 @@ interface RuntimeMethod {
   status?: number
   onValidationError?: OnValidationError
   errors?: ErrorsOption
-  openapi?: DuxOpenAPI
+  openapi?: H3DuxOpenAPI
   validate?: AnyMethodValidate & { eager?: boolean }
   handler: (event: H3Event) => unknown
 }
@@ -740,7 +740,7 @@ type DefineUpstream = (def: Record<string, unknown>, options?: unknown) => Event
 function buildFileHandler(
   input: RuntimeDef | ((event: H3Event) => unknown),
   factoryMiddleware: readonly Middleware[],
-): DuxFileHandler {
+): H3DuxFileHandler {
   // A def can be the options object or a bare handler when defaults suffice.
   const def: RuntimeDef = typeof input === 'function' ? { handler: input } : input
   const routeMiddleware = (def.middleware ?? []).map(toMiddleware)
@@ -750,7 +750,7 @@ function buildFileHandler(
     meta: { ...def.meta, openapi: mergeOpenAPI(def.meta?.openapi, def.openapi) },
     onValidationError: def.onValidationError,
   }
-  const docs: DuxFileOpenAPI = { params: def.params, methods: {} }
+  const docs: H3DuxFileOpenAPI = { params: def.params, methods: {} }
 
   const mapped = CALLABLE.filter(method => isObject(def[method]))
   const form: 'flat' | 'methods' = mapped.length > 0 ? 'methods' : 'flat'
@@ -811,7 +811,7 @@ function buildFileHandler(
     '~duxOpenAPI': docs,
     '~routeDef': inner['~routeDef'],
     '~options': inner['~options'],
-  }) as unknown as DuxFileHandler
+  }) as unknown as H3DuxFileHandler
 }
 
 /** Private storage for a factory's accumulated middleware (kept off the public surface). */

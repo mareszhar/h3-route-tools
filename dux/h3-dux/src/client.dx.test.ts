@@ -16,7 +16,7 @@ const setup = `
  * the schema/endpoint/overload internals that made the Generation-1 message a
  * wall of noise — the whole point of delta 6 is that the user never sees them.
  */
-const LEAK = /ObjectSchema|SchemaWithPipe|RegexAction|DuxEndpoint|QueryHeaderOption|MergePair|DuxRouteRecord|NoExcess|No overload|Overload \d/
+const LEAK = /ObjectSchema|SchemaWithPipe|RegexAction|H3DuxEndpoint|QueryHeaderOption|MergePair|H3DuxRouteRecord|NoExcess|No overload|Overload \d/
 
 function expectNoLeak(messages: Array<Diagnostic | string>): void {
   for (const m of messages)

@@ -22,7 +22,7 @@
 export type NitroMethods = readonly string[] | 'all'
 
 /** One collected dux file route — the codegen input, recovered from Nitro + the handler. */
-export interface DuxFileRouteInfo {
+export interface H3DuxFileRouteInfo {
   /** The Nitro-normalized route path, e.g. `/fruits/:id`. */
   routePath: string
   /** The `import('…')` specifier the generated module uses for this file's `default`. */
@@ -79,7 +79,7 @@ function qualifyForNitro(contract: string): string {
 }
 
 /** A method-locked file authored with a method map declares methods Nitro can't reach. */
-function methodLockMessage(route: DuxFileRouteInfo): string {
+function methodLockMessage(route: H3DuxFileRouteInfo): string {
   const lock = (route.methods as readonly string[]).join(', ')
   return [
     `  "${route.importSpecifier}" is locked to ${lock.toUpperCase()} by its filename, but defineFileRoute declares: ${route.declared.join(', ')}.`,
@@ -89,7 +89,7 @@ function methodLockMessage(route: DuxFileRouteInfo): string {
 }
 
 /** A shared all-method handler can't carry a body — bodies are method-specific. */
-function sharedBodyMessage(route: DuxFileRouteInfo): string {
+function sharedBodyMessage(route: H3DuxFileRouteInfo): string {
   return [
     `  "${route.importSpecifier}" is an unsuffixed (all-method) file but its flat handler declares validate.body.`,
     `  A request body is method-specific, so a shared handler can't own one.`,
@@ -98,7 +98,7 @@ function sharedBodyMessage(route: DuxFileRouteInfo): string {
 }
 
 /** A flat file locked to a GET/HEAD filename can't carry a body — those methods are bodyless. */
-function bodylessBodyMessage(route: DuxFileRouteInfo, method: string): string {
+function bodylessBodyMessage(route: H3DuxFileRouteInfo, method: string): string {
   return [
     `  "${route.importSpecifier}" is locked to ${method.toUpperCase()} by its filename but its flat handler declares validate.body.`,
     `  ${method.toUpperCase()} requests are bodyless, so the body would never arrive.`,
@@ -107,7 +107,7 @@ function bodylessBodyMessage(route: DuxFileRouteInfo, method: string): string {
 }
 
 /** Build one route's `{ method: contract }` entry lines (or push a diagnostic). */
-function entriesFor(route: DuxFileRouteInfo, diagnostics: string[]): Record<string, string> {
+function entriesFor(route: H3DuxFileRouteInfo, diagnostics: string[]): Record<string, string> {
   const ref = handlerRef(route.importSpecifier)
   const fp = paramsLiteral(route.routePath)
   const entries: Record<string, string> = {}
@@ -154,7 +154,7 @@ function entriesFor(route: DuxFileRouteInfo, diagnostics: string[]): Record<stri
  * a per-file `Expect<AssertFileRoute<…>>` carries the params/filename agreement into
  * the project typecheck.
  */
-export function generateRoutesModule(routes: readonly DuxFileRouteInfo[]): GenerateResult {
+export function generateRoutesModule(routes: readonly H3DuxFileRouteInfo[]): GenerateResult {
   const diagnostics: string[] = []
   // path → method → contract source.
   const map = new Map<string, Map<string, string>>()
@@ -206,7 +206,7 @@ export function generateRoutesModule(routes: readonly DuxFileRouteInfo[]): Gener
  * the same success projection as `createClient<Routes>()`, instead of falling back
  * to the raw `ReturnType` of the self-dispatching handler.
  */
-export function generateNitroRouteTypes(routes: readonly DuxFileRouteInfo[]): NitroRouteTypesResult {
+export function generateNitroRouteTypes(routes: readonly H3DuxFileRouteInfo[]): NitroRouteTypesResult {
   const diagnostics: string[] = []
   const map = new Map<string, Map<string, string>>()
 

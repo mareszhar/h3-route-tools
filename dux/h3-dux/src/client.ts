@@ -5,8 +5,8 @@ import type {
   TypedResponse,
 } from 'h3-route-tools'
 import type { ClientData, ClientError, ClientErrors, HonestResult, ResponseKind, SuccessKindOf } from './internal/contract.ts'
-import { DuxHTTPError } from './errors.ts'
-import { DuxCall, parseEventStream } from './sse.ts'
+import { H3DuxHTTPError } from './errors.ts'
+import { H3DuxCall, parseEventStream } from './sse.ts'
 
 // ── reconstructing the per-verb option/return shapes ──────────────────────────
 // h3-route-tools doesn't export the internals of its typed fetch, so we rebuild
@@ -24,7 +24,7 @@ export type RetryOptions = number | false | {
   methods?: readonly string[]
 }
 
-export interface DuxRequestHookContext {
+export interface H3DuxRequestHookContext {
   route: string
   method: string
   url: string
@@ -32,28 +32,28 @@ export interface DuxRequestHookContext {
   attempt: number
 }
 
-export interface DuxResponseHookContext extends DuxRequestHookContext {
+export interface H3DuxResponseHookContext extends H3DuxRequestHookContext {
   response: Response
 }
 
-export interface DuxRequestErrorHookContext extends DuxRequestHookContext {
+export interface H3DuxRequestErrorHookContext extends H3DuxRequestHookContext {
   error: unknown
 }
 
-export interface DuxClientTransportOptions {
+export interface H3DuxClientTransportOptions {
   signal?: AbortSignal
   timeout?: number
   retry?: RetryOptions
   querySerializer?: QuerySerializer
-  onRequest?: (ctx: DuxRequestHookContext) => void | Promise<void>
-  onResponse?: (ctx: DuxResponseHookContext) => void | Promise<void>
-  onRequestError?: (ctx: DuxRequestErrorHookContext) => void | Promise<void>
-  onResponseError?: (ctx: DuxResponseHookContext) => void | Promise<void>
+  onRequest?: (ctx: H3DuxRequestHookContext) => void | Promise<void>
+  onResponse?: (ctx: H3DuxResponseHookContext) => void | Promise<void>
+  onRequestError?: (ctx: H3DuxRequestErrorHookContext) => void | Promise<void>
+  onResponseError?: (ctx: H3DuxResponseHookContext) => void | Promise<void>
 }
 
-export interface CreateClientOptions extends CreateTypedFetchOptions, DuxClientTransportOptions {}
+export interface CreateClientOptions extends CreateTypedFetchOptions, H3DuxClientTransportOptions {}
 
-type TransportCallOptions = Pick<DuxClientTransportOptions, 'signal' | 'timeout' | 'retry' | 'querySerializer'>
+type TransportCallOptions = Pick<H3DuxClientTransportOptions, 'signal' | 'timeout' | 'retry' | 'querySerializer'>
 
 /** True when `T` has at least one required key (so the options argument is mandatory). */
 type HasRequired<T> = Partial<T> extends T ? false : true
@@ -75,7 +75,7 @@ type RequestOf<E> = E extends { request: infer Req } ? Req : object
  * The call options for a verb+endpoint, resolved to **plain shapes** from the
  * kernel's `request`. Every slot is extracted with an `infer` and flattened with
  * `Prettify`, so neither the signature nor a diagnostic ever prints the underlying
- * kernel or schema generics (`DuxEndpoint<…>`, `ObjectSchema<…>`) — only
+ * kernel or schema generics (`H3DuxEndpoint<…>`, `ObjectSchema<…>`) — only
  * `{ body: { … } }`. When the route was interpolated the params already live in the
  * path, so `WithParams` is `false` and `params` is dropped.
  */
@@ -89,20 +89,20 @@ type VerbOptions<E, WithParams extends boolean, Req = RequestOf<E>> = Prettify<
 
 /**
  * What a verb call returns: an `AsyncGenerator<T>` for an `sse()` endpoint (you
- * `for await` it), otherwise a {@link DuxCall} — `await` it for the honest
+ * `for await` it), otherwise a {@link H3DuxCall} — `await` it for the honest
  * `{ data, error }`, `.orThrow()` for the value, `.raw()` for the native response.
  *
  * The success body is decoded by the endpoint's response *kind* via `ClientData`
  * (delta 10): `string` for `text()`, `Blob` for `binary()`, `undefined` for an
  * empty `204`, the serialized wire shape for `json`. `ClientData`/`ClientErrors`/
  * `SuccessKindOf` each resolve the kernel pieces *first*, so the return type prints
- * `DuxCall<HonestResult<Fruit, ClientError<{ 409: … }>>, …>`, never the kernel alias.
+ * `H3DuxCall<HonestResult<Fruit, ClientError<{ 409: … }>>, …>`, never the kernel alias.
  */
 type VerbReturn<E> = [E] extends [never]
-  ? DuxCall<HonestResult<unknown, ClientError<object>>, unknown, 'json'>
+  ? H3DuxCall<HonestResult<unknown, ClientError<object>>, unknown, 'json'>
   : SuccessKindOf<E> extends 'sse'
     ? ClientData<E>
-    : DuxCall<
+    : H3DuxCall<
       HonestResult<ClientData<E>, ClientError<ClientErrors<E>>>,
       ClientData<E>,
       SuccessKindOf<E> extends ResponseKind ? SuccessKindOf<E> : 'json'
@@ -247,7 +247,7 @@ export type Client<App, R = RouteMapOf<App>> = BareFetch<R> & {
 
 const VERBS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'] as const
 
-interface RuntimeOptions extends DuxClientTransportOptions {
+interface RuntimeOptions extends H3DuxClientTransportOptions {
   method: string
   params?: Record<string, unknown>
   query?: Record<string, unknown>
@@ -401,7 +401,7 @@ function createDuxFetch(options: CreateClientOptions): (route: string, opts: Run
       const { signal, cleanup } = timeoutSignal(opts.signal ?? options.signal, opts.timeout ?? options.timeout)
       const init: RequestInit = { method, headers: new Headers(headers), body, signal }
       const request = new Request(requestURL(url), init)
-      const ctx: DuxRequestHookContext = { route, method, url, request, attempt }
+      const ctx: H3DuxRequestHookContext = { route, method, url, request, attempt }
       try {
         await options.onRequest?.(ctx)
         const res = await transport(url, {
@@ -410,7 +410,7 @@ function createDuxFetch(options: CreateClientOptions): (route: string, opts: Run
           body,
           signal,
         })
-        const responseCtx: DuxResponseHookContext = { ...ctx, response: res }
+        const responseCtx: H3DuxResponseHookContext = { ...ctx, response: res }
         await options.onResponse?.(responseCtx)
         if (!res.ok)
           await options.onResponseError?.(responseCtx)
@@ -446,16 +446,16 @@ export function createClient<App>(options: CreateClientOptions = {}): Client<App
   const verbs = Object.fromEntries(
     VERBS.map(method => [
       method,
-      // A DuxCall handle: `await` runs the JSON fetch; `for await` runs the SSE
+      // A H3DuxCall handle: `await` runs the JSON fetch; `for await` runs the SSE
       // fetch (only one ever fires, chosen by how the caller consumes it).
-      (route: string, opts: Record<string, unknown> = {}) => new DuxCall(
+      (route: string, opts: Record<string, unknown> = {}) => new H3DuxCall(
         () => call(route, { ...opts, method } as RuntimeOptions),
         async function* () {
           const headers = { accept: 'text/event-stream', ...(opts.headers as Record<string, string>) }
           const res = await call(route, { ...opts, method, headers } as RuntimeOptions)
-          // A failed stream surfaces as a thrown DuxError, not a silent empty iterator.
+          // A failed stream surfaces as a thrown H3DuxError, not a silent empty iterator.
           if (!res.ok)
-            throw new DuxHTTPError(res.status, await res.json().catch(() => undefined), res)
+            throw new H3DuxHTTPError(res.status, await res.json().catch(() => undefined), res)
           yield* parseEventStream(res)
         },
       ),

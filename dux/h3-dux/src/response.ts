@@ -33,10 +33,10 @@ export interface TypedNativeResponse<Data, Kind extends ResponseKind> extends Re
  * inferred body whatever its wire representation. Standard `.json()`, `.text()`,
  * and `.blob()` remain available; only `.json()` is narrowed when JSON is honest.
  */
-export type DuxRawResponse<Data, Kind extends ResponseKind> = Omit<Response, 'clone' | 'json'> & {
+export type H3DuxRawResponse<Data, Kind extends ResponseKind> = Omit<Response, 'clone' | 'json'> & {
   parse: () => Promise<Data>
   json: () => Promise<Kind extends 'json' ? Data : unknown>
-  clone: () => DuxRawResponse<Data, Kind>
+  clone: () => H3DuxRawResponse<Data, Kind>
 }
 
 /** Values the native Response constructor accepts as a binary body. */

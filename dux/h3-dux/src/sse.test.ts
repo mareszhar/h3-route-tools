@@ -1,5 +1,5 @@
 import type { App } from '@test'
-import { createClient, DuxHTTPError } from '@mszr/h3-dux'
+import { createClient, H3DuxHTTPError } from '@mszr/h3-dux'
 import { app } from '@test'
 import { expect, it } from 'vitest'
 
@@ -63,7 +63,7 @@ it('flushes a final frame with no terminating blank line', async () => {
   expect(ticks).toEqual([{ id: 'x', ripeness: 100, at: 't' }])
 })
 
-it('a non-ok SSE response throws a DuxHTTPError instead of yielding nothing', async () => {
+it('a non-ok SSE response throws a H3DuxHTTPError instead of yielding nothing', async () => {
   const failing = sseClient('', { status: 503 })
-  await expect(collect(ripen(failing))).rejects.toBeInstanceOf(DuxHTTPError)
+  await expect(collect(ripen(failing))).rejects.toBeInstanceOf(H3DuxHTTPError)
 })
