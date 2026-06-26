@@ -13,6 +13,7 @@ dist
 .cache
 .eslintcache
 *.tsbuildinfo
+.dux/
 
 # Nuxt
 .nitro
