@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const project = duxProject()
 
 /** Schema/kernel internals a file-route diagnostic must never leak (delta 6 bar). */
-const LEAK = /ObjectSchema|SchemaWithPipe|DuxEndpoint\b|DuxFileHandler/
+const LEAK = /ObjectSchema|SchemaWithPipe|DuxEndpoint\b|DuxFileHandler|No overload|Overload \d/
 
 function expectNoLeak(messages: Array<Diagnostic | string>): void {
   for (const m of messages)
@@ -68,6 +68,45 @@ describe('file routes — editor DX', () => {
       })
     `
     expect(errors).toBeClean()
+  })
+
+  it('a malformed flat route reports an excess key instead of disappearing into an empty method map', () => {
+    const { errors } = project.check`
+      import { defineFileRoute } from '@mszr/h3-dux'
+      void defineFileRoute({
+        statuz: 201,
+        handler: () => null,
+      })
+    `
+    expect(errors).toHaveErrorCount(1)
+    expect(errors).toHaveError(/statuz/)
+    expectNoLeak(errors)
+  })
+
+  it('a malformed flat response reports the handler return instead of disappearing into an empty method map', () => {
+    const { errors } = project.check`
+      import { defineFileRoute } from '@mszr/h3-dux'
+      import * as v from 'valibot'
+      void defineFileRoute({
+        validate: { response: v.object({ ok: v.boolean() }) },
+        handler: () => ({ ok: 'yes' }),
+      })
+    `
+    expect(errors).toHaveErrorCount(1)
+    expect(errors).toHaveError(2322, /string.*never/)
+    expectNoLeak(errors)
+  })
+
+  it('a typo method key reports the unknown key instead of becoming an empty method map', () => {
+    const { errors } = project.check`
+      import { defineFileRoute } from '@mszr/h3-dux'
+      void defineFileRoute({
+        gett: { handler: () => null },
+      })
+    `
+    expect(errors).toHaveErrorCount(1)
+    expect(errors).toHaveError(/gett/)
+    expectNoLeak(errors)
   })
 
   it('calling a factory with open requirements errors, with no schema leak', () => {

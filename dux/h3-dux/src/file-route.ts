@@ -70,10 +70,10 @@ export interface DuxFileHandler<Flat = never, Methods = never> extends EventHand
 // shape and its projection stay together (one source of truth, dux-vision.md §4.4).
 
 /** The flat form's method-neutral contract, recovered from a built handler. */
-export type FlatContract<H> = H extends { '~duxFlat'?: infer F } ? F : never
+export type FlatContract<H> = H extends { '~duxFlat'?: infer F } ? Exclude<F, undefined> : never
 
 /** The method-map form's per-method contracts, recovered from a built handler. */
-export type FileMethods<H> = H extends { '~duxMethods'?: infer M } ? M : never
+export type FileMethods<H> = H extends { '~duxMethods'?: infer M } ? Exclude<M, undefined> : never
 
 /**
  * Resolve a file route's client params: the *filename*-derived `{ name: string }`
@@ -249,41 +249,161 @@ type MethodMapEndpoints<
     '/',
     M,
     S[M],
-E[M] & (ErrorsOption | undefined),
-object
+    E[M] & (ErrorsOption | undefined),
+    object
   >
 }
+
+/** Keys the method-map branch may capture when deriving declared methods. */
+type MethodMapAuthorKey
+  = | 'params'
+    | 'meta'
+    | 'middleware'
+    | 'onValidationError'
+    | CallableMethod
+
+type FileRouteArg<
+  Form extends 'flat' | 'methods',
+  K extends MethodMapAuthorKey,
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  Ret,
+  Status extends number | undefined,
+  Err extends ErrorsOption | undefined,
+  Bindings,
+  Mw extends readonly Middleware[],
+  Req extends readonly TypedMiddleware<any, any>[],
+  Get extends AnyMethodValidate,
+  Post extends AnyMethodValidate,
+  Put extends AnyMethodValidate,
+  Patch extends AnyMethodValidate,
+  Del extends AnyMethodValidate,
+  Head extends AnyMethodValidate,
+  Options extends AnyMethodValidate,
+  GetRet,
+  PostRet,
+  PutRet,
+  PatchRet,
+  DelRet,
+  HeadRet,
+  OptionsRet,
+  GetS extends number | undefined,
+  PostS extends number | undefined,
+  PutS extends number | undefined,
+  PatchS extends number | undefined,
+  DelS extends number | undefined,
+  HeadS extends number | undefined,
+  OptionsS extends number | undefined,
+  GetE extends ErrorsOption | undefined,
+  PostE extends ErrorsOption | undefined,
+  PutE extends ErrorsOption | undefined,
+  PatchE extends ErrorsOption | undefined,
+  DelE extends ErrorsOption | undefined,
+  HeadE extends ErrorsOption | undefined,
+  OptionsE extends ErrorsOption | undefined,
+> = Form extends 'flat'
+  ? | FlatDef<V, P, Ret, Status, Err, Bindings, Mw, Req>
+  | MethodHandler<MethodValidate, undefined, Ret, '/', 'post', undefined, undefined, Bindings, object>
+  : MethodMapDef<
+    P,
+    Bindings,
+    Get,
+    Post,
+    Put,
+    Patch,
+    Del,
+    Head,
+    Options,
+    GetRet,
+    PostRet,
+    PutRet,
+    PatchRet,
+    DelRet,
+    HeadRet,
+    OptionsRet,
+    GetS,
+    PostS,
+    PutS,
+    PatchS,
+    DelS,
+    HeadS,
+    OptionsS,
+    GetE,
+    PostE,
+    PutE,
+    PatchE,
+    DelE,
+    HeadE,
+    OptionsE
+  > & Record<K, unknown>
+
+type FileRouteReturn<
+  Form extends 'flat' | 'methods',
+  K extends MethodMapAuthorKey,
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+  Ret,
+  Status extends number | undefined,
+  Err extends ErrorsOption | undefined,
+  Get extends AnyMethodValidate,
+  Post extends AnyMethodValidate,
+  Put extends AnyMethodValidate,
+  Patch extends AnyMethodValidate,
+  Del extends AnyMethodValidate,
+  Head extends AnyMethodValidate,
+  Options extends AnyMethodValidate,
+  GetRet,
+  PostRet,
+  PutRet,
+  PatchRet,
+  DelRet,
+  HeadRet,
+  OptionsRet,
+  GetS extends number | undefined,
+  PostS extends number | undefined,
+  PutS extends number | undefined,
+  PatchS extends number | undefined,
+  DelS extends number | undefined,
+  HeadS extends number | undefined,
+  OptionsS extends number | undefined,
+  GetE extends ErrorsOption | undefined,
+  PostE extends ErrorsOption | undefined,
+  PutE extends ErrorsOption | undefined,
+  PatchE extends ErrorsOption | undefined,
+  DelE extends ErrorsOption | undefined,
+  HeadE extends ErrorsOption | undefined,
+  OptionsE extends ErrorsOption | undefined,
+> = Form extends 'flat'
+  ? DuxFileHandler<FlatEndpoint<V, P, Ret, Status, Err>, never>
+  : DuxFileHandler<never, MethodMapEndpoints<
+    K,
+    P,
+    MethodValidates<Get, Post, Put, Patch, Del, Head, Options>,
+    MethodRets<GetRet, PostRet, PutRet, PatchRet, DelRet, HeadRet, OptionsRet>,
+    MethodStatuses<GetS, PostS, PutS, PatchS, DelS, HeadS, OptionsS>,
+    MethodErrs<GetE, PostE, PutE, PatchE, DelE, HeadE, OptionsE>
+  >>
 
 // ── the definer (shared by `defineFileRoute` and a factory's call) ────────────
 
 /**
- * The callable surface of `defineFileRoute` and every factory: the flat form
- * (tried first — it requires `handler`) and the method-map form (no top-level
- * `handler`, distinct contracts per method). `Bindings` are the capabilities the
- * factory's middleware already published; the handlers read them as `event.bindings`.
+ * The callable surface of `defineFileRoute` and every factory. One signature
+ * accepts the flat form (including a bare handler) or the method-map form, so a
+ * malformed definition reports at the offending property instead of through an
+ * overload wall. `Bindings` are the capabilities the factory's middleware already
+ * published; the handlers read them as `event.bindings`.
  */
 export interface FileRouteDefiner<Bindings = object> {
-  // Flat: one handler; the filename owns the method. The def is the full options
-  // object *or* a bare handler when defaults suffice (`defineFileRoute(e => …)`) —
-  // a union parameter on this one overload, so the shorthand never adds a third
-  // overload (the bad-def message stays as-is, never a longer "No overload" wall).
   <
+    Form extends 'flat' | 'methods',
+    K extends MethodMapAuthorKey = never,
     P extends SchemaWithJSON | undefined = undefined,
     V extends AnyMethodValidate = MethodValidate,
     Ret = InferMethodResponse<V>,
     const Status extends number | undefined = undefined,
     Err extends ErrorsOption | undefined = undefined,
-    const Mw extends readonly Middleware[] = [],
-    const Req extends readonly TypedMiddleware<any, any>[] = [],
-  >(
-    def: FlatDef<V, P, Ret, Status, Err, Bindings, Mw, Req>
-      | MethodHandler<MethodValidate, undefined, Ret, '/', 'post', undefined, undefined, Bindings, object>,
-  ): DuxFileHandler<FlatEndpoint<V, P, Ret, Status, Err>, never>
-
-  // Method map: distinct contracts per method on an unsuffixed file.
-  <
-    K extends string = never,
-    P extends SchemaWithJSON | undefined = undefined,
+    const Mw extends readonly Middleware[] = readonly Middleware[],
+    const Req extends readonly TypedMiddleware<any, any>[] = readonly TypedMiddleware<any, any>[],
     Get extends AnyMethodValidate = MethodValidate,
     Post extends AnyMethodValidate = MethodValidate,
     Put extends AnyMethodValidate = MethodValidate,
@@ -313,9 +433,17 @@ export interface FileRouteDefiner<Bindings = object> {
     HeadE extends ErrorsOption | undefined = undefined,
     OptionsE extends ErrorsOption | undefined = undefined,
   >(
-    def: MethodMapDef<
+    def: FileRouteArg<
+      Form,
+      K,
+      V,
       P,
+      Ret,
+      Status,
+      Err,
       Bindings,
+      Mw,
+      Req,
       Get,
       Post,
       Put,
@@ -344,15 +472,44 @@ export interface FileRouteDefiner<Bindings = object> {
       DelE,
       HeadE,
       OptionsE
-    > & Record<K, unknown>,
-  ): DuxFileHandler<never, MethodMapEndpoints<
+    >,
+  ): FileRouteReturn<
+    Form,
     K,
+    V,
     P,
-    MethodValidates<Get, Post, Put, Patch, Del, Head, Options>,
-    MethodRets<GetRet, PostRet, PutRet, PatchRet, DelRet, HeadRet, OptionsRet>,
-    MethodStatuses<GetS, PostS, PutS, PatchS, DelS, HeadS, OptionsS>,
-    MethodErrs<GetE, PostE, PutE, PatchE, DelE, HeadE, OptionsE>
-  >>
+    Ret,
+    Status,
+    Err,
+    Get,
+    Post,
+    Put,
+    Patch,
+    Del,
+    Head,
+    Options,
+    GetRet,
+    PostRet,
+    PutRet,
+    PatchRet,
+    DelRet,
+    HeadRet,
+    OptionsRet,
+    GetS,
+    PostS,
+    PutS,
+    PatchS,
+    DelS,
+    HeadS,
+    OptionsS,
+    GetE,
+    PostE,
+    PutE,
+    PatchE,
+    DelE,
+    HeadE,
+    OptionsE
+  >
 }
 
 // ── the factory ───────────────────────────────────────────────────────────────
