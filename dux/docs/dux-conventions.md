@@ -158,7 +158,7 @@ We keep upstream's cascade verbatim — it is already excellent. One hook, `onVa
 Two dux refinements to the defaults:
 
 - **One status for request validation: `422`.** Request-validation failures are `422` (well-formed but semantically invalid), eager or manual, carrying `{ source, issues }`. Generation 1 inherited a `400`/`422` split by mode; that split is gone — a malformed request must not change status because the *handler* chose a validation mode ([§4](#4-the-validated-data-model)). Response-validation failures stay `500` — a server-side contract breach is never the caller's fault.
-- **The error envelope is part of the contract.** Upstream auto-registers schemas for the failures it raises (`400`/`415`/`500`), and `errors: { … }` adds your own. Those schemas don't just feed OpenAPI — they flow into the kernel's `responses` map ([§8](#8-the-contract-kernel)), so the client's typed `error` already knows the validation-failure shape ([§10](#10-typed-errors--results)). One declaration, every consumer.
+- **The error envelope is part of the contract.** Upstream has auto schemas for failures it raises, but dux projects request validation as its runtime `422` envelope; `errors: { … }` adds your own. Those schemas don't just feed OpenAPI — they flow into the kernel's `responses` map ([§8](#8-the-contract-kernel)), so the client's typed `error` already knows the validation-failure shape ([§10](#10-typed-errors--results)). One declaration, every consumer.
 
 So h3-dux still adds no new *error-handling* concept — it inherits the cascade — but it stops throwing the error *types* away, and it makes the status predictable.
 
@@ -181,7 +181,7 @@ Rules of the kernel:
 - **Resolved, not schematic.** Members are the validated *output* shapes (wire-serialized for responses), prettified at the boundary. A consumer never sees `SchemaWithPipe<…>`; it sees `{ name: string; pricePerKg: number }`.
 - **The schema stays the source of truth.** The kernel is its public *projection*, not a replacement — runtime validation still runs off the original schema. One concept, one source ([dux-vision.md §3](./dux-vision.md#3-design-principles), principle 2).
 - **Per-status, never flattened.** `responses` keeps each status distinct. Generation 1 collapsed a status map to a single union, discarding exactly the discrimination the client's error channel needs ([§10](#10-typed-errors--results)).
-- **Every plane consumes it.** Client types, diagnostics, composition merges, Nitro codegen, and OpenAPI all read the kernel — so a fix to the projection lands everywhere at once, and the planes can't drift.
+- **Every plane consumes its rules.** Client types, diagnostics, composition merges, and Nitro codegen read the kernel directly; OpenAPI uses the same status/error/kind rules while reading runtime schemas for JSON Schema emission. A fix to the projection still lands everywhere without pretending a type-only kernel can replace runtime documentation data.
 
 The kernel is internal — no user writes one. Its payoff is felt indirectly: cleaner inference, honest errors, and surfaces that agree.
 

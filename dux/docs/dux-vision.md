@@ -45,7 +45,7 @@ So we fork. We implement the deltas **inside** the surface, on the `dux` branch,
 | `validate: {}` nesting (params/query/body/headers/response) | ✅ per method | inherit |
 | Standard Schema (zod / valibot) | ✅ | inherit |
 | Nitro file-based codegen | ✅ — *the expensive part* | inherit |
-| OpenAPI 3.1 generation | ✅ | inherit |
+| OpenAPI 3.1 generation | ✅ | inherit + refine for dux's `422`/errors/kinds |
 | Cascading custom validation errors | ✅ `onValidationError` (app → route → method) | inherit |
 | `api.get(path, opts)` client verb sugar | ❌ only `api(path, { method })` | **add** (additive) |
 | `app.get(path, opts)` server authoring | ❌ only `.route({ route, get })` | **add** (builder) |
@@ -112,13 +112,13 @@ Everything flows from **one contract per route** — the `validate` block plus t
 | Plane | Inherited from h3-route-tools | Added by h3-dux |
 | --- | --- | --- |
 | Server | `H3Typed`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed middleware bindings, root event accessors, `event.error()`** |
-| Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator`, **honest `{ data, error }` surface, `.orThrow()`/`.raw()`, typed error channel, interceptors** |
+| Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator`, **honest `{ data, error }` surface, `.orThrow()`/`.raw()`, typed error channel, transport hooks / cancellation / retry** |
 | Contract | per-method `Endpoint`, status→schema response map, `errors` | **the normalized kernel: plain shapes, per-status responses, response kinds** |
-| Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **`defineFileRoute`/file-route factories, generated kernel route map (no hand-written `Routes`), filename-derived client params** |
+| Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **`defineFileRoute`/file-route factories, generated kernel route map (no hand-written `Routes`), filename-derived client params, dux-aware OpenAPI enrichment** |
 
 ### 4.4 The contract kernel
 
-The contract each route accumulates is, today, schema-shaped: `typeof app` carries the literal valibot/zod types, and every surface that reads it (the client, diagnostics, Nitro, OpenAPI) re-derives the plain shape it actually needs. That re-derivation is where the inferred types turn intricate, where schema internals leak into diagnostics, and where the response collapses to a single type and loses its per-status structure.
+The contract each route accumulates is, today, schema-shaped: `typeof app` carries the literal valibot/zod types, and every surface that reads it (the client, diagnostics, Nitro, and documentation) re-derives the plain shape it actually needs. That re-derivation is where the inferred types turn intricate, where schema internals leak into diagnostics, and where the response collapses to a single type and loses its per-status structure.
 
 The next evolution normalizes that contract once, at accumulation time, into a **kernel** every plane consumes verbatim:
 
@@ -129,7 +129,7 @@ EndpointContract
   success   the 2xx status this endpoint answers with
 ```
 
-One normalized contract, read identically by the client (success → `data`, non-2xx → typed `error`), by diagnostics (plain shapes, no `ObjectSchema<…>` to print), by composition (merge kernels, prefix paths), by Nitro codegen (emit the kernel per file route), and by OpenAPI (the kernel *is* the spec). This is the spine of Generation 2 ([§5](#5-the-deltas)): every later delta is a producer or consumer of the kernel, which is why they compose instead of colliding. The schema is still the source of truth — the kernel is its resolved, public projection, computed once.
+One normalized contract, read identically by the client (success → `data`, non-2xx → typed `error`), by diagnostics (plain shapes, no `ObjectSchema<…>` to print), by composition (merge kernels, prefix paths), by Nitro codegen (emit the kernel per file route), and by OpenAPI's **operation rules** (statuses, response kinds, and error structure). OpenAPI still needs the runtime schemas attached to the route definitions for JSON Schema emission; the kernel supplies the dux truth those schemas hang from. This is the spine of Generation 2 ([§5](#5-the-deltas)): every later delta is a producer or consumer of the kernel, which is why they compose instead of colliding. The schema is still the source of truth — the kernel is its resolved, public projection, computed once.
 
 ---
 
@@ -163,7 +163,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 11 | **Delta-aware composition** — prefix-carrying `createRouter`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☑ done |
 | 12 | **Typed middleware bindings** — `defineMiddleware` infers staged private values and downstream `event.bindings`; `requires` checks parent capabilities without re-registering middleware | 8 | ☑ done |
 | 13 | **Nitro deltas via codegen** — `defineFileRoute` + capability-carrying factories; generate the kernel route map; filename-derived client params | 9 | ☑ done |
-| 14 | **Symmetry extras** — OpenAPI from the standalone `createServer`; client interceptors / `signal` / timeout / retry | 10 | ☐ planned |
+| 14 | **Symmetry extras** — dux-aware OpenAPI for standalone + Nitro; client transport hooks / `signal` / timeout / retry / query serialization | 10 | ☐ planned |
 
 Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
 
@@ -173,7 +173,7 @@ Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
 
 A garden's wall is a promise: opting into h3-dux never locks you out of something h3 or Nitro can do — h3-dux is a superset, and any escape hatch is the upstream surface we already re-export.
 
-- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed middleware bindings**, **OpenAPI from the standalone app**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
+- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed middleware bindings**, **dux-aware OpenAPI for standalone and Nitro file routes**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
 - **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific. Typed middleware bindings (delta 12) are the general capability mechanism through which any middleware — auth or otherwise — publishes request-scoped values; auth remains an app concern.
 - **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points and competitive bars in `archive/` — we study what they do best and adopt it the dux way (or better) — but they are not compatibility targets.
 

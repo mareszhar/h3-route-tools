@@ -64,7 +64,7 @@ It is a **frozen reference, not a live build target.** Its own toolchain config 
 
 Three planes — **server**, **client**, **nitro** — plus the schema/validation helpers they share. The law (principle 7): the client plane never imports the nitro plane, and neither imports node-only internals the other doesn't need. Today the package is mostly re-exports, so the boundary is thin; as the deltas land, each plane gets its own module and the boundary becomes ESLint `no-restricted-imports` rules in `eslint.config.ts`. A boundary violation is a build error, not a review note.
 
-The **contract kernel** (`internal/contract.ts`, delta 7) is the one *type* module every plane is allowed to import — it is the single source of truth all planes derive from, and it carries no runtime, no node-only deps, no plane allegiance. Server, client, codegen, and OpenAPI read the kernel; they do not read each other. Keeping the cross-plane dependency funnelled through one type-only module is what lets a projection fix land everywhere without widening the boundary.
+The **contract kernel** (`internal/contract.ts`, delta 7) is the one *type* module every plane is allowed to import — it is the single source of truth all typed planes derive from, and it carries no runtime, no node-only deps, no plane allegiance. Server, client, and codegen read the kernel; OpenAPI follows its status/error/kind rules while reading runtime route schemas for JSON Schema emission. Planes do not read each other. Keeping the cross-plane dependency funnelled through the kernel plus explicit runtime route metadata is what lets a projection fix land everywhere without widening the boundary.
 
 ---
 
