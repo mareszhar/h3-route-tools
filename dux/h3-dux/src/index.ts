@@ -16,6 +16,7 @@ export type {
   FileRouteFactory,
   FlatContract,
   FlatSource,
+  NitroDataOf,
   ResolveFileParams,
   WithFilenameParams,
 } from './file-route.ts'

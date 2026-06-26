@@ -9,7 +9,7 @@
  */
 import type { DuxFileRouteInfo } from './internal/nitro-codegen.ts'
 import { describe, expect, it } from 'vitest'
-import { generateRoutesModule } from './internal/nitro-codegen.ts'
+import { generateNitroRouteTypes, generateRoutesModule } from './internal/nitro-codegen.ts'
 
 function route(partial: Partial<DuxFileRouteInfo> & Pick<DuxFileRouteInfo, 'routePath' | 'importSpecifier'>): DuxFileRouteInfo {
   return { form: 'flat', declared: [], flatHasBody: false, methods: 'all', ...partial }
@@ -109,5 +109,15 @@ describe('generateRoutesModule', () => {
     expect(source).toContain('import type { AssertFileRoute, Expect, FileFlatContract, FileMethods, WithFilenameParams } from \'@mszr/h3-dux\'')
     expect(source).toContain('export interface Routes {')
     expect(source).not.toMatch(/ObjectSchema|SchemaWithPipe/)
+  })
+
+  it('emits fully-qualified Nitro InternalApi method types', () => {
+    const { entries, diagnostics } = generateNitroRouteTypes([
+      route({ routePath: '/fruits/:id', importSpecifier: './routes/fruits/[id].get', form: 'flat', methods: ['get'] }),
+    ])
+    expect(diagnostics).toEqual([])
+    expect(entries[0]?.methods.get).toBe(
+      'import("@mszr/h3-dux").NitroDataOf<import("@mszr/h3-dux").FileFlatContract<typeof import(\'./routes/fruits/[id].get\').default, \'get\', { id: string }>>',
+    )
   })
 })

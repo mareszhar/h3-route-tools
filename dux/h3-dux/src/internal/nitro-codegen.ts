@@ -43,6 +43,17 @@ export interface GenerateResult {
   diagnostics: string[]
 }
 
+/** A generated replacement for Nitro's own `types.routes[path][method]` entry. */
+export interface NitroRouteTypeEntry {
+  routePath: string
+  methods: Record<string, string>
+}
+
+export interface NitroRouteTypesResult {
+  entries: NitroRouteTypeEntry[]
+  diagnostics: string[]
+}
+
 /** Client-visible methods a shared (catch-all) flat file is projected to — `HEAD` included (empty). */
 const SHARED_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'] as const
 /** Methods whose wire request carries no body — a flat file locked to one cannot declare `validate.body`. */
@@ -58,6 +69,13 @@ function paramsLiteral(routePath: string): string {
 /** `typeof import('<spec>').default` — the built file handler the kernel is read from. */
 function handlerRef(spec: string): string {
   return `typeof import('${spec}').default`
+}
+
+function qualifyForNitro(contract: string): string {
+  return contract
+    .replaceAll('FileFlatContract<', 'import("@mszr/h3-dux").FileFlatContract<')
+    .replaceAll('WithFilenameParams<', 'import("@mszr/h3-dux").WithFilenameParams<')
+    .replaceAll('FileMethods<', 'import("@mszr/h3-dux").FileMethods<')
 }
 
 /** A method-locked file authored with a method map declares methods Nitro can't reach. */
@@ -180,4 +198,38 @@ export function generateRoutesModule(routes: readonly DuxFileRouteInfo[]): Gener
   ].join('\n')
 
   return { source, diagnostics }
+}
+
+/**
+ * Generate the method type strings used to rewrite Nitro's `InternalApi` for dux
+ * file routes. This is the non-OpenAPI half of Nitro parity: `$fetch` should read
+ * the same success projection as `createClient<Routes>()`, instead of falling back
+ * to the raw `ReturnType` of the self-dispatching handler.
+ */
+export function generateNitroRouteTypes(routes: readonly DuxFileRouteInfo[]): NitroRouteTypesResult {
+  const diagnostics: string[] = []
+  const map = new Map<string, Map<string, string>>()
+
+  for (const route of routes) {
+    const entries = entriesFor(route, diagnostics)
+    const byMethod = map.get(route.routePath) ?? new Map<string, string>()
+    for (const [method, contract] of Object.entries(entries)) {
+      if (byMethod.has(method)) {
+        diagnostics.push(`  ${route.routePath} declares ${method.toUpperCase()} more than once across files — remove the duplicate.`)
+        continue
+      }
+      byMethod.set(method, `import("@mszr/h3-dux").NitroDataOf<${qualifyForNitro(contract)}>`)
+    }
+    map.set(route.routePath, byMethod)
+  }
+
+  return {
+    diagnostics,
+    entries: [...map.entries()]
+      .filter(([, methods]) => methods.size > 0)
+      .map(([routePath, methods]) => ({
+        routePath,
+        methods: Object.fromEntries(methods),
+      })),
+  }
 }

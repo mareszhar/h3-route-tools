@@ -27,6 +27,7 @@ import type {
   RouteMethod,
   SchemaWithJSON,
 } from 'h3-route-tools'
+import type { ClientData } from './internal/contract.ts'
 import type {
   AnyMethodValidate,
   DuxEndpoint,
@@ -73,7 +74,8 @@ export interface DuxFileHandler<Flat = never, Methods = never> extends EventHand
 // shape and its projection stay together (one source of truth, dux-vision.md §4.4).
 // Codegen emits only data (path → handler import, filename params, locked methods);
 // these types do all projection, method re-keying, filtering, and the filename-truth
-// assertions, so generation never executes a route module (delta 13 reality).
+// assertions. The Nitro collector still imports route modules once to read the
+// runtime form marker; the generated `#h3-dux/routes` module itself is type-only.
 
 /** The flat form's method-neutral source — the ingredients codegen re-keys per method. */
 export type FlatContract<H> = H extends { '~duxFlat'?: infer F } ? Exclude<F, undefined> : never
@@ -115,6 +117,9 @@ export type WithFilenameParams<E, Params> = E extends { request: infer Req }
 /** A flat endpoint kernel re-keyed to the filename's method, with filename params applied. */
 export type FileFlatContract<H, M extends RouteMethod, Params>
   = WithFilenameParams<AsMethod<FlatContract<H>, M>, Params>
+
+/** The value Nitro's `$fetch`/`InternalApi` exposes for one dux endpoint. */
+export type NitroDataOf<E> = ClientData<E>
 
 // ── the filename-truth assertion (emitted by codegen; fails project typecheck) ─
 // `WithFilenameParams` keeps the *client* honest (it applies the filename params);

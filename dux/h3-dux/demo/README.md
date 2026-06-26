@@ -3,7 +3,7 @@
 One small fruit-market API, shown two ways with `@mszr/h3-dux`:
 
 - **Standalone (h3 only)** — this folder. A `createServer()` app and a `createClient()` trip, runnable with bun.
-- **Nitro (file-based)** — [`nitro/`](./nitro). The same API as file routes, with Nitro codegen + OpenAPI.
+- **Nitro (file-based)** — [`nitro/`](./nitro). The same API as file routes, with Nitro codegen; OpenAPI refinement is phase 10.
 
 Both are typed end-to-end: the server is the single source of truth, and the client is derived from it.
 
@@ -36,6 +36,6 @@ bun run dev      # nitro dev on http://localhost:3000  (Scalar UI at /_scalar)
 
 > Requires the package to be built first (`bun run sdk:build:ours` from the dux workspace), because Nitro resolves `@mszr/h3-dux/nitro` from the package's `dist`, not from source.
 
-Each [`routes/**`](./nitro/routes) file's default export is a dux-native `defineFileRoute` (delta 13): the filename owns the path and method, and the handler carries every standalone delta. On `nitro prepare`/`dev`/`build` the Nitro module generates `#h3-dux/routes` from those files — a schema-free kernel route map, re-keyed per filename method — and [`client.ts`](./nitro/client.ts) types its client straight from it (`createClient<Routes>()`), with no hand-written route interface. The same files still feed nitro's `InternalApi` and the OpenAPI document.
+Each [`routes/**`](./nitro/routes) file's default export is a dux-native `defineFileRoute` (delta 13): the filename owns the path and method, and the handler carries every standalone delta. On `nitro prepare`/`dev`/`build` the Nitro module generates `#h3-dux/routes` from those files — a schema-free kernel route map, re-keyed per filename method — and [`client.ts`](./nitro/client.ts) types its client straight from it (`createClient<Routes>()`), with no hand-written route interface. The same projection also rewrites Nitro's `InternalApi`/`$fetch` success type; OpenAPI enrichment for dux file routes is intentionally deferred to phase 10.
 
 > The generated module is emitted as a `.ts` (not a `.d.ts`) so its filename-truth assertions are checked even under Nitro's `skipLibCheck` — declare `params: { slug }` on `routes/fruits/[id].get.ts` and `tsc` reports the disagreement at the cursor. See [dux-spec.md §13](../../docs/dux-spec.md#13-nitro-deltas-via-codegen).
