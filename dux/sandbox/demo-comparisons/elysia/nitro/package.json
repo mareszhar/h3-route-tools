@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "PORT=3006 nitro dev",
     "build": "nitro build",
-    "prepare": "nitro prepare",
+    "prep": "nitro prepare",
     "start": "PORT=3006 node .output/server/index.mjs",
     "typecheck": "nitro prepare && tsc --noEmit"
   },
