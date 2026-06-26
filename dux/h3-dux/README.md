@@ -26,8 +26,6 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 
 📁 **Nitro file routes, fully typed** — `defineFileRoute` carries every delta into a filesystem route (the filename owns the path/method); `createFileRouteFactory().use(…)` carries middleware capabilities across files. The Nitro module generates `#h3-dux/routes`, so `createClient<Routes>()` is typed end-to-end with **no hand-written route interface**.
 
-🔓 **Auth is not a concept here** — a protected route is `middleware: [...]`; an authenticated call is a header. Nothing app-specific leaks into the kit.
-
 ## Install
 
 ```bash
