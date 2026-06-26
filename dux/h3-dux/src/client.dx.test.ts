@@ -153,3 +153,64 @@ describe('hovers are readable', () => {
     expect(hover).toMatch(/pricePerKg: number/)
   })
 })
+
+/**
+ * Return-type inference is a contract too. The success body must hover as the plain
+ * wire shape (no `Serialize`/`SerializeObject` wrapper), and the result/error as the
+ * inline `{ data, error }` over the documented `H3Dux*Error` classes — never a
+ * `HonestResult`/`ClientError` alias. This is the polish the publish bar requires:
+ * the client's inferred types read as clean as Hono's, and stay that way.
+ */
+const RETURN_LEAK = /Serialize\b|SerializeObject|HonestResult|ClientError|ClientHttpError|ClientData|TypedResponse/
+
+describe('return-type inference is clean', () => {
+  it('success data hovers as the plain wire shape, no Serialize wrapper', () => {
+    const { hover } = project.query`
+      ${setup}
+      async function run() {
+        const fr${cursor}uit = await api.get('/fruits/:id', { params: { id: 'x' } }).orThrow()
+        void fruit
+      }
+    `
+    expect(hover).toMatch(/id: string/)
+    expect(hover).toMatch(/pricePerKg: number/)
+    expect(hover).not.toMatch(RETURN_LEAK)
+  })
+
+  it('the awaited result is the inline { data, error } over honest error classes', () => {
+    const { hover } = project.query`
+      ${setup}
+      async function run() {
+        const re${cursor}s = await api.post('/fruits/:id/reserve', { params: { id: 'x' } })
+        void res
+      }
+    `
+    // The honest union, inline — both arms visible.
+    expect(hover).toMatch(/data:/)
+    expect(hover).toMatch(/error:/)
+    // The error channel is the documented classes, typed per status (409 here).
+    expect(hover).toMatch(/H3DuxHTTPError<409,/)
+    expect(hover).toMatch(/H3DuxTransportError/)
+    // No alias wrappers, no schema/serialize leak.
+    expect(hover).not.toMatch(RETURN_LEAK)
+  })
+
+  it('a declared status narrows the error body directly — no kind guard needed', () => {
+    // `error?.status === 409` narrows straight to the 409 body even though the
+    // transport failure is still in the union (its status is `undefined`). This is
+    // the Elysia-Treaty ergonomic, kept honest.
+    const { hover } = project.query`
+      ${setup}
+      async function run() {
+        const { error } = await api.post('/fruits/:id/reserve', { params: { id: 'x' } })
+        if (error?.status === 409) {
+          const co${cursor}nflict = error.data
+          void conflict
+        }
+      }
+    `
+    expect(hover).toMatch(/error: string/)
+    expect(hover).toMatch(/message: string/)
+    expect(hover).not.toMatch(RETURN_LEAK)
+  })
+})

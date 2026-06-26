@@ -3,10 +3,20 @@
  * shape a fetch client receives). A handler validates the pre-serialization
  * value (e.g. a `Date`); the client gets the serialized form (a `string`).
  *
- * VENDORED, verbatim in behavior, from `h3-route-tools` `src/internal/serialize.ts`
- * (itself adapted from remix's serialize type). Kept here because upstream does
- * not export it, and our verb-sugar response types must match the base client's
- * exactly. The fork-rebase ritual (docs/dux-spec-workspace.md §6) re-checks it.
+ * VENDORED, structurally identical in behavior, from `h3-route-tools`
+ * `src/internal/serialize.ts` (itself adapted from remix's serialize type). Kept
+ * here because upstream does not export it, and our verb-sugar response types must
+ * resolve to the same wire shape the base client reports.
+ *
+ * One deliberate divergence (display only): the object/tuple branches are written
+ * **inline** in the conditional rather than delegated to named `SerializeObject` /
+ * `SerializeTuple` aliases, and objects drop non-JSON keys with a homomorphic
+ * `as`-remap (`[K in keyof T as …]`) rather than `Omit<T, …>`. The resolved type is
+ * identical, but with no alias to print TypeScript renders the literal — a
+ * serialized response hovers as `{ id: string; … }`, never `SerializeObject<{ … }>`
+ * (the wire-shape sibling of the delta-6 leak fix; dux-vision.md principle 3, and
+ * how Hono's `JSONParsed` stays clean). The fork-rebase ritual
+ * (docs/dux-spec-workspace.md §6) re-checks the behavior.
  */
 export type Serialize<T>
   = IsAny<T> extends true
@@ -24,11 +34,11 @@ export type Serialize<T>
               : T extends []
                 ? []
                 : T extends [unknown, ...unknown[]]
-                  ? SerializeTuple<T>
+                  ? { [K in keyof T]: T[K] extends NonJsonPrimitive ? null : Serialize<T[K]> }
                   : T extends ReadonlyArray<infer U>
                     ? (U extends NonJsonPrimitive ? null : Serialize<U>)[]
                     : T extends object
-                      ? SerializeObject<T>
+                      ? { [K in keyof T as T[K] extends NonJsonPrimitive ? never : K]: Serialize<T[K]> }
                       : never
 
 type JsonPrimitive = string | number | boolean | null
@@ -36,16 +46,3 @@ type NonJsonPrimitive = undefined | ((...args: never[]) => unknown) | symbol
 
 type IsAny<T> = 0 extends 1 & T ? true : false
 type IsUnknown<T> = IsAny<T> extends true ? false : unknown extends T ? true : false
-
-/** Keys of `T` whose value is a non-JSON primitive (dropped by `JSON.stringify`). */
-type FilterKeys<T extends object, Filter> = {
-  [K in keyof T]: T[K] extends Filter ? K : never;
-}[keyof T]
-
-type SerializeTuple<T extends [unknown, ...unknown[]]> = {
-  [K in keyof T]: T[K] extends NonJsonPrimitive ? null : Serialize<T[K]>;
-}
-
-type SerializeObject<T extends object> = {
-  [K in keyof Omit<T, FilterKeys<T, NonJsonPrimitive>>]: Serialize<T[K]>;
-}

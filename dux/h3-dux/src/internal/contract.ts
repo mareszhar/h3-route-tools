@@ -10,7 +10,7 @@
  * The kernel is a projection, not a replacement: runtime validation still runs
  * off the original schema, so there is one source of truth.
  */
-import type { H3DuxError } from '../errors.ts'
+import type { H3DuxError, H3DuxHTTPError } from '../errors.ts'
 import type { EventStream } from '../sse.ts'
 import type { Serialize } from './serialize.ts'
 
@@ -72,21 +72,21 @@ export type ClientErrors<E> = E extends { success: infer S, responses: infer R }
   : object
 
 /**
- * The typed HTTP error for an error map: a union discriminated by `status`. With no
- * declared errors it degrades to a generic `{ status: number, data: unknown }` —
- * honesty holds everywhere, typing sharpens where the contract declares it.
+ * The typed HTTP error for an error map: a union of {@link H3DuxHTTPError} —
+ * the *actual* class the client returns/throws (delta 8/9), so the type never
+ * lies about runtime (dux-vision.md principle 3). `Status` is the literal code,
+ * so an `error.status === 409` check narrows `error.data` to that body. With no
+ * declared errors it degrades to `H3DuxHTTPError<number, unknown>` — honesty
+ * holds everywhere, typing sharpens where the contract declares it.
  */
 export type ClientHttpError<Errors> = [keyof Errors] extends [never]
-  ? { kind: 'http', status: number, data: unknown, response: Response }
-  : { [S in keyof Errors & number]: { kind: 'http', status: S, data: Serialize<Errors[S]>, response: Response } }[keyof Errors & number]
+  ? H3DuxHTTPError<number, unknown>
+  : { [S in keyof Errors & number]: H3DuxHTTPError<S, Serialize<Errors[S]>> }[keyof Errors & number]
 
-/** The full error channel: a typed HTTP error or a transport failure. */
-export type ClientError<Errors> = ClientHttpError<Errors> | { kind: 'transport', cause: unknown }
-
-/** What a default verb call resolves to: success → `data`, otherwise a typed `error`. */
-export type HonestResult<Data, Err>
-  = | { data: Data, error: undefined }
-    | { data: undefined, error: Err }
-
-/** Narrow {@link H3DuxError} (runtime) to the contract's error union (display/return typing). */
+/**
+ * The full client error channel is `ClientHttpError<…> | H3DuxTransportError` — the
+ * documented {@link H3DuxError}. The client (client.ts) inlines that union into the
+ * result members rather than aliasing it, so the typed `error` hovers as the
+ * resolved classes instead of a `ClientError<…>` wrapper. See {@link H3DuxError}.
+ */
 export type { H3DuxError }

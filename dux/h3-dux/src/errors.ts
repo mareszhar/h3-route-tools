@@ -9,11 +9,16 @@ import { responseKindFromHeaders } from './response.ts'
  * `.orThrow()` opt-out rejects with the same instances.
  */
 
-/** A non-2xx HTTP response. `data` is the parsed error body — typed per status from the contract. */
-export class H3DuxHTTPError<Data = unknown> extends Error {
+/**
+ * A non-2xx HTTP response. `data` is the parsed error body — typed per status from
+ * the contract. `Status` is the literal status code, so a `error.status === 409`
+ * check narrows a union of these to the matching body (delta 9); it widens to
+ * `number`/`unknown` when the endpoint declares no errors.
+ */
+export class H3DuxHTTPError<Status extends number = number, Data = unknown> extends Error {
   readonly kind = 'http' as const
   constructor(
-    readonly status: number,
+    readonly status: Status,
     readonly data: Data,
     readonly response: Response,
   ) {
@@ -25,6 +30,15 @@ export class H3DuxHTTPError<Data = unknown> extends Error {
 /** The request never reached a response — network down, DNS, CORS, aborted. */
 export class H3DuxTransportError extends Error {
   readonly kind = 'transport' as const
+  /**
+   * A transport failure has no HTTP status — it is `undefined`, exactly as the
+   * runtime returns. Declaring it makes `status` a shared discriminant across the
+   * whole error union, so the natural `if (error?.status === 409)` narrows straight
+   * to that `H3DuxHTTPError` without a separate `kind` guard first (Elysia-Treaty
+   * ergonomics), while transport stays *in* the union — honest, not hidden behind a
+   * throw. `declare` adds it to the type only; no field is emitted.
+   */
+  declare readonly status: undefined
   constructor(cause: unknown) {
     super('Request did not complete', { cause })
     this.name = 'H3DuxTransportError'
@@ -32,7 +46,7 @@ export class H3DuxTransportError extends Error {
 }
 
 /** Either failure a client call can surface. */
-export type H3DuxError<Data = unknown> = H3DuxHTTPError<Data> | H3DuxTransportError
+export type H3DuxError<Data = unknown> = H3DuxHTTPError<number, Data> | H3DuxTransportError
 
 /** The neutral result shape, before the contract narrows `data`/`error`. */
 export type RawResult = { data: unknown, error: undefined } | { data: undefined, error: H3DuxError }

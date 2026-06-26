@@ -4,7 +4,8 @@ import type {
   NormalizeRoutes,
   TypedResponse,
 } from 'h3-route-tools'
-import type { ClientData, ClientError, ClientErrors, HonestResult, ResponseKind, SuccessKindOf } from './internal/contract.ts'
+import type { H3DuxTransportError } from './errors.ts'
+import type { ClientData, ClientErrors, ClientHttpError, ResponseKind, SuccessKindOf } from './internal/contract.ts'
 import { H3DuxHTTPError } from './errors.ts'
 import { H3DuxCall, parseEventStream } from './sse.ts'
 
@@ -94,16 +95,23 @@ type VerbOptions<E, WithParams extends boolean, Req = RequestOf<E>> = Prettify<
  *
  * The success body is decoded by the endpoint's response *kind* via `ClientData`
  * (delta 10): `string` for `text()`, `Blob` for `binary()`, `undefined` for an
- * empty `204`, the serialized wire shape for `json`. `ClientData`/`ClientErrors`/
- * `SuccessKindOf` each resolve the kernel pieces *first*, so the return type prints
- * `H3DuxCall<HonestResult<Fruit, ClientError<{ 409: … }>>, …>`, never the kernel alias.
+ * empty `204`, the serialized wire shape for `json`. The honest result is **inlined**
+ * here, not wrapped in a named alias, and every piece (`ClientData`, `ClientHttpError`,
+ * `ClientErrors`) is a *conditional* that resolves first — so the awaited value hovers
+ * as `{ data: Fruit; error: undefined } | { data: undefined; error: H3DuxHTTPError<…>
+ * | H3DuxTransportError }`, plain shapes and documented classes, never an alias wrapper.
  */
 type VerbReturn<E> = [E] extends [never]
-  ? H3DuxCall<HonestResult<unknown, ClientError<object>>, unknown, 'json'>
+  ? H3DuxCall<
+    { data: unknown, error: undefined } | { data: undefined, error: ClientHttpError<object> | H3DuxTransportError },
+    unknown,
+    'json'
+  >
   : SuccessKindOf<E> extends 'sse'
     ? ClientData<E>
     : H3DuxCall<
-      HonestResult<ClientData<E>, ClientError<ClientErrors<E>>>,
+      | { data: ClientData<E>, error: undefined }
+      | { data: undefined, error: ClientHttpError<ClientErrors<E>> | H3DuxTransportError },
       ClientData<E>,
       SuccessKindOf<E> extends ResponseKind ? SuccessKindOf<E> : 'json'
     >

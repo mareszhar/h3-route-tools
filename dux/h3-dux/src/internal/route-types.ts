@@ -462,11 +462,15 @@ export interface H3DuxVerbOpts<
    */
   errors?: Err
   /**
-   * Request/response schemas. A {@link BodylessMethod} forbids `body`. Set
-   * `eager: false` for manual validation via `event.valid(...)` (default is
+   * Request/response schemas. A {@link BodylessMethod} forbids `body` — the
+   * forbidden slot carries a self-describing message so the cursor reads
+   * "remove validate.body" instead of "not assignable to never". Set `eager:
+   * false` for manual validation via `event.valid(...)` (default is
    * eager-sequential — params → query → headers → body, short-circuit).
    */
-  validate?: ([M] extends [BodylessMethod] ? V & { body?: never } : V) & { eager?: boolean }
+  validate?: ([M] extends [BodylessMethod]
+    ? V & { body?: '⚠ a GET/HEAD request has no body — remove validate.body' }
+    : V) & { eager?: boolean }
   handler: MethodHandler<V, P, Ret, Route, M, Status, Err, HandlerBindings<Bindings, Mw, Req>, ExtraParams>
 }
 

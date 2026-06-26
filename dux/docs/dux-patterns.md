@@ -143,17 +143,18 @@ The result is an object (`{ data, error }`), not a Go tuple (`[error, data]`): T
 
 ## 7. Typed errors & results
 
-`error` in a result is a discriminated `H3DuxError`:
+`error` in a result is the **actual class the client returns and throws** — never a structural look-alike. The type *is* the runtime value, so principle 3 holds all the way down: the documented `H3DuxError` union of two `Error` subclasses, discriminated by `kind`.
 
 ```ts
-type H3DuxError
-  = | { kind: 'http', status: number, data: unknown, response: Response } // server answered non-2xx; data is typed per status
-    | { kind: 'transport', cause: unknown } // request never completed
+type H3DuxError = H3DuxHTTPError<Status, Data> | H3DuxTransportError
+//                 server answered non-2xx       request never completed
 ```
 
-- **`kind` separates the two failures you can't conflate.** A `404` is not a dropped connection; only one carries a server payload.
-- **`status` discriminates the HTTP error**, and `data` narrows with it — sourced from the kernel's `responses` map ([§5](#5-the-contract-kernel)). Given `errors: { 409: ConflictSchema }`, `if (error?.status === 409) error.data` is `Conflict`.
-- **It degrades gracefully.** An endpoint that declares no error schemas still returns `{ data, error }`; there `error.data` is just the default envelope (`{ source, issues }` for validation, `unknown` otherwise). Honesty holds everywhere; typing *sharpens* wherever the contract declares it — never adding ceremony where it doesn't (principle 9).
+So a verb call over `errors: { 409: ConflictSchema }` hovers as `H3DuxHTTPError<409, Conflict> | H3DuxTransportError` — plain, web-standard, no `Result<…>`/`ClientError<…>` wrapper.
+
+- **`kind` separates the two failures you can't conflate.** A `404` is not a dropped connection; only one carries a server payload (and `instanceof H3DuxHTTPError` works, because it is one).
+- **`status` narrows the body directly — no `kind` guard first.** `status` is the literal code on an HTTP error and `undefined` on a transport one, so it discriminates the *whole* union: `if (error?.status === 409) error.data` is `Conflict`, even though the transport failure is still in the union. That is Elysia Treaty's one-condition ergonomic — but Treaty buys it by dropping network failures from the union (they throw); h3-dux keeps them, honest. `data` is sourced from the kernel's `responses` map ([§5](#5-the-contract-kernel)).
+- **It degrades gracefully.** An endpoint that declares no error schemas still returns `{ data, error }`; there `error` is `H3DuxHTTPError<number, unknown> | H3DuxTransportError` and `error.data` is just the default envelope (`{ source, issues }` for validation, `unknown` otherwise). Honesty holds everywhere; typing *sharpens* wherever the contract declares it — never adding ceremony where it doesn't (principle 9).
 
 On the server, errors are declared and thrown with the same vocabulary they're consumed:
 

@@ -54,7 +54,8 @@ test('typed errors: a declared status narrows error.data (delta 9)', async () =>
   const { data, error } = await api.post('/fruits/:id/reserve', { params: { id: 'x' } })
   if (error) {
     if (error.kind === 'transport') {
-      expectTypeOf(error).toEqualTypeOf<{ kind: 'transport', cause: unknown }>()
+      // The error channel is the real class, not a structural look-alike (honest types).
+      expectTypeOf(error).toEqualTypeOf<H3DuxTransportError>()
       return
     }
     // A declared 409 narrows error.data to the ErrorSchema output.
@@ -63,6 +64,14 @@ test('typed errors: a declared status narrows error.data (delta 9)', async () =>
     return
   }
   expectTypeOf(data).toEqualTypeOf<{ id: string, reserved: true }>()
+})
+
+test('typed errors: status narrows the body directly, no kind guard (Elysia ergonomics, kept honest)', async () => {
+  const { error } = await api.post('/fruits/:id/reserve', { params: { id: 'x' } })
+  // The transport failure stays in the union (honest), yet `status === 409` narrows
+  // straight to the declared body — the transport error's status is `undefined`.
+  if (error?.status === 409)
+    expectTypeOf(error.data).toEqualTypeOf<ErrorBody>()
 })
 
 test('typed errors: the auto-422 validation envelope is typed', async () => {

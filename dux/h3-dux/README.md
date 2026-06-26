@@ -49,17 +49,23 @@ One package, three entrypoints. The root is the standalone server + client; the 
 ```ts
 // server.ts — the routes are the schema
 import { createServer, sse } from '@mszr/h3-dux'
-import { NewFruitSchema, RipenTickSchema } from '@orchard/domain'
+import { ConflictSchema, NewFruitSchema, RipenTickSchema } from '@orchard/domain'
 
 export const app = createServer()
   // No options needed → pass the handler directly. `:id` typed from the pattern,
   // response inferred from the return — zero ceremony.
   .get('/fruits/:id', e => orchard.get(e.context.params.id))
   // validate.body → e.context.body is typed AND validated; status sets the success code.
+  // errors → a typed failure channel; e.error(409, …) is checked against the schema.
   .post('/fruits', {
     status: 201,
     validate: { body: NewFruitSchema },
-    handler: e => orchard.create(e.context.body),
+    errors: { 409: ConflictSchema },
+    handler: (e) => {
+      if (orchard.has(e.context.body.name))
+        throw e.error(409, { reason: 'already_exists' })
+      return orchard.create(e.context.body)
+    },
   })
   // sse() makes this a typed stream on the client.
   .get('/fruits/:id/ripen', {
@@ -79,8 +85,13 @@ import type { App } from './server'
 
 const api = createClient<App>({ baseURL })
 
-const { data, error } = await api.get(`/fruits/${id}`) // data: Fruit (wire shape) | undefined
-const created = await api.post('/fruits', { body: mango }).orThrow() // body checked; throws on failure
+const { data } = await api.get(`/fruits/${id}`) // data: Fruit (wire shape) | undefined
+
+// The error is the real class, typed per status — narrow it at the cursor:
+const { error } = await api.post('/fruits', { body: mango })
+if (error?.status === 409)
+  error.data // Conflict — narrowed by status from the typed H3DuxHTTPError union
+const created = await api.post('/fruits', { body: mango }).orThrow() // or bubble it
 
 for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator<RipenTick>
   console.log(tick.ripeness)
@@ -94,7 +105,7 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 **Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
 
-**Generation 2** — in progress. Shipped (deltas 6–13, all test planes): a normalized contract kernel, an honest `{ data, error }` client, a typed error channel, response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), and the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface. The contract kernel is now canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. Planned (delta 14): OpenAPI from the standalone server; client interceptors.
+**Generation 2** — complete (deltas 6–14, all test planes): a normalized contract kernel, an honest `{ data, error }` client whose typed `error` is the real `H3DuxHTTPError<Status, Data>` / `H3DuxTransportError` (narrowed per status, never a structural look-alike), response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface — plus **dux-aware OpenAPI** for standalone and Nitro and a polished client transport (`signal`/timeout/retry/query serialization, request/response hooks). The contract kernel is canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. The inferred types are tuned to read at least as cleanly as Hono's — a serialized body hovers as `{ id: string; … }`, the result as the inline `{ data, error }` — with strictly more information (honest, per-status failure).
 
 ## Development
 

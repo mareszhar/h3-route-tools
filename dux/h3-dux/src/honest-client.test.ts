@@ -44,7 +44,7 @@ it('.orThrow() rejects with a H3DuxHTTPError on a non-2xx', async () => {
   catch (error) {
     expect(error).toBeInstanceOf(H3DuxHTTPError)
     expect((error as H3DuxHTTPError).status).toBe(409)
-    expect((error as H3DuxHTTPError<{ error: string }>).data.error).toBe('conflict')
+    expect((error as H3DuxHTTPError<409, { error: string }>).data.error).toBe('conflict')
   }
 })
 
