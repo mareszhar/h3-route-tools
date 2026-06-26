@@ -438,7 +438,7 @@ function createDuxFetch(options: CreateClientOptions): (route: string, opts: Run
  * Build a typed fetch client from a server's `typeof app`. The counterpart of
  * `createServer`. Address routes with the bare `api(path, { method })` form or
  * the verb sugar `api.get(path, opts)` — both are typed end-to-end from the
- * server contract; see docs/dux-conventions.md §5.
+ * server contract; see docs/dux-patterns.md §2.
  */
 export function createClient<App>(options: CreateClientOptions = {}): Client<App> {
   const call = createDuxFetch(options) as (route: string, opts: RuntimeOptions) => Promise<Response>

@@ -445,7 +445,7 @@ export class H3DuxServer<Routes = object, Bindings = object> {
 /**
  * Create a typed h3 server. The counterpart of `createClient`: the server you
  * build here is the single source of truth the client is typed from
- * (`createClient<typeof app>()`). See docs/dux-conventions.md §5.
+ * (`createClient<typeof app>()`). See docs/dux-patterns.md §2.
  */
 export function createServer(config?: H3TypedConfig): H3DuxServer {
   return new H3DuxServer(config)

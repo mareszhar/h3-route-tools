@@ -127,7 +127,7 @@ export type SuccessResponse<
  * inferred from the schema/return: strings are text, bytes are binary, empty
  * values/statuses are empty, and everything else is JSON. A plain native
  * `Response` stays opaque; `typedResponse()` carries an explicit body contract.
- * See docs/dux-conventions.md §11.
+ * See docs/dux-patterns.md §8.
  */
 export type SuccessKind<
   V extends AnyMethodValidate,
@@ -277,7 +277,7 @@ type ValidFn<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined, 
  * manual mode; and `event.valid(scope)`, the deliberate, idempotent validator.
  * `event.bindings` exposes the typed capabilities upstream middleware published
  * (delta 12). `ExtraParams` folds in params a router owns from a dynamic outer
- * mount (`parentParams`, delta 11). See docs/dux-conventions.md §4, §13.
+ * mount (`parentParams`, delta 11). See docs/dux-patterns.md §1, §10.
  */
 export type MethodEvent<
   V extends AnyMethodValidate,

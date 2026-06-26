@@ -1,4 +1,4 @@
-// ── the dux surface (counterpart-named; see docs/dux-conventions.md) ───────────
+// ── the dux surface (counterpart-named; see docs/dux-language.md) ───────────
 export { createClient, createTestClient } from './client.ts'
 
 export type { Client, CreateClientOptions, H3DuxClientTransportOptions, VerbFetch } from './client.ts'

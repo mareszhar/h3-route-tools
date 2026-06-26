@@ -658,7 +658,7 @@ type LocalProviders<Bindings, Requires> = Omit<Bindings, keyof Requires>
  * Guard `.compose(feature)`. First the feature's requirements must be present and
  * assignable in the parent's bindings; then the two factories' *registered* providers
  * (each minus what it merely requires) must not overlap, because both would run — the
- * same law `.use` and router `.mount` enforce ([dux-conventions.md §12](../docs/dux-conventions.md)).
+ * same law `.use` and router `.mount` enforce ([dux-patterns.md §9](../docs/dux-patterns.md#9-composition--scope)).
  */
 type ComposeIssue<FB, FR, Bindings, Requires>
   = [UnsatisfiedKeys<FR, Bindings>] extends [never]

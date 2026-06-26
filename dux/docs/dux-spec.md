@@ -5,7 +5,7 @@ The deltas that make h3-dux more than a rename, in two generations. Each is **co
 - **Generation 1 (shipped)** — the authoring surface: per-verb server/client, interpolation, typed SSE, validation modes. Reached *Hono-level* end-to-end safety.
 - **Generation 2 (shipped)** — honesty, errors, scale: the contract kernel and everything it unlocks. This is what takes h3-dux *past* Hono and Elysia.
 
-Everything not listed here is inherited from `h3-route-tools` and re-exported unchanged — see [dux-vision.md §4.3](./dux-vision.md#43-inherited-vs-ours). Vocabulary, the validated-data model, the kernel, the honest client, and the naming map are defined once in [dux-conventions.md](./dux-conventions.md) and referenced, not repeated.
+Everything not listed here is inherited from `h3-route-tools` and re-exported unchanged — see [dux-vision.md §4.3](./dux-vision.md#43-inherited-vs-ours). Vocabulary and the naming map are defined once in [dux-language.md](./dux-language.md); the validated-data model, the kernel, and the honest client are defined once in [dux-patterns.md](./dux-patterns.md) — both referenced, not repeated.
 
 Snippets use valibot schemas from the Orchard comparison fixtures (`@orchard/domain`, in [`sandbox/demo-comparisons/fixtures`](../sandbox/demo-comparisons/fixtures)) so the examples are concrete.
 
@@ -63,7 +63,7 @@ The contracts below are intact; a few implementation decisions are worth recordi
 
 ## 1. Per-verb server authoring
 
-**Why.** Authoring a single-method route as `.route({ route: '/x', get: { handler } })` buries the HTTP verb inside an object key. A verb method (`app.get('/x', { handler })`) reads like the route it defines and mirrors the client call ([dux-conventions.md §5](./dux-conventions.md#5-server--client-symmetry)). It must be pure sugar: the accumulating generic that `createClient<typeof app>()` reads has to survive unchanged.
+**Why.** Authoring a single-method route as `.route({ route: '/x', get: { handler } })` buries the HTTP verb inside an object key. A verb method (`app.get('/x', { handler })`) reads like the route it defines and mirrors the client call ([dux-patterns.md §2](./dux-patterns.md#2-server--client-symmetry)). It must be pure sugar: the accumulating generic that `createClient<typeof app>()` reads has to survive unchanged.
 
 **Usage.**
 
@@ -95,7 +95,7 @@ export type App = typeof app // ← the single source of truth for the client
 
 **Proposed approach.** Add `get`/`post`/`put`/`patch`/`delete`/`head`/`options` methods to the `H3Typed` subclass (`src/h3-typed.ts`). Each is a thin forward to the existing `.route()` with the verb filled in (`get(route, opts) → this.route({ route, get: opts })`), so the return type stays `H3Typed<MergePair<Routes, RouteRecord<…>>>` and accumulation is untouched. `opts` is the existing per-method def (`validate`, `middleware` → route-level, `meta`, `status`, `handler`) — the only new surface is the call shape.
 
-**Bare-handler shorthand (added later).** When a route needs no options, the handler may be passed directly — `app.get('/health', e => …)` — as sugar for `{ handler }`, response still inferred from the return ([dux-conventions.md §5](./dux-conventions.md#5-server--client-symmetry)). It is implemented as a **single signature with a `VerbArg = ServerOpts | MethodHandler` union parameter** (the bare arm fixes validate/params/status/errors to defaults and infers only `Ret`), *not* a second overload — measured empirically against delta 6's bar: a second overload reintroduces the "No overload matches this call" wall for a bad options object, while the union parameter keeps a single `2353` at the offending property (and prints the `VerbArg` alias, no schema leak). Routers carry the same `RouterArg` union; the client stays options-only.
+**Bare-handler shorthand (added later).** When a route needs no options, the handler may be passed directly — `app.get('/health', e => …)` — as sugar for `{ handler }`, response still inferred from the return ([dux-patterns.md §2](./dux-patterns.md#2-server--client-symmetry)). It is implemented as a **single signature with a `VerbArg = ServerOpts | MethodHandler` union parameter** (the bare arm fixes validate/params/status/errors to defaults and infers only `Ret`), *not* a second overload — measured empirically against delta 6's bar: a second overload reintroduces the "No overload matches this call" wall for a bad options object, while the union parameter keeps a single `2353` at the offending property (and prints the `VerbArg` alias, no schema leak). Routers carry the same `RouterArg` union; the client stays options-only.
 
 **Status:** ☑ done (verb forms + bare-handler shorthand).
 
@@ -176,7 +176,7 @@ for await (const tick of api.get(`/fruits/${id}/ripen`))
 
 **Why.** Validation should be predictable by default and controllable when you need it. The default is **eager and sequential** — a fixed pipeline `params → query → headers → body` that short-circuits on the first failure, so "validate the body only if the query passed" is free. When a handler needs to decide *whether* or *when* to validate (a dry-run that never touches the body, an order that depends on a prior result), `eager: false` switches to **manual** mode: nothing auto-runs, and you validate on demand.
 
-This is the home of the validated-data model defined in [dux-conventions.md §4](./dux-conventions.md#4-the-validated-data-model): eager validated values are read through `event.params/query/body` (root aliases of `event.context.*`); `event.valid('<scope>')` is the deliberate, idempotent validator for declared schemas (throws → `422`).
+This is the home of the validated-data model defined in [dux-patterns.md §1](./dux-patterns.md#1-the-validated-data-model): eager validated values are read through `event.params/query/body` (root aliases of `event.context.*`); `event.valid('<scope>')` is the deliberate, idempotent validator for declared schemas (throws → `422`).
 
 **Usage.**
 
@@ -281,7 +281,7 @@ Two wins fell out of the single signature, both beyond the original plan:
 
 ## 7. The contract kernel
 
-**Why.** Every plane re-derives plain shapes from raw schema generics, which is the root of intricate inference, leaked diagnostics, and the flattened response that loses per-status structure. Normalize once. This is the spine of Generation 2 ([dux-conventions.md §8](./dux-conventions.md#8-the-contract-kernel)): deltas 8–14 are all producers or consumers of the kernel, which is *why* they compose instead of colliding.
+**Why.** Every plane re-derives plain shapes from raw schema generics, which is the root of intricate inference, leaked diagnostics, and the flattened response that loses per-status structure. Normalize once. This is the spine of Generation 2 ([dux-patterns.md §5](./dux-patterns.md#5-the-contract-kernel)): deltas 8–14 are all producers or consumers of the kernel, which is *why* they compose instead of colliding.
 
 **Usage.** Invisible — no user writes a kernel. It is the internal type `typeof app` accumulates and every surface reads:
 
@@ -306,7 +306,7 @@ Two realities worth recording:
 
 ## 8. The honest client
 
-**Why.** `await (await api.get('/health')).json()` is a double-`await` inherited from `TypedResponse` ([client.ts:60](../h3-dux/src/client.ts:60)), and worse, `.json()` is typed as the success body *even on a 404* — a real type-safety hole. A value typed `Fruit` that can reject is the cursor lying (principle 3). Make the client honest by default ([dux-conventions.md §9](./dux-conventions.md#9-the-honest-client)).
+**Why.** `await (await api.get('/health')).json()` is a double-`await` inherited from `TypedResponse` ([client.ts:60](../h3-dux/src/client.ts:60)), and worse, `.json()` is typed as the success body *even on a 404* — a real type-safety hole. A value typed `Fruit` that can reject is the cursor lying (principle 3). Make the client honest by default ([dux-patterns.md §6](./dux-patterns.md#6-the-honest-client)).
 
 **Usage.**
 
@@ -343,7 +343,7 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // unchanged SSE
 
 ## 9. Typed error contracts
 
-**Why.** Upstream already models per-status response schemas and auto-registers error schemas; h3-dux standardizes request validation on `422` and must not flatten those statuses away. Preserving them gives the client a *discriminated, typed* `error` from the same Standard Schema declaration that feeds runtime validation and OpenAPI — the three(four)-for-one that meets or beats Elysia Treaty ([dux-conventions.md §10](./dux-conventions.md#10-typed-errors--results)).
+**Why.** Upstream already models per-status response schemas and auto-registers error schemas; h3-dux standardizes request validation on `422` and must not flatten those statuses away. Preserving them gives the client a *discriminated, typed* `error` from the same Standard Schema declaration that feeds runtime validation and OpenAPI — the three(four)-for-one that meets or beats Elysia Treaty ([dux-patterns.md §7](./dux-patterns.md#7-typed-errors--results)).
 
 **Usage.**
 
@@ -395,7 +395,7 @@ Two realities worth recording:
 
 ## 11. Delta-aware composition
 
-**Why.** The deltas live only on the chaining `H3DuxServer` ([server.ts:187](../h3-dux/src/server.ts:187)); composing a domain into another file via upstream's `defineRoute`/`mountRoutes` drops you back to upstream ergonomics. Worse, `H3DuxServer` exposes no `.register()`, so even upstream's own `defineRoute` plugin **does not accumulate into `~duxRoutes`** — the type `createClient` reads — silently desyncing the client. This is the biggest strategic gap for "scale + highest DX" ([dux-conventions.md §12](./dux-conventions.md#12-composition--scope)).
+**Why.** The deltas live only on the chaining `H3DuxServer` ([server.ts:187](../h3-dux/src/server.ts:187)); composing a domain into another file via upstream's `defineRoute`/`mountRoutes` drops you back to upstream ergonomics. Worse, `H3DuxServer` exposes no `.register()`, so even upstream's own `defineRoute` plugin **does not accumulate into `~duxRoutes`** — the type `createClient` reads — silently desyncing the client. This is the biggest strategic gap for "scale + highest DX" ([dux-patterns.md §9](./dux-patterns.md#9-composition--scope)).
 
 **Usage.**
 
@@ -443,7 +443,7 @@ createServer().mount('/users/:userId', friends)
 
 ## 12. Typed middleware bindings
 
-**Why.** Plain h3 middleware can add arbitrary request state, but downstream handlers cannot know its shape without a global declaration or cast. Global `H3EventContext` augmentation lies for routes where the middleware did not run; interpreting a middleware return as state would conflict with h3, where returns are responses. The dux primitive must preserve all middleware behavior while carrying precise, scoped capabilities through composition ([dux-conventions.md §13](./dux-conventions.md#13-typed-middleware-bindings)).
+**Why.** Plain h3 middleware can add arbitrary request state, but downstream handlers cannot know its shape without a global declaration or cast. Global `H3EventContext` augmentation lies for routes where the middleware did not run; interpreting a middleware return as state would conflict with h3, where returns are responses. The dux primitive must preserve all middleware behavior while carrying precise, scoped capabilities through composition ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)).
 
 **Usage — reusable middleware.**
 
@@ -843,11 +843,11 @@ await api.get('/orders', {
 Settled as the deltas landed; kept here so they aren't re-litigated.
 
 - **Request-data access** — *settled (revised for phase 8).* `event.params/query/body` are root aliases over canonical `event.context` storage. Params resolve before the handler in both modes. Eager declared query/body schemas expose validated outputs directly; deferred manual scopes retain raw/`unknown` direct properties and expose their trusted output through the return of `event.valid()` only. Undeclared bodies remain `unknown` and undeclared queries retain their raw h3 shape. `event.validated` is not part of the dux surface.
-- **Validation-error status** — *settled (revised for Gen 2).* Request-validation failures are **`422`, eager or manual** (delta 9) — Generation 1's `400`/`422`-by-mode split is gone, because a client must not see a different status for the same malformed request based on a server-internal mode choice. Response failures stay `500`; all carry `{ source, issues }`. A custom envelope is still a userland `onValidationError` ([dux-conventions.md §7](./dux-conventions.md#7-validation-errors)).
+- **Validation-error status** — *settled (revised for Gen 2).* Request-validation failures are **`422`, eager or manual** (delta 9) — Generation 1's `400`/`422`-by-mode split is gone, because a client must not see a different status for the same malformed request based on a server-internal mode choice. Response failures stay `500`; all carry `{ source, issues }`. A custom envelope is still a userland `onValidationError` ([dux-patterns.md §4](./dux-patterns.md#4-validation-errors)).
 - **Verb coverage** — *settled.* The callable verbs (`get/post/put/patch/delete/head/options`) get verb methods; `trace`/`connect` stay on the underlying `app.native.route()`, matching upstream's `CallableMethod`.
 - **Client default shape** — *settled.* The default is the honest `{ data, error }` result, not a bare value and not a Go tuple (delta 8). Honesty is the tiebreaker: a type that asserts `Fruit` but can reject is the cursor lying. `.orThrow()` is the legible opt-out; `.raw()` the web-standard escape hatch.
 - **Typed errors: now, not later** — *settled.* The status→schema response map is preserved in the kernel from the start (delta 7), not deferred — because the response-contract shape decides whether errors, raw, Nitro, and OpenAPI stay coherent. The honest default *subsumes* a separate `api.try` surface (it already is the typed result), so we ship one mechanism, not three.
-- **`params` placement** — *settled.* On the dux verb surface `params` is declared inside `validate` (one request block); it remains route-level underneath, where multi-method routes and grouped routers share one param schema ([dux-conventions.md §4](./dux-conventions.md#4-the-validated-data-model)).
+- **`params` placement** — *settled.* On the dux verb surface `params` is declared inside `validate` (one request block); it remains route-level underneath, where multi-method routes and grouped routers share one param schema ([dux-patterns.md §1](./dux-patterns.md#1-the-validated-data-model)).
 - **Middleware state vocabulary** — *settled.* `staged` is private preparation for one middleware; `bindings` are request-scoped capabilities published downstream. Middleware returns keep h3 response semantics. No imperative setter and no single-letter event aliases.
 - **File-route method ownership** — *settled.* Nitro's filename owns the method. A method-locked file uses flat `defineFileRoute({ handler, … })`; an unsuffixed file uses either a method-neutral shared handler or an explicit method map. There are no `defineFileRoute.get/post/…` methods.
 - **File-route definition diagnostics** — *settled.* `defineFileRoute` and file-route factories use one callable signature for the flat and method-map authoring forms. The method-map branch captures only file-route authoring keys, so malformed flat objects and typo method keys do not collapse into an empty generated method map; they report at the cursor with the same no-overload/no-schema-leak bar as the rest of delta 6.

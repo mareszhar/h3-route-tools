@@ -2,7 +2,7 @@
  * Typed middleware bindings (delta 12). Middleware keeps ordinary h3 semantics —
  * it can continue, intercept, redirect, throw, or post-process — and gains one
  * optional capability: publishing request-scoped, *typed* values that downstream
- * middleware and handlers read as `event.bindings`. See docs/dux-conventions.md §13.
+ * middleware and handlers read as `event.bindings`. See docs/dux-patterns.md §10.
  *
  * `defineMiddleware(fn)` keeps the direct callback form for plain middleware;
  * `defineMiddleware({ requires?, staged?, bindings?, handler? })` adds the typed

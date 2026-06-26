@@ -32,7 +32,7 @@ dux/
   .gitignore              ignores `.dux/` (release-machinery scratch state)
   scripts/                maintainer scripts (git-hook install, publishing, …)
     publish/              prepublish gate, npm release, subtree squash ([§9](#9-publishing))
-  docs/                   vision · conventions · spec · this manual
+  docs/                   vision · language · patterns · spec · this manual
   h3-dux/                 the published package, @mszr/h3-dux
   sandbox/
     demo-main/            focused h3-dux demo, split into standalone and Nitro

@@ -1,99 +1,23 @@
-# h3-dux — conventions
+# h3-dux — patterns
 
-The cross-cutting law: the words, the names, and the few rules that make every h3-dux surface feel like one library. [dux-vision.md](./dux-vision.md) principles 4 and 5 are the *why* — self-documenting, predictable, learn one and know the rest; this doc is the *what*.
+The cross-cutting law: the few behavioral rules that make every h3-dux surface work the same way, regardless of which file or plane you're reading. [dux-vision.md](./dux-vision.md) principles 2, 3, and 5 are the *why* — boilerplate is harm, errors belong at the cursor, learn one surface and know the rest; this doc is the *what*. The words these patterns are described in — vocabulary, naming, doc style — live in [dux-language.md](./dux-language.md).
 
-Every name we add answers three questions: does it say what the thing **is** (not what an ancestor called it), is it **technically accurate**, and is it used **consistently** everywhere the concept appears? Where upstream or h3 core already has a precise word, we keep it — renaming for sport is its own kind of boilerplate.
+Each pattern is a contract every plane (server, client, Nitro, OpenAPI) honors identically. [dux-spec.md](./dux-spec.md) is where each pattern was introduced as a delta; this doc is where the settled rule lives once it has shipped, so a later delta references it instead of re-deriving it.
 
-- [0. House style](#0-house-style)
-- [1. Vocabulary](#1-vocabulary)
-- [2. The fetchdts alignment](#2-the-fetchdts-alignment)
-- [3. Values vs types](#3-values-vs-types)
-- [4. The validated-data model](#4-the-validated-data-model)
-- [5. Server ↔ client symmetry](#5-server--client-symmetry)
-- [6. Response typing](#6-response-typing)
-- [7. Validation errors](#7-validation-errors)
-- [8. The contract kernel](#8-the-contract-kernel)
-- [9. The honest client](#9-the-honest-client)
-- [10. Typed errors & results](#10-typed-errors--results)
-- [11. Response kinds](#11-response-kinds)
-- [12. Composition & scope](#12-composition--scope)
-- [13. Typed middleware bindings](#13-typed-middleware-bindings)
-- [14. The naming map](#14-the-naming-map)
+- [1. The validated-data model](#1-the-validated-data-model)
+- [2. Server ↔ client symmetry](#2-server--client-symmetry)
+- [3. Response typing](#3-response-typing)
+- [4. Validation errors](#4-validation-errors)
+- [5. The contract kernel](#5-the-contract-kernel)
+- [6. The honest client](#6-the-honest-client)
+- [7. Typed errors & results](#7-typed-errors--results)
+- [8. Response kinds](#8-response-kinds)
+- [9. Composition & scope](#9-composition--scope)
+- [10. Typed middleware bindings](#10-typed-middleware-bindings)
 
 ---
 
-## 0. House style
-
-The style for every h3-dux doc.
-
-- **Precise, not padded.** One concept, one term; synonyms signal different things. Use the technical word when the domain calls for it. Write to lower the reader's effort, not to sound thorough.
-- **Decisions, not deliberations.** State the current answer, not the path to it. Imperative or declarative ("use X", "X is Y"), never "you might consider X".
-- **Rationale earns its place.** Explain a choice when the reason is non-obvious or guards a known trap — otherwise let the rule stand clean. The two failure modes are equal: commentary that buries the rule, and terseness that makes it feel arbitrary.
-- **No hedging.** Drop *generally*, *usually*, *try to* unless a real exception needs surfacing — then state it.
-- **DRY.** Link to the canonical place instead of restating it. A fact lives in one doc; the others reference it.
-
-### Name your schema outputs
-
-A house convention for userland schemas, not a kit rule — but it costs nothing and directly serves principle 4. TypeScript expands an anonymous `v.InferOutput<typeof FruitSchema>` into its full mapped shape on every hover. Give it a name once and the hover collapses to that name:
-
-```ts
-export interface Fruit extends v.InferOutput<typeof FruitSchema> {}
-```
-
-Now `Fruit` reads as `Fruit` at the cursor instead of `{ id: string; emoji: string; … }`. The contract kernel ([§8](#8-the-contract-kernel)) does this on the *kit* side (it prettifies at the public boundary); this is its userland complement, and the demos and docs model it.
-
----
-
-## 1. Vocabulary
-
-These words carry exactly these meanings across the server, client, and Nitro surfaces.
-
-| Term | Means |
-| --- | --- |
-| **route** | a path pattern (`/fruits/:id`); the unit you author and address |
-| **method** | the HTTP verb on a route (`get`, `post`, …); a route has one contract per method |
-| **endpoint** | a route + method pair — the addressable unit the client targets |
-| **contract** | a method's full type: its `validate` block + handler return; what accumulates into `typeof app` |
-| **validate block** | the `validate: { params, query, body, headers, response, eager? }` object on a method |
-| **handler** | the function that runs for a method; receives the typed `event`, returns the response |
-| **middleware** | h3 middleware, optionally carrying typed requirements and downstream bindings; how auth and cross-cutting concerns attach (never a kit concept) |
-| **eager / manual** | the two validation modes — auto-run before the handler, or on-demand via `event.valid()` ([§4](#4-the-validated-data-model)) |
-| **EventStream** | a response branded by `sse(schema)` — a typed `text/event-stream`, consumed as `AsyncGenerator<T>` |
-| **endpoint contract / kernel** | the normalized, schema-free projection of an endpoint that every plane reads: `{ request, responses, success }` ([§8](#8-the-contract-kernel)) |
-| **result** | what a default client call resolves to: `{ data, error }` — `data` on 2xx, a typed `error` otherwise ([§9](#9-the-honest-client)) |
-| **H3DuxError** | the client-side failure: `H3DuxHTTPError` (a typed non-2xx response) or `H3DuxTransportError` (the request never completed) ([§10](#10-typed-errors--results)) |
-| **response kind** | how a response body crosses the wire — `json \| text \| empty \| sse \| binary` ([§11](#11-response-kinds)) |
-| **router** | a delta-carrying route group built with `createRouter`, optionally owning a literal prefix, then mounted into a server ([§12](#12-composition--scope)) |
-| **staged values** | middleware-private preparation returned by `staged`; visible only to that middleware's `bindings` and `handler` callbacks ([§13](#13-typed-middleware-bindings)) |
-| **bindings** | request-scoped values a typed middleware publishes to downstream middleware and handlers as `event.bindings` ([§13](#13-typed-middleware-bindings)) |
-| **requirements** | middleware or parent-path capabilities that a middleware, router, or endpoint consumes without registering them again ([§12](#12-composition--scope), [§13](#13-typed-middleware-bindings)) |
-| **file route** | a Nitro filesystem route whose path and optional method come from its filename, authored with `defineFileRoute` or a derived file-route factory ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
-| **file-route factory** | a callable route definition utility created by `createFileRouteFactory`; it carries typed middleware capabilities into independently authored Nitro route files ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
-
-`params`, `query`, `body`, `headers`, `response` keep their h3 / fetchdts meanings ([§2](#2-the-fetchdts-alignment)). Validated request values live canonically on `event.context` and are exposed through the root aliases `event.params`, `event.query`, and `event.body`; the client uses the same request names.
-
----
-
-## 2. The fetchdts alignment
-
-The typed client speaks [fetchdts](https://github.com/unjs/fetchdts) — the type-level vocabulary a Nuxt-core contributor is standardizing. We stay inside it so the client realigns cheaply if fetchdts ships more.
-
-- Per-endpoint metadata keys are **`query`, `headers`, `body`, `response`, `responseHeaders`** — note it is **`response`, not `output`**.
-- Paths are **string literals**, and dynamic segments are **template-literal** paths (`/fruits/${string}`). That is what lets interpolation (`api.get(\`/fruits/${id}\`)`, [delta 3](./dux-spec.md)) typecheck on the client.
-- The client surface is **verb + literal path** (`api.get('/fruits/:id', …)`), not an Eden-style proxy chain.
-
----
-
-## 3. Values vs types
-
-- **Values are unprefixed:** `createServer`, `createClient`, `defineRoute`, `sse`. The package specifier already namespaces them; a userland clash is one `import { sse as sseStream }` away.
-- **Types stay close to upstream and h3.** We re-export h3-route-tools' type names unchanged (`TypedFetch`, `Endpoint`, `RouteHandler`, …) — renaming them would only make diffing upstream harder. New types we introduce read plainly and domain-scoped (`EventStream<T>`); no vanity brand prefix.
-
-The rule of thumb: **a re-exported name keeps its upstream spelling; a name we coin is chosen for precision.**
-
----
-
-## 4. The validated-data model
+## 1. The validated-data model
 
 How a handler reads request data — and the one place h3-dux deliberately improves on upstream's `event.validated` bag. The types describe what has actually been established, never what a client merely claimed:
 
@@ -101,17 +25,17 @@ How a handler reads request data — and the one place h3-dux deliberately impro
 - **Eager schemas produce direct typed values.** With the default eager mode, a declared scope is validated before the handler and both aliases expose the schema's output type.
 - **Manual schemas are available through `event.valid(scope)`, not a premature property.** Under `eager: false`, a deferred `query`/`body`/`headers` schema does not make `event.query` or `event.body` claim the schema output before validation. The direct property remains raw/`unknown` for the handler; `await event.valid('body')` runs the schema, caches the value, returns its output type, and throws → `422` on failure. TypeScript cannot soundly narrow a separate property after an async method call, so use the returned value. In eager mode the same call returns the cached validated value.
 - **Undeclared input stays raw.** A body with no schema is `unknown`; a query with no schema has h3's raw query shape rather than an application object inferred from wishful property access. Declaring a schema is what turns untrusted client input into a trusted application type.
-- **Path-derived params are the narrow exception.** A literal route such as `/users/:id` proves that its local `id` exists as a `string`; a params schema may validate/coerce it to a different output. Params are resolved before the handler in both modes because routing already depends on them; manual mode controls query/body/headers. A child router only knows its own path plus parent params it explicitly declares ([§12](#12-composition--scope)).
+- **Path-derived params are the narrow exception.** A literal route such as `/users/:id` proves that its local `id` exists as a `string`; a params schema may validate/coerce it to a different output. Params are resolved before the handler in both modes because routing already depends on them; manual mode controls query/body/headers. A child router only knows its own path plus parent params it explicitly declares ([§9](#9-composition--scope)).
 
-A request-validation failure is **`422` regardless of mode** ([§7](#7-validation-errors)): the status a client sees must not depend on a server-internal mode choice (principle 5 — no surprises between siblings).
+A request-validation failure is **`422` regardless of mode** ([§4](#4-validation-errors)): the status a client sees must not depend on a server-internal mode choice (principle 5 — no surprises between siblings).
 
 We **drop `event.validated`** from the surface — from the *types*, not just the docs. `event.valid('body')` reads as the deliberate action it is; eager direct reads use `event.body` (or its `event.context.body` alias). Upstream's accessor stays available underneath for diffing, but the dux `MethodEvent` does not expose it.
 
-`eager: false` lives **inside the `validate` block**, next to the schemas it governs. So does `params`: on the dux verb surface `validate.params` is where you declare the param schema, so the whole request contract reads from one block — even though params are *route-level* underneath (one schema per path, shared across methods), which is where they live for multi-method routes and grouped routers ([§12](#12-composition--scope)). Full contract and the pipeline order: [dux-spec.md §5](./dux-spec.md).
+`eager: false` lives **inside the `validate` block**, next to the schemas it governs. So does `params`: on the dux verb surface `validate.params` is where you declare the param schema, so the whole request contract reads from one block — even though params are *route-level* underneath (one schema per path, shared across methods), which is where they live for multi-method routes and grouped routers ([§9](#9-composition--scope)). Full contract and the pipeline order: [dux-spec.md §5](./dux-spec.md).
 
 ---
 
-## 5. Server ↔ client symmetry
+## 2. Server ↔ client symmetry
 
 The server verb you author and the client verb you call are the **same word**. This is principle 5 made literal:
 
@@ -136,35 +60,35 @@ It is **one signature with a `options | handler` union parameter**, never a seco
 
 ---
 
-## 6. Response typing
+## 3. Response typing
 
 Response typing is **hybrid**, and the default is zero-ceremony:
 
 - **Inferred by default.** With no `validate.response`, the handler's return *is* the client's type. This is the Hono/Elysia parity that kills the hand-written `request<Receipt>(…)` assertion.
 - **Validated on opt-in.** Declaring `validate.response` does two things: it type-checks the handler's return against the schema (it can't lie), and it runtime-validates the response before sending (→ `500` on a breach).
 - **Streamed via `sse()`.** `sse(schema)` is the streaming form of `validate.response`: it brands the endpoint so the client returns `AsyncGenerator<T>` instead of a JSON body ([dux-spec.md §4](./dux-spec.md)).
-- **Per-status when you want it.** `validate.response` accepts a status map (`{ 200: Fruit, 404: NotFound }`) and `errors` declares failure schemas — the success projection becomes `data`, the rest become a typed `error` ([§9](#9-the-honest-client), [§10](#10-typed-errors--results)).
+- **Per-status when you want it.** `validate.response` accepts a status map (`{ 200: Fruit, 404: NotFound }`) and `errors` declares failure schemas — the success projection becomes `data`, the rest become a typed `error` ([§6](#6-the-honest-client), [§7](#7-typed-errors--results)).
 
-Client response types are the **wire shape**: a `v.date()` / `z.date()` field arrives as `string`, because that is what JSON gives you. (Inherited from upstream's `Serialize`.) The *kind* of a response — JSON, plain text, empty (`204`), a stream, or binary — is part of the contract too, so the client decodes it correctly without a guess ([§11](#11-response-kinds)).
+Client response types are the **wire shape**: a `v.date()` / `z.date()` field arrives as `string`, because that is what JSON gives you. (Inherited from upstream's `Serialize`.) The *kind* of a response — JSON, plain text, empty (`204`), a stream, or binary — is part of the contract too, so the client decodes it correctly without a guess ([§8](#8-response-kinds)).
 
-How that typed response is *consumed* — not asserted by hand, not behind a double `await` — is [§9](#9-the-honest-client).
+How that typed response is *consumed* — not asserted by hand, not behind a double `await` — is [§6](#6-the-honest-client).
 
 ---
 
-## 7. Validation errors
+## 4. Validation errors
 
 We keep upstream's cascade verbatim — it is already excellent. One hook, `onValidationError`, receives `{ source, issues, event }` and runs at three cascading scopes (**method → route → app**, narrower wins). Return `ErrorDetails` to shape the response, or nothing for the default.
 
 Two dux refinements to the defaults:
 
-- **One status for request validation: `422`.** Request-validation failures are `422` (well-formed but semantically invalid), eager or manual, carrying `{ source, issues }`. Generation 1 inherited a `400`/`422` split by mode; that split is gone — a malformed request must not change status because the *handler* chose a validation mode ([§4](#4-the-validated-data-model)). Response-validation failures stay `500` — a server-side contract breach is never the caller's fault.
-- **The error envelope is part of the contract.** Upstream has auto schemas for failures it raises, but dux projects request validation as its runtime `422` envelope; `errors: { … }` adds your own. Those schemas don't just feed OpenAPI — they flow into the kernel's `responses` map ([§8](#8-the-contract-kernel)), so the client's typed `error` already knows the validation-failure shape ([§10](#10-typed-errors--results)). One declaration, every consumer.
+- **One status for request validation: `422`.** Request-validation failures are `422` (well-formed but semantically invalid), eager or manual, carrying `{ source, issues }`. Generation 1 inherited a `400`/`422` split by mode; that split is gone — a malformed request must not change status because the *handler* chose a validation mode ([§1](#1-the-validated-data-model)). Response-validation failures stay `500` — a server-side contract breach is never the caller's fault.
+- **The error envelope is part of the contract.** Upstream has auto schemas for failures it raises, but dux projects request validation as its runtime `422` envelope; `errors: { … }` adds your own. Those schemas don't just feed OpenAPI — they flow into the kernel's `responses` map ([§5](#5-the-contract-kernel)), so the client's typed `error` already knows the validation-failure shape ([§7](#7-typed-errors--results)). One declaration, every consumer.
 
 So h3-dux still adds no new *error-handling* concept — it inherits the cascade — but it stops throwing the error *types* away, and it makes the status predictable.
 
 ---
 
-## 8. The contract kernel
+## 5. The contract kernel
 
 Every plane that reads `typeof app` needs the same thing: an endpoint's *plain shapes* — what params it takes, what it returns per status, how the body crosses the wire. Today each plane re-derives that from the raw schema generics, which is why inferred types turn intricate and `ObjectSchema<…>` internals surface in diagnostics. The kernel computes it **once**, at accumulation time:
 
@@ -180,14 +104,14 @@ Rules of the kernel:
 
 - **Resolved, not schematic.** Members are the validated *output* shapes (wire-serialized for responses), prettified at the boundary. A consumer never sees `SchemaWithPipe<…>`; it sees `{ name: string; pricePerKg: number }`.
 - **The schema stays the source of truth.** The kernel is its public *projection*, not a replacement — runtime validation still runs off the original schema. One concept, one source ([dux-vision.md §3](./dux-vision.md#3-design-principles), principle 2).
-- **Per-status, never flattened.** `responses` keeps each status distinct. Generation 1 collapsed a status map to a single union, discarding exactly the discrimination the client's error channel needs ([§10](#10-typed-errors--results)).
+- **Per-status, never flattened.** `responses` keeps each status distinct. Generation 1 collapsed a status map to a single union, discarding exactly the discrimination the client's error channel needs ([§7](#7-typed-errors--results)).
 - **Every plane consumes its rules.** Client types, diagnostics, composition merges, and Nitro codegen read the kernel directly; OpenAPI uses the same status/error/kind rules while reading runtime schemas for JSON Schema emission. A fix to the projection still lands everywhere without pretending a type-only kernel can replace runtime documentation data.
 
 The kernel is internal — no user writes one. Its payoff is felt indirectly: cleaner inference, honest errors, and surfaces that agree.
 
 ---
 
-## 9. The honest client
+## 6. The honest client
 
 A default client call resolves to a **result**, not a bare value:
 
@@ -217,7 +141,7 @@ The result is an object (`{ data, error }`), not a Go tuple (`[error, data]`): T
 
 ---
 
-## 10. Typed errors & results
+## 7. Typed errors & results
 
 `error` in a result is a discriminated `H3DuxError`:
 
@@ -228,7 +152,7 @@ type H3DuxError
 ```
 
 - **`kind` separates the two failures you can't conflate.** A `404` is not a dropped connection; only one carries a server payload.
-- **`status` discriminates the HTTP error**, and `data` narrows with it — sourced from the kernel's `responses` map ([§8](#8-the-contract-kernel)). Given `errors: { 409: ConflictSchema }`, `if (error?.status === 409) error.data` is `Conflict`.
+- **`status` discriminates the HTTP error**, and `data` narrows with it — sourced from the kernel's `responses` map ([§5](#5-the-contract-kernel)). Given `errors: { 409: ConflictSchema }`, `if (error?.status === 409) error.data` is `Conflict`.
 - **It degrades gracefully.** An endpoint that declares no error schemas still returns `{ data, error }`; there `error.data` is just the default envelope (`{ source, issues }` for validation, `unknown` otherwise). Honesty holds everywhere; typing *sharpens* wherever the contract declares it — never adding ceremony where it doesn't (principle 9).
 
 On the server, errors are declared and thrown with the same vocabulary they're consumed:
@@ -251,7 +175,7 @@ One declaration of `errors`/`response` feeds four consumers — runtime validati
 
 ---
 
-## 11. Response kinds
+## 8. Response kinds
 
 Not every response is JSON. The kernel tags each status's body with a **kind** so the client decodes it correctly and the type reflects reality:
 
@@ -260,7 +184,7 @@ Not every response is JSON. The kernel tags each status's body with a **kind** s
 | `json` | `application/json` | the serialized output shape (default) |
 | `text` | `text/plain` | `string` |
 | `empty` | no body (`204`, some `HEAD`) | `void` / `undefined` |
-| `sse` | `text/event-stream` | `AsyncGenerator<T>` ([§6](#6-response-typing)) |
+| `sse` | `text/event-stream` | `AsyncGenerator<T>` ([§3](#3-response-typing)) |
 | `binary` | `Blob`/stream | `Blob` |
 
 The common case needs nothing. Objects are `json`, strings are `text`, Blob/bytes/streams are `binary`, and `void`/`null`/`undefined`, `204`/`205`, and `HEAD` are `empty`. The status-aware contract rejects a body-returning `204`/`205`/`HEAD` handler at the cursor. `text()` and `binary()` remain available only as explicit overrides for an ambiguous schema; `sse(schema)` carries the streaming schema and kind.
@@ -271,7 +195,7 @@ A plain native `Response` passes through unchanged and stays body-opaque (`unkno
 
 ---
 
-## 12. Composition & scope
+## 9. Composition & scope
 
 A server is authored by chaining (`createServer().get(…).post(…)`), and the accumulated `typeof app` is the source of truth. That doesn't scale to many files — so domains compose through **routers**:
 
@@ -300,7 +224,7 @@ The rules that make composition trustworthy:
 
 ---
 
-## 13. Typed middleware bindings
+## 10. Typed middleware bindings
 
 Middleware keeps ordinary h3 semantics: it can continue, intercept, redirect, throw, or post-process a response. Typed bindings add one optional capability without redefining what middleware is:
 
@@ -347,8 +271,8 @@ The model:
 - **`bindings` publishes downstream capabilities.** Its returned object is inferred, merged into the request's bindings, and exposed as `event.bindings` to the middleware handler and everything downstream. Canonical storage is `event.context.bindings`; the root property is the delightful default.
 - **Bindings are mutable within one request, not across contracts or requests.** Code may update an existing key with an assignable value (`event.bindings.user = refreshedUser`). A mutation made before `next()` is visible to later middleware and the endpoint on that request; a mutation made by the endpoint or inner middleware is visible to outer middleware after `await next()`. It does not alter another request, publish a new key, or change which bindings other routes are typed to receive.
 - **There is no imperative binding setter.** Arbitrary mutation cannot yield a sound outgoing type. Reusable logic belongs in `staged`; the `bindings` return object is both the implementation and the inferred public contract.
-- **`handler` retains full h3 behavior.** It receives the staged values, inherited plus newly published bindings, and `next`. Omitting it means “publish bindings, then continue.”
-- **`.use((event, next) => …)` is the smallest inline form.** Inside `.use(...)` — which h3-dux controls — a bare callback needs no `defineMiddleware` wrap; its `event` is typed against the chain's accumulated bindings (so `event.bindings` reads what earlier middleware published) and it publishes nothing. `defineMiddleware(fn)` is for middleware defined *outside* `.use` and then passed in; the two share one runtime path, so the wrap is never required just to satisfy `.use`. (This mirrors the route verbs' bare-handler shorthand, [§5](#5-server--client-symmetry).)
+- **`handler` retains full h3 behavior.** It receives the staged values, inherited plus newly published bindings, and `next`. Omitting it means "publish bindings, then continue."
+- **`.use((event, next) => …)` is the smallest inline form.** Inside `.use(...)` — which h3-dux controls — a bare callback needs no `defineMiddleware` wrap; its `event` is typed against the chain's accumulated bindings (so `event.bindings` reads what earlier middleware published) and it publishes nothing. `defineMiddleware(fn)` is for middleware defined *outside* `.use` and then passed in; the two share one runtime path, so the wrap is never required just to satisfy `.use`. (This mirrors the route verbs' bare-handler shorthand, [§2](#2-server--client-symmetry).)
 - **Reusable and inline middleware share one object shape.** `app.use({ staged, bindings, handler })` is equivalent to defining that object separately with `defineMiddleware` and then using it. The inline form additionally receives the chain's current bindings automatically; a `requires` list may document and check specific capability dependencies.
 - **Requirements consume; middleware registers.** `middleware: [withUser]` on an endpoint or `.use(withUser)` on a router registers and executes it there. `requires: [withUser]` executes nothing: it states that an enclosing scope must already provide the middleware's bindings. Requirements are checked at the route or mount cursor.
 - **Routers may depend on their parent without importing the parent app.** `createRouter().requires(withUser)` types its handlers with `user` and records an external requirement; `.mount()` rejects a parent that has not already provided it.
@@ -378,43 +302,3 @@ event.context // canonical h3-compatible storage and escape hatch
 ```
 
 There are no single-letter aliases. The first-class names are already concise and remain self-documenting.
-
----
-
-## 14. The naming map
-
-Every name h3-dux coins or renames, with the upstream / standard term it maps to and why. New names are settled here once; the spec references this table rather than re-justifying each.
-
-| h3-dux | Upstream / standard | Why |
-| --- | --- | --- |
-| `createServer()` | `new H3Typed()` | counterpart of `createClient`; factory reads better than `new`; self-documents "this is the server" |
-| `createClient<App>()` | `createTypedFetch<App>()` | counterpart of `createServer`; "client" says what it is at the call site |
-| `defineRoute` | `defineRoute` (kept) | already precise and converging with [h3 core](https://github.com/h3js/h3/issues/1088) |
-| `app.get(path, opts)` | `.route({ route, get })` | verb authoring; mirrors the client and the HTTP method |
-| `api.get(path, opts)` | `api(path, { method: 'get' })` | verb sugar; symmetric with the server |
-| `sse(schema)` | — (new) | brands a `validate.response` as a typed `EventStream`; the `sse` response kind ([§11](#11-response-kinds)) |
-| `text()` / `binary()` | — (new) | explicit kind overrides for an ambiguous response schema; ordinary strings/Blobs infer automatically ([§11](#11-response-kinds)) |
-| `typedResponse(data, init?)` | `new Response(body, init)` | constructs a real native `Response` while carrying its inferred body contract end-to-end |
-| `validate: { eager: false }` | — (new) | switches the validation pipeline to manual/on-demand |
-| `event.valid('scope')` | — (new) | deliberate, idempotent validator; Hono `c.req.valid()` parity ([§4](#4-the-validated-data-model)) |
-| `event.params/query/body` | `event.context.<scope>` | root getters over the same canonical request values; direct types stay honest across eager/manual modes ([§4](#4-the-validated-data-model)) |
-| `{ data, error }` | — (new) | the honest default result; `data` on 2xx, typed `error` otherwise ([§9](#9-the-honest-client)) |
-| `.orThrow()` | ofetch `$fetch` (throws) | legible opt-out: bubble the error instead of returning it |
-| `.raw()` | ofetch `.raw` | native response metadata plus kind-aware `.parse()`; never throws on non-2xx |
-| `errors: { 409: … }` | upstream `errors` (kept, widened) | per-status failure schemas in the contract; feeds client + runtime + OpenAPI ([§10](#10-typed-errors--results)) |
-| `event.error(status, data)` | `HTTPError` / `createError` | typed thrower checked against the declared `errors` schema |
-| `createRouter(prefix?, options?)` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([§12](#12-composition--scope)) |
-| `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
-| `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
-| `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([§13](#13-typed-middleware-bindings)) |
-| `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
-| `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
-| `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
-| `defineFileRoute(def)` | Nitro `defineHandler` / upstream `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
-| `createFileRouteFactory()` | — (new) | derive reusable file-route definers with typed middleware providers and requirements |
-| `factory.compose(feature)` | router `.mount()` | satisfy a feature factory's external capabilities and return a callable file-route factory; checks the same laws as `.mount` (requirements present and assignable, registered providers don't collide) and doesn't re-run required middleware |
-| `#h3-dux/routes` | Nitro generated route types | generated, type-only kernel route map consumed by `createClient<Routes>()` |
-
-Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).
-
-**The `H3Dux` prefix.** Every shipped type/class that needs a project-specific name — because it has no upstream counterpart and isn't a generic verb (`H3DuxError`, `H3DuxHTTPError`, `H3DuxTransportError`, `H3DuxServer`, `H3DuxRouter`, `H3DuxCall`, …) — is named `H3Dux*`, never bare `Dux*`. The maintainer forks several libraries this way (`idb-dux`, `h3-dux`, …); a bare `Dux*` name is ambiguous the moment two of those forks are imported into the same project, while `H3Dux*` says which one at the name itself. This applies to the shipped surface only — `dux` stays the plain, simple word for this repo, this workspace, and this doc set (`dux/`, "the dux branch", *dux-vision*, *dux-spec*, …).

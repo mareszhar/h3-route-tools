@@ -4,7 +4,7 @@
  * response/param inference, typed errors, typed middleware bindings — and
  * accumulates a route map without mounting it. A `createServer().mount(router)`
  * folds that map into `typeof app`, so splitting a domain into its own file never
- * drops you back to upstream ergonomics. See docs/dux-conventions.md §12.
+ * drops you back to upstream ergonomics. See docs/dux-patterns.md §9.
  *
  * The optional literal prefix belongs to the domain: it is prepended to each
  * endpoint path and participates in param inference, so `createRouter('/users/:userId')`

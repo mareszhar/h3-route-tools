@@ -194,12 +194,13 @@ The maintainer mechanics — build, test, lint, drift, publish — are [dux-spec
 
 ## 8. The docs
 
-One hub (this), one cross-cutting law, one deltas spec, one maintainer manual. When a delta changes, exactly one spec entry changes with it.
+One hub (this), one language doc, one patterns doc, one deltas spec, one maintainer manual. When a delta changes, exactly one spec entry changes with it.
 
 | Doc | Role |
 | --- | --- |
 | [dux-vision.md](./dux-vision.md) | **the hub** — philosophy, principles, architecture, scope, sustainability |
-| [dux-conventions.md](./dux-conventions.md) | cross-cutting law: vocabulary, fetchdts alignment, the validated-data model, the naming map |
+| [dux-language.md](./dux-language.md) | the words: vocabulary, fetchdts alignment, doc style, the naming map |
+| [dux-patterns.md](./dux-patterns.md) | the cross-cutting law: the validated-data model, the kernel, the honest client, composition, middleware bindings |
 | [dux-spec.md](./dux-spec.md) | the five deltas, each as *why → proposed approach → status*, with its usage snippet |
 | [dux-spec-workspace.md](./dux-spec-workspace.md) | maintainer manual: layout, build, boundaries, testing, fork-rebase, publishing |
 

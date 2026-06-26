@@ -13,7 +13,7 @@ This is the dux maintainer area inside the **h3-route-tools** fork.
 ## What's here
 
 - `h3-dux/` — the publishable package, `@mszr/h3-dux`
-- `docs/` — the vision, conventions, spec, and maintainer manual that drive it
+- `docs/` — the vision, language, patterns, spec, and maintainer manual that drive it
 - `sandbox/demo-main/` — the focused h3-dux demo, split into standalone and Nitro
 - `sandbox/demo-comparisons/` — Orchard comparison demos for h3, h3-dux, Hono, and Elysia across standalone and Nitro
 - `scripts/` — maintainer automation
@@ -21,7 +21,8 @@ This is the dux maintainer area inside the **h3-route-tools** fork.
 ## Start here
 
 - **The hub:** [`docs/dux-vision.md`](./docs/dux-vision.md) — what h3-dux is, the principles, the roadmap
-- Cross-cutting law: [`docs/dux-conventions.md`](./docs/dux-conventions.md)
+- The words: [`docs/dux-language.md`](./docs/dux-language.md)
+- The cross-cutting law: [`docs/dux-patterns.md`](./docs/dux-patterns.md)
 - The deltas, contract by contract: [`docs/dux-spec.md`](./docs/dux-spec.md)
 - Maintainer manual: [`docs/dux-spec-workspace.md`](./docs/dux-spec-workspace.md)
 - Package front door: [`h3-dux/README.md`](./h3-dux/README.md)
