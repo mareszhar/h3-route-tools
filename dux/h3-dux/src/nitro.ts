@@ -17,10 +17,13 @@
  * to phase 10's refined design. The full upstream Nitro surface is re-exported below.
  */
 import type { NitroModule, NitroTypes } from 'nitro/types'
+import type { DuxFileHandler } from './file-route.ts'
 import type { DuxFileRouteInfo } from './internal/nitro-codegen.ts'
+import type { DuxOpenAPIDocument, DuxOpenAPIRoute, ToOpenAPIOptions } from './openapi.ts'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { generateNitroRouteTypes, generateRoutesModule } from './internal/nitro-codegen.ts'
+import { buildOpenAPI } from './openapi.ts'
 
 // Re-export the upstream Nitro surface unchanged (collectRouteHandlers, OpenAPI
 // helpers, …) so advanced users can still reach the inherited building blocks.
@@ -218,6 +221,115 @@ function applyUpstreamRouteTypes(routes: NitroTypes['routes'], upstream: readonl
   return diagnostics
 }
 
+const NITRO_OPENAPI_BASE_ROUTE = '/_openapi.__h3dux-base.json'
+
+async function loadRouteDefault(spec: string, typesDir: string): Promise<DuxFileHandler | undefined> {
+  try {
+    const mod = await import(resolve(typesDir, `${spec}.ts`))
+    return mod.default as DuxFileHandler | undefined
+  }
+  catch {
+    return undefined
+  }
+}
+
+function openAPIMethods(info: DuxFileRouteInfo, handler: DuxFileHandler): string[] {
+  const docs = handler['~duxOpenAPI']
+  if (!docs)
+    return []
+  if (info.methods === 'all')
+    return Object.keys(docs.methods)
+  return info.methods.map(method => method.toLowerCase())
+}
+
+async function buildDuxOpenAPIOverlay(
+  infos: readonly DuxFileRouteInfo[],
+  typesDir: string,
+  options: ToOpenAPIOptions,
+): Promise<DuxOpenAPIDocument> {
+  const routes: DuxOpenAPIRoute[] = []
+  for (const info of infos) {
+    const handler = await loadRouteDefault(info.importSpecifier, typesDir)
+    const docs = handler?.['~duxOpenAPI']
+    if (!docs)
+      continue
+    for (const method of openAPIMethods(info, handler!)) {
+      const methods = docs.methods as Record<string, typeof docs.methods.get>
+      const entry = methods[method] ?? methods.get
+      if (!entry)
+        continue
+      routes.push({
+        route: info.routePath,
+        method: method as DuxOpenAPIRoute['method'],
+        params: docs.params,
+        validate: entry.validate,
+        status: entry.status,
+        errors: entry.errors,
+        openapi: entry.openapi,
+      })
+    }
+  }
+  return buildOpenAPI(routes, options)
+}
+
+function openAPIOptions(nitro: Parameters<NitroModule['setup']>[0]): ToOpenAPIOptions {
+  const configured = (nitro.options as unknown as { h3Dux?: { openapi?: ToOpenAPIOptions } }).h3Dux?.openapi
+  if (configured)
+    return configured
+  const openAPI = (nitro.options as unknown as { openAPI?: { meta?: { title?: string, version?: string } } }).openAPI
+  return {
+    info: {
+      title: openAPI?.meta?.title ?? 'API',
+      version: openAPI?.meta?.version ?? '1.0.0',
+    },
+  }
+}
+
+function openAPIHandlerSource(overlayJSON: string): string {
+  return [
+    `import { defineLazyEventHandler, defineHandler, getRequestURL } from "h3";`,
+    `import { fetch } from "nitro";`,
+    `import { useRuntimeConfig } from "nitro/runtime-config";`,
+    `const overlay = ${overlayJSON};`,
+    `const joinURL = (origin, base) => (!base || base === "/" ? origin : origin.replace(/\\/$/, "") + "/" + base.replace(/^\\/+/, ""));`,
+    `const readBase = async () => {`,
+    `  try {`,
+    `    const response = await fetch(${JSON.stringify(NITRO_OPENAPI_BASE_ROUTE)});`,
+    `    return response.ok ? await response.json() : {};`,
+    `  } catch {`,
+    `    return {};`,
+    `  }`,
+    `};`,
+    `export default defineLazyEventHandler(async () => {`,
+    `  const base = await readBase();`,
+    `  const paths = { ...base.paths, ...overlay.paths };`,
+    `  delete paths[${JSON.stringify(NITRO_OPENAPI_BASE_ROUTE)}];`,
+    `  const schemas = { ...base.components?.schemas, ...overlay.components?.schemas };`,
+    `  const componentsBase = { ...base.components, ...overlay.components };`,
+    `  const components = Object.keys(schemas).length ? { ...componentsBase, schemas } : Object.keys(componentsBase).length ? componentsBase : undefined;`,
+    `  const doc = { openapi: "3.1.0", ...base, ...overlay, paths, ...(components ? { components } : {}) };`,
+    `  const server0 = doc.servers?.[0] ?? {};`,
+    `  return defineHandler((event) => ({`,
+    `    ...doc,`,
+    `    servers: overlay.servers ?? [{ ...server0, url: joinURL(getRequestURL(event).origin, useRuntimeConfig().app?.baseURL) }],`,
+    `  }));`,
+    `});`,
+  ].join('\n')
+}
+
+function overrideOpenAPI(nitro: Parameters<NitroModule['setup']>[0], overlay: () => string): void {
+  nitro.options.virtual['#h3-dux/openapi'] = () => openAPIHandlerSource(overlay())
+  nitro.hooks.hook('compiled', () => {
+    const route = (nitro.options as unknown as { openAPI?: { route?: string } }).openAPI?.route || '/_openapi.json'
+    const existing = nitro.options.handlers.find(
+      h => h.route === route && String(h.handler).includes('internal/routes/openapi'),
+    )
+    if (existing)
+      existing.route = NITRO_OPENAPI_BASE_ROUTE
+    nitro.options.handlers.push({ route, handler: '#h3-dux/openapi' })
+  })
+}
+
 /**
  * The h3-dux Nitro module. Generates `#h3-dux/routes` from the dux file routes on
  * every `types:extend` (prepare, dev add/remove/rename, build) and fails the build
@@ -232,7 +344,11 @@ export const h3Dux: NitroModule = {
   name: 'h3-dux',
   setup(nitro) {
     const typesDir = typesDirOf(nitro)
+    let overlayJSON = JSON.stringify({ openapi: '3.1.0', info: openAPIOptions(nitro).info, paths: {} })
     registerRoutesPath(nitro)
+
+    if (nitro.options.experimental?.openAPI)
+      overrideOpenAPI(nitro, () => overlayJSON)
 
     nitro.hooks.hook('types:extend', async (types) => {
       const { infos, upstream, unreadable } = await collectFileRoutes(types.routes, typesDir)
@@ -255,6 +371,8 @@ export const h3Dux: NitroModule = {
         )
       }
       applyRouteTypeEntries(types.routes, nitroTypes.entries)
+      if (nitro.options.experimental?.openAPI)
+        overlayJSON = JSON.stringify(await buildDuxOpenAPIOverlay(infos, typesDir, openAPIOptions(nitro)))
       await mkdir(typesDir, { recursive: true })
       await writeFile(join(typesDir, 'h3-dux-routes.ts'), source)
       // Drop a stale declaration file from a prior version so it can't shadow the `.ts`.

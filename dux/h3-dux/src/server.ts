@@ -1,4 +1,4 @@
-import type { H3Event, H3Plugin, H3RouteMeta, Middleware } from 'h3'
+import type { H3Event, H3Plugin, Middleware } from 'h3'
 import type {
   H3TypedConfig,
   InferRoutes,
@@ -8,6 +8,11 @@ import type {
   RoutePlugin,
   SchemaWithJSON,
 } from 'h3-route-tools'
+import type {
+  DuxMeta,
+  DuxOpenAPI,
+  DuxOpenAPIObject,
+} from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
   DuplicateRoute,
@@ -32,8 +37,10 @@ import type {
 } from './middleware.ts'
 import type { DuxRouter } from './router.ts'
 import { H3Typed } from 'h3-route-tools'
+import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { buildMethod } from './internal/runtime.ts'
-import { toMiddleware } from './middleware.ts'
+import { middlewareOpenAPI, toMiddleware } from './middleware.ts'
+import { recordOpenAPIRoute } from './openapi.ts'
 import { routerEntries } from './router.ts'
 
 /** The server type after adding one route+method — accumulates into `typeof app`. */
@@ -102,7 +109,8 @@ interface RuntimeOpts {
   middleware?: Middleware[]
   // `requires` is type-only (delta 12): it consumes a capability, registers nothing.
   requires?: unknown
-  meta?: H3RouteMeta
+  meta?: DuxMeta
+  openapi?: DuxOpenAPI
   status?: number
   onValidationError?: OnValidationError
   errors?: ErrorsOption
@@ -125,15 +133,23 @@ function toRuntimeOpts(arg: unknown): RuntimeOpts {
  * layer — is built once in {@link buildMethod} and shared with Nitro file routes.
  */
 function mount(app: H3Typed, method: RouteMethod, route: string, options: RuntimeOpts): void {
-  const { params, middleware, meta } = options
+  const { params, middleware, meta, openapi } = options
   const built = buildMethod(method, options)
   ;(app.route as RouteCall)({
     route,
     params,
     middleware,
-    meta,
+    meta: { ...meta, openapi: mergeOpenAPI(meta?.openapi, openapi) },
     [method]: built,
   })
+}
+
+function middlewareDocs(middleware: readonly Middleware[] | undefined): Array<DuxOpenAPI | undefined> {
+  return (middleware ?? []).map(middlewareOpenAPI)
+}
+
+function routeDocs(inherited: readonly DuxOpenAPI[], options: RuntimeOpts): DuxOpenAPIObject | undefined {
+  return mergeOpenAPI(...inherited, ...middlewareDocs(options.middleware), options.meta?.openapi, options.openapi)
 }
 
 /** The per-verb options a `DuxServer<Routes, Bindings>` accepts. */
@@ -201,6 +217,8 @@ export class DuxServer<Routes = object, Bindings = object> {
   /** In-process request, for a typed client hitting the app directly. */
   readonly request: (input: string, init?: RequestInit) => Response | Promise<Response>
 
+  readonly #openapi: DuxOpenAPI[] = []
+
   constructor(config?: H3TypedConfig) {
     this.native = new H3Typed(config)
     this.fetch = request => this.native.fetch(request)
@@ -232,10 +250,15 @@ export class DuxServer<Routes = object, Bindings = object> {
   ): DuxServer<Routes, Prettify<Bindings & B>>
   use(route: string, handler: Middleware, opts?: unknown): this
   use(...args: unknown[]): unknown {
-    if (typeof args[0] === 'string')
+    if (typeof args[0] === 'string') {
       (this.native.use as (r: string, h: Middleware, o?: unknown) => unknown)(args[0], toMiddleware(args[1] as Middleware), args[2])
-    else
+    }
+    else {
+      const docs = middlewareOpenAPI(args[0])
+      if (docs)
+        this.#openapi.push(docs)
       this.native.use(toMiddleware(args[0] as Middleware))
+    }
     return this
   }
 
@@ -262,7 +285,18 @@ export class DuxServer<Routes = object, Bindings = object> {
     const outer = typeof first === 'string' ? first : ''
     const router = (typeof first === 'string' ? second : first) as DuxRouter
     for (const entry of routerEntries(router)) {
-      mount(this.native, entry.method, joinMountedPath(outer, entry.route), entry.options as unknown as RuntimeOpts)
+      const route = joinMountedPath(outer, entry.route)
+      const options = entry.options as unknown as RuntimeOpts
+      mount(this.native, entry.method, route, options)
+      recordOpenAPIRoute(this, {
+        route,
+        method: entry.method,
+        params: options.params,
+        validate: options.validate,
+        status: options.status,
+        errors: options.errors,
+        openapi: routeDocs(this.#openapi, options),
+      })
     }
     return this
   }
@@ -293,7 +327,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'get', Route>,
     opts: VerbArg<Bindings, Route, 'get', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'get', V, P, Ret, Status, Err> {
-    mount(this.native, 'get', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'get', route, options)
+    recordOpenAPIRoute(this, { route, method: 'get', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 
@@ -309,7 +345,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'post', Route>,
     opts: VerbArg<Bindings, Route, 'post', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'post', V, P, Ret, Status, Err> {
-    mount(this.native, 'post', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'post', route, options)
+    recordOpenAPIRoute(this, { route, method: 'post', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 
@@ -325,7 +363,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'put', Route>,
     opts: VerbArg<Bindings, Route, 'put', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'put', V, P, Ret, Status, Err> {
-    mount(this.native, 'put', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'put', route, options)
+    recordOpenAPIRoute(this, { route, method: 'put', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 
@@ -341,7 +381,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'patch', Route>,
     opts: VerbArg<Bindings, Route, 'patch', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'patch', V, P, Ret, Status, Err> {
-    mount(this.native, 'patch', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'patch', route, options)
+    recordOpenAPIRoute(this, { route, method: 'patch', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 
@@ -357,7 +399,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'delete', Route>,
     opts: VerbArg<Bindings, Route, 'delete', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'delete', V, P, Ret, Status, Err> {
-    mount(this.native, 'delete', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'delete', route, options)
+    recordOpenAPIRoute(this, { route, method: 'delete', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 
@@ -373,7 +417,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'head', Route>,
     opts: VerbArg<Bindings, Route, 'head', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'head', V, P, Ret, Status, Err> {
-    mount(this.native, 'head', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'head', route, options)
+    recordOpenAPIRoute(this, { route, method: 'head', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 
@@ -389,7 +435,9 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(route: DuplicateRoute<Routes, 'options', Route>,
     opts: VerbArg<Bindings, Route, 'options', V, P, Ret, Status, Err, Mw, Req>,
   ): DuxNext<Routes, Bindings, Route, 'options', V, P, Ret, Status, Err> {
-    mount(this.native, 'options', route, toRuntimeOpts(opts))
+    const options = toRuntimeOpts(opts)
+    mount(this.native, 'options', route, options)
+    recordOpenAPIRoute(this, { route, method: 'options', params: options.params, validate: options.validate, status: options.status, errors: options.errors, openapi: routeDocs(this.#openapi, options) })
     return this as never
   }
 }

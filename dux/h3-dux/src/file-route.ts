@@ -28,6 +28,7 @@ import type {
   SchemaWithJSON,
 } from 'h3-route-tools'
 import type { ClientData } from './internal/contract.ts'
+import type { DuxMeta, DuxOpenAPI, DuxOpenAPIObject } from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
   DuxEndpoint,
@@ -47,6 +48,7 @@ import type {
 } from './middleware.ts'
 import { defineHandler } from 'h3'
 import { defineRouteHandler } from 'h3-route-tools'
+import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { buildMethod } from './internal/runtime.ts'
 import { toMiddleware } from './middleware.ts'
 
@@ -66,6 +68,18 @@ export interface DuxFileHandler<Flat = never, Methods = never> extends EventHand
   readonly '~duxFlat'?: Flat
   /** Type-only: the method-map form's per-method contract kernels. */
   readonly '~duxMethods'?: Methods
+  /** Runtime OpenAPI metadata for the Nitro OpenAPI collector. */
+  readonly '~duxOpenAPI'?: DuxFileOpenAPI
+}
+
+export interface DuxFileOpenAPI {
+  params?: SchemaWithJSON
+  methods: Partial<Record<RouteMethod, {
+    validate?: AnyMethodValidate & { eager?: boolean }
+    status?: number
+    errors?: ErrorsOption
+    openapi?: DuxOpenAPIObject
+  }>>
 }
 
 // ── codegen projection (type-only; consumed by the generated `#h3-dux/routes`) ─
@@ -217,6 +231,7 @@ interface MethodDef<
   status?: Status
   onValidationError?: OnValidationError
   errors?: Err
+  openapi?: DuxOpenAPI
   validate?: ([M] extends [BodylessMethod] ? V & { body?: never } : V) & { eager?: boolean }
   handler: MethodHandler<V, P, Ret, '/', M, Status, Err, Bindings, object>
 }
@@ -670,7 +685,8 @@ type Prettify<T> = { [K in keyof T]: T[K] }
 /** The runtime view of a file-route def — both shapes, read permissively. */
 interface RuntimeDef {
   params?: SchemaWithJSON
-  meta?: H3RouteMeta
+  meta?: DuxMeta
+  openapi?: DuxOpenAPI
   middleware?: Middleware[]
   onValidationError?: OnValidationError
   status?: number
@@ -689,6 +705,7 @@ interface RuntimeMethod {
   status?: number
   onValidationError?: OnValidationError
   errors?: ErrorsOption
+  openapi?: DuxOpenAPI
   validate?: AnyMethodValidate & { eager?: boolean }
   handler: (event: H3Event) => unknown
 }
@@ -730,15 +747,17 @@ function buildFileHandler(
   const middleware = [...factoryMiddleware, ...routeMiddleware]
   const upstreamDef: Record<string, unknown> = {
     params: def.params,
-    meta: def.meta,
+    meta: { ...def.meta, openapi: mergeOpenAPI(def.meta?.openapi, def.openapi) },
     onValidationError: def.onValidationError,
   }
+  const docs: DuxFileOpenAPI = { params: def.params, methods: {} }
 
   const mapped = CALLABLE.filter(method => isObject(def[method]))
   const form: 'flat' | 'methods' = mapped.length > 0 ? 'methods' : 'flat'
   if (mapped.length > 0) {
     for (const method of mapped) {
       const md = def[method] as RuntimeMethod
+      const openapi = mergeOpenAPI(def.meta?.openapi, def.openapi, md.openapi)
       upstreamDef[method] = buildMethod(method, {
         status: md.status,
         onValidationError: md.onValidationError ?? def.onValidationError,
@@ -746,11 +765,18 @@ function buildFileHandler(
         validate: md.validate,
         handler: md.handler,
       })
+      docs.methods[method] = {
+        validate: md.validate,
+        status: md.status,
+        errors: md.errors,
+        openapi,
+      }
     }
   }
   else if (def.handler) {
     // Flat: the same handler serves every method (the filename narrows which arrive).
     for (const method of FLAT_METHODS) {
+      const openapi = mergeOpenAPI(def.meta?.openapi, def.openapi)
       upstreamDef[method] = buildMethod(method, {
         status: def.status,
         onValidationError: def.onValidationError,
@@ -758,6 +784,12 @@ function buildFileHandler(
         validate: def.validate,
         handler: def.handler,
       })
+      docs.methods[method] = {
+        validate: def.validate,
+        status: def.status,
+        errors: def.errors,
+        openapi,
+      }
     }
   }
 
@@ -776,6 +808,7 @@ function buildFileHandler(
     '~duxForm': form,
     '~duxDeclared': form === 'methods' ? mapped : [],
     '~duxFlatHasBody': form === 'flat' && !!def.validate?.body,
+    '~duxOpenAPI': docs,
     '~routeDef': inner['~routeDef'],
     '~options': inner['~options'],
   }) as unknown as DuxFileHandler

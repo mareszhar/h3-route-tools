@@ -3,7 +3,7 @@
 The deltas that make h3-dux more than a rename, in two generations. Each is **contract-driven**: it headlines the desired behavior and why, shows the intended usage, then proposes an implementation. The contract is the commitment; the proposed approach can move if reality teaches a better one.
 
 - **Generation 1 (shipped)** — the authoring surface: per-verb server/client, interpolation, typed SSE, validation modes. Reached *Hono-level* end-to-end safety.
-- **Generation 2 (planned)** — honesty, errors, scale: the contract kernel and everything it unlocks. This is what takes h3-dux *past* Hono and Elysia.
+- **Generation 2 (shipped)** — honesty, errors, scale: the contract kernel and everything it unlocks. This is what takes h3-dux *past* Hono and Elysia.
 
 Everything not listed here is inherited from `h3-route-tools` and re-exported unchanged — see [dux-vision.md §4.3](./dux-vision.md#43-inherited-vs-ours). Vocabulary, the validated-data model, the kernel, the honest client, and the naming map are defined once in [dux-conventions.md](./dux-conventions.md) and referenced, not repeated.
 
@@ -26,11 +26,11 @@ Snippets use valibot schemas from the Orchard reference (`@orchard/domain`, mirr
 | 11 | Delta-aware composition (`createRouter`, `.mount`, `.native`) | `router.ts` (new), `server.ts` | ☑ done |
 | 12 | Typed middleware bindings (`defineMiddleware`, `event.bindings`, `requires`) | `middleware.ts` (new), `server.ts`, `router.ts`, `internal/route-types.ts` | ☑ done |
 | 13 | Nitro deltas via codegen | `file-route.ts` (new), `internal/nitro-codegen.ts` (new), `internal/runtime.ts` (new), `nitro.ts` | ☑ done |
-| 14 | Symmetry extras (OpenAPI symmetry, client transport) | `openapi.ts` (new), `client.ts`, `nitro.ts` | ☐ planned |
+| 14 | Symmetry extras (OpenAPI symmetry, client transport) | `openapi.ts` (new), `client.ts`, `nitro.ts` | ☑ done |
 
 ## Roadmap
 
-Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by dependency: diagnostics first (clean baseline before adding generic complexity), then the kernel and what it unlocks, then scale, then the Nitro moat.
+Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) shipped in dependency order: diagnostics first (clean baseline before adding generic complexity), then the kernel and what it unlocks, then scale, then the Nitro moat, then symmetry extras.
 
 | Phase | Deliverable | Status |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) is ordered by 
 | 7 | Response fidelity — response kinds + SSE hardening (10) | ☑ done |
 | 8 | Scale — delta-aware composition (11) + typed middleware bindings and event accessors (12) | ☑ done |
 | 9 | The Nitro moat — deltas via codegen (13) | ☑ done |
-| 10 | Symmetry extras — standalone/Nitro OpenAPI + client transport (14) | ☐ |
+| 10 | Symmetry extras — standalone/Nitro OpenAPI + client transport (14) | ☑ done |
 
 Every delta ships with three test planes (runtime `*.test.ts`, type `*.test-d.ts`, editor-DX `*.dx.test.ts`), driven by the shared Orchard fixture in `src/test-support/`. For Generation 2, the editor-DX plane is promoted from "an error exists" to a *quality contract* ([dux-spec-workspace.md §5](./dux-spec-workspace.md#5-testing)).
 
@@ -53,7 +53,7 @@ Every delta ships with three test planes (runtime `*.test.ts`, type `*.test-d.ts
 The contracts below are intact; a few implementation decisions are worth recording because they shaped the code:
 
 - **`createServer` is a wrapper, not an `H3` subclass.** h3's `H3` already owns `app.get(path, handler)`, so a subclass would clash. `DuxServer` holds an inner `H3Typed` (exposed as `.native` since delta 11, was `.app`), delegates each verb to `.route(...)`, and exposes `fetch`/`request`/`use`/`mount`/`register`. `createClient` reads its accumulated routes off a phantom `'~duxRoutes'` marker (falling back to upstream's `NormalizeRoutes`).
-- **A small slice of upstream's per-method types is vendored** (`internal/route-types.ts`, `internal/serialize.ts`) because they aren't public exports — the same vendor-and-mark tier the workspace spec describes. Phase 10 may add the same temporary treatment for tiny OpenAPI leaf helpers (`getStandardJSONSchema`-style projection) if upstream hasn't exported them yet; export-widening stays the upstream-first path.
+- **A small slice of upstream's per-method/OpenAPI helper surface is vendored** (`internal/route-types.ts`, `internal/serialize.ts`, and tiny helpers in `openapi.ts`) because those pieces aren't public exports — the same vendor-and-mark tier the workspace spec describes. Export-widening stays the upstream-first path; when upstream exposes those helpers publicly, the vendored copies can delete themselves.
 - **Two inferences came for free and are now first-class** (delta 1): response inference (a method with no `validate.response` contributes the handler's return to the contract) and param inference (`:params` typed from the pattern, no schema needed). Both are detailed in [Response & param inference](#response--param-inference-part-of-delta-1).
 - **SSE uses a `DuxCall` handle** (delta 4): the verb methods return a value that is `await`-able (JSON path) and `for await`-able (SSE path); the type picks which, and only the consumed path fetches. The JSON/raw path must memoize the in-flight request per handle (delta 14 hardening) so `await call`, `.orThrow()`, and `.raw()` never fire duplicate HTTP requests.
 
@@ -238,9 +238,9 @@ app.get('/fruits/:id', {
 
 ---
 
-## Generation 2 — honesty, errors, scale (planned)
+## Generation 2 — honesty, errors, scale (shipped)
 
-The next evolution. The ordering is deliberate: delta 6 cleans the diagnostic baseline (lowest risk, client-only); delta 7 introduces the kernel every later delta consumes; deltas 8–9 reshape the response contract for honesty and typed errors; 10 adds fidelity; 11–12 add scale; 13 makes the Nitro moat real; 14 rounds out symmetry. Each contract below is the commitment; the proposed approach is the current plan.
+The second generation. The ordering was deliberate: delta 6 cleaned the diagnostic baseline (lowest risk, client-only); delta 7 introduced the kernel every later delta consumes; deltas 8–9 reshaped the response contract for honesty and typed errors; 10 added fidelity; 11–12 added scale; 13 made the Nitro moat real; 14 rounded out symmetry. Each contract below is the commitment; the landed approach records the shape in code.
 
 Design covenant for all of Generation 2 (principle 9): every delta is **opt-in power**. A route that declares no `errors`, a handler that returns plain JSON, a one-file app, a plain `(e, next)` middleware — each stays exactly as small as it is today. The new capability is always something you reach for, never a tax on the path that doesn't need it.
 
@@ -331,11 +331,11 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // unchanged SSE
   console.log(tick.ripeness)
 ```
 
-**Approach (delivered; phase-10 hardening planned).** The existing `DuxCall` handle ([sse.ts](../h3-dux/src/sse.ts)) is generalized: default `await` resolves to `{ data, error }` (built by `buildResult` in `errors.ts`); `.orThrow()` returns `Promise<Data>`, rejecting with the `DuxError`; `.raw()` returns the native kind-aware `DuxRawResponse<Data, Kind>` and never throws on a non-2xx; `for await` stays SSE. Raw responses add one universal reader, `.parse()`, while retaining the standard `.json()`/`.text()`/`.blob()` surface; only JSON endpoints narrow `.json()` to `Data`. `DuxError` is `DuxHTTPError | DuxTransportError` — a fetch reject becomes the transport variant, a non-2xx the HTTP variant. The honest default *is* the typed result, so there is no separate `api.try` surface. `createTestClient(app)` wraps the in-process `fetch: app.request` pattern under a name that signals intent.
+**Approach (delivered).** The existing `DuxCall` handle ([sse.ts](../h3-dux/src/sse.ts)) is generalized: default `await` resolves to `{ data, error }` (built by `buildResult` in `errors.ts`); `.orThrow()` returns `Promise<Data>`, rejecting with the `DuxError`; `.raw()` returns the native kind-aware `DuxRawResponse<Data, Kind>` and never throws on a non-2xx; `for await` stays SSE. Raw responses add one universal reader, `.parse()`, while retaining the standard `.json()`/`.text()`/`.blob()` surface; only JSON endpoints narrow `.json()` to `Data`. `DuxError` is `DuxHTTPError | DuxTransportError` — a fetch reject becomes the transport variant, a non-2xx the HTTP variant. The honest default *is* the typed result, so there is no separate `api.try` surface. `createTestClient(app)` wraps the in-process `fetch: app.request` pattern under a name that signals intent.
 
 **Reality:** the body is read **once** and folded into the result; an empty/`204` response yields `data: undefined`, and a non-JSON body falls back to text. The success/error decision is `response.ok`, not the declared status — honest about what actually came back.
 
-**Phase-10 hardening:** a `DuxCall` handle must memoize its **in-flight** network promise the first time the JSON/raw path is consumed. `await call`, `.orThrow()`, and `.raw()` share that one response-producing promise; every consumer reads a `Response.clone()`, so order never matters and `.raw()` cannot receive a body that `await call` already consumed. Retry lives inside the memoized fetch closure, not in `DuxCall` itself. SSE remains the stream-shaped consumption path; JSON/raw consumption and `for await` are mutually exclusive runtime paths even though one handle exposes both shapes for typing.
+**Phase-10 hardening:** a `DuxCall` handle memoizes its **in-flight** network promise the first time the JSON/raw path is consumed. `await call`, `.orThrow()`, and `.raw()` share that one response-producing promise; every consumer reads a `Response.clone()`, so order never matters and `.raw()` cannot receive a body that `await call` already consumed. Retry lives inside the memoized fetch closure, not in `DuxCall` itself. SSE remains the stream-shaped consumption path; JSON/raw consumption and `for await` are mutually exclusive runtime paths even though one handle exposes both shapes for typing.
 
 **Status:** ☑ done (phase 6).
 
@@ -500,7 +500,7 @@ const account = createRouter('/account')
 app.mount(account) // checked: the parent already provides withUser
 ```
 
-**Proposed approach.**
+**Landed approach.**
 
 - Introduce a branded `TypedMiddleware<Requires, Bindings>` that is also a real h3 `Middleware`. `defineMiddleware(fn)` preserves the direct callback form for ordinary middleware; `defineMiddleware({ requires?, staged?, bindings?, handler? })` adds typed capability metadata.
 - `staged(event)` runs first and its inferred return is visible as `event.staged` only inside that middleware's `bindings` and `handler`. It is stored temporarily at `event.context.staged`; the wrapper hides/restores the enclosing staged scope while `next()` runs, so staged values never enter downstream types or runtime state.
@@ -776,7 +776,7 @@ export default defineNitroConfig({
 })
 ```
 
-**Proposed approach.**
+**Landed approach.**
 
 - **Top-level route metadata.** Add `openapi?: OperationMeta | false` beside `validate`/`errors`/`status`/`middleware`; `openapi: false` is sugar for `{ hide: true }`. The canonical object mirrors OpenAPI Operation Object field names (`summary`, `description`, `tags`, `operationId`, `deprecated`, `security`, `externalDocs`, plus response/header/schema patches where OpenAPI already has vocabulary). `hide` is the dux-only field. Under the hood, the top-level key compiles into/merges with `meta.openapi` so inherited upstream readers keep seeing the generalizable fields.
 - **Composition carries docs.** `createRouter(prefix, { openapi })` contributes inherited tags/security/etc. to its mounted routes; endpoint metadata narrows or adds to it. `defineMiddleware({ openapi: { security } })` carries docs-only security metadata through the same capability channel as typed bindings, so auth remains "just middleware" while the OpenAPI document knows the route is protected.
@@ -825,7 +825,7 @@ await api.get('/orders', {
 })
 ```
 
-**Proposed approach.**
+**Landed approach.**
 
 - **Transport stays out of the contract.** `signal`, `timeout`, `retry`, `querySerializer`, and hooks are client/per-call options only. They never affect the route map, OpenAPI, endpoint diagnostics, or server types.
 - **Hook taxonomy mirrors `DuxError`.** `onRequestError` is the transport side (`DuxTransportError`: rejected fetch, abort, timeout, network/CORS/DNS). `onResponseError` is the HTTP side (`DuxHTTPError`: non-2xx response). `onRequest` and `onResponse` bracket the request/response path; `onResponse` runs for any received response, while `onResponseError` runs for non-2xx.
@@ -834,7 +834,7 @@ await api.get('/orders', {
 - **Query serialization has one default and one escape hatch.** Named presets cover common behavior (`repeat` by default); a `(params) => string | URLSearchParams` function covers bracket/comma/custom formats without adding more API surface.
 - **`DuxCall` is single-request on the JSON/raw path.** The transport pipeline (including retry) lives in the memoized fetch closure described under delta 8, so multiple consumers of the same handle share one in-flight request and parse clones.
 
-**Status:** ☐ planned (phase 10). Low–medium risk, mostly additive, with one correctness hardening (`DuxCall` memoization) before retry ships.
+**Status:** ☑ done (phase 10). Runtime, type, lint, and build planes are green; `DuxCall` memoization landed before retry so one handle never fires duplicate JSON/raw requests.
 
 ---
 

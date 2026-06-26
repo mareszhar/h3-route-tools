@@ -50,6 +50,17 @@ function unwrapErrorData(body: unknown): unknown {
   return body
 }
 
+function mediaType(headers: Headers): string {
+  return headers.get('content-type')?.split(';', 1)[0]?.trim() ?? ''
+}
+
+function withBlobType(blob: Blob, type: string): Blob {
+  if (!type || blob.type === type)
+    return blob
+  Object.defineProperty(blob, 'type', { configurable: true, value: type })
+  return blob
+}
+
 /**
  * Read a response body by dux's kind metadata — the runtime half of the response
  * contract. Kind is independent of MIME, so a `text/csv` binary response remains
@@ -66,8 +77,10 @@ export async function parseBody(response: Response): Promise<unknown> {
   if (kind === 'text')
     return await response.text()
   if (kind === 'binary') {
-    const mediaType = response.headers.get('content-type')?.split(';', 1)[0]?.trim() ?? ''
-    return new Blob([await response.arrayBuffer()], { type: mediaType })
+    return withBlobType(
+      new Blob([await response.arrayBuffer()], { type: mediaType(response.headers) }),
+      mediaType(response.headers),
+    )
   }
   if (kind === 'json') {
     try {

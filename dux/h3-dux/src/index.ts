@@ -1,7 +1,7 @@
 // ── the dux surface (counterpart-named; see docs/dux-conventions.md) ───────────
 export { createClient, createTestClient } from './client.ts'
 
-export type { Client, VerbFetch } from './client.ts'
+export type { Client, CreateClientOptions, DuxClientTransportOptions, VerbFetch } from './client.ts'
 export { DuxHTTPError, DuxTransportError } from './errors.ts'
 export type { DuxError } from './errors.ts'
 export { createFileRouteFactory, defineFileRoute } from './file-route.ts'
@@ -28,6 +28,8 @@ export type {
   MiddlewareSpec,
   TypedMiddleware,
 } from './middleware.ts'
+export { buildOpenAPI, toOpenAPI } from './openapi.ts'
+export type { DuxOpenAPIDocument, ToOpenAPIOptions } from './openapi.ts'
 export {
   binary,
   type BinaryResponse,

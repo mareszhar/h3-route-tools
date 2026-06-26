@@ -18,6 +18,7 @@ import type {
   RouteMethod,
   SchemaWithJSON,
 } from 'h3-route-tools'
+import type { DuxOpenAPI } from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
   DuplicateRoute,
@@ -39,6 +40,7 @@ import type {
   TypedMiddleware,
   UsableMiddleware,
 } from './middleware.ts'
+import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { toMiddleware } from './middleware.ts'
 
 /** A recorded, not-yet-mounted endpoint: its method, full (prefix-joined) path, and options. */
@@ -50,6 +52,7 @@ interface RouterEntry {
 
 interface RouterState {
   prefix: string
+  openapi?: DuxOpenAPI
   middlewares: Middleware[]
   entries: RouterEntry[]
 }
@@ -170,9 +173,10 @@ export class DuxRouter<
   declare readonly '~bindings': Bindings
   declare readonly '~requires': Requires
 
-  constructor(prefix: Prefix = '' as Prefix, _parentParams: readonly string[] = []) {
+  constructor(prefix: Prefix = '' as Prefix, _parentParams: readonly string[] = [], openapi?: DuxOpenAPI) {
     ROUTER_STATE.set(this, {
       prefix,
+      openapi,
       middlewares: [],
       entries: [],
     })
@@ -335,6 +339,7 @@ export class DuxRouter<
       route: joinPath(state.prefix, route),
       options: {
         ...options,
+        openapi: mergeOpenAPI(state.openapi, options.openapi as DuxOpenAPI | undefined),
         middleware: [...state.middlewares, ...(options.middleware ?? [])],
       },
     })
@@ -344,7 +349,9 @@ export class DuxRouter<
 /** Options for `createRouter` — the dynamic-outer-mount escape hatch. */
 interface RouterOptions<ParentParams extends readonly string[]> {
   /** Param names a *dynamic* outer mount owns and supplies to this router (delta 11). */
-  parentParams: ParentParams
+  parentParams?: ParentParams
+  /** OpenAPI metadata inherited by routes authored inside this router. */
+  openapi?: DuxOpenAPI
 }
 
 /**
@@ -354,13 +361,17 @@ interface RouterOptions<ParentParams extends readonly string[]> {
  */
 export function createRouter(): DuxRouter<''>
 export function createRouter<const Prefix extends string>(prefix: Prefix): DuxRouter<Prefix>
+export function createRouter<const Prefix extends string>(
+  prefix: Prefix,
+  options: { openapi: DuxOpenAPI },
+): DuxRouter<Prefix>
 export function createRouter<const Prefix extends string, const PP extends readonly string[]>(
   prefix: Prefix,
-  options: RouterOptions<PP>,
+  options: RouterOptions<PP> & { parentParams: PP },
 ): DuxRouter<Prefix, object, object, object, Record<PP[number], string>>
 export function createRouter(
   prefix = '',
   options?: RouterOptions<readonly string[]>,
 ): DuxRouter<string> {
-  return new DuxRouter(prefix, options?.parentParams)
+  return new DuxRouter(prefix, options?.parentParams, options?.openapi)
 }

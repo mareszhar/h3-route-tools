@@ -149,9 +149,9 @@ The work that makes h3-dux more than a rename. Each is a contract in [dux-spec.m
 
 All five are implemented, each with runtime, type, and editor-DX tests. The package also re-exports the full upstream surface unchanged.
 
-### Generation 2 — honesty, errors, scale (the next evolution)
+### Generation 2 — honesty, errors, scale (shipped)
 
-Generation 1 made authoring delightful and reached *Hono-level* end-to-end safety. Generation 2 is what takes h3-dux *past* Hono and Elysia: an honest client, a typed error channel, composition that scales, typed middleware bindings, and the Nitro file-routing moat made real — all resting on the contract kernel ([§4.4](#44-the-contract-kernel)). Ordered by dependency and phase, not by raw value.
+Generation 1 made authoring delightful and reached *Hono-level* end-to-end safety. Generation 2 is what takes h3-dux *past* Hono and Elysia: an honest client, a typed error channel, composition that scales, typed middleware bindings, the Nitro file-routing moat, dux-aware OpenAPI, and polished client transport — all resting on the contract kernel ([§4.4](#44-the-contract-kernel)). Ordered by dependency and phase, not by raw value.
 
 | # | Delta | Phase | Status |
 | --- | --- | --- | --- |
@@ -163,7 +163,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 11 | **Delta-aware composition** — prefix-carrying `createRouter`, `createServer().mount(router)` with optional outer prefix, `.register` accumulation, duplicate-route diagnostics | 8 | ☑ done |
 | 12 | **Typed middleware bindings** — `defineMiddleware` infers staged private values and downstream `event.bindings`; `requires` checks parent capabilities without re-registering middleware | 8 | ☑ done |
 | 13 | **Nitro deltas via codegen** — `defineFileRoute` + capability-carrying factories; generate the kernel route map; filename-derived client params | 9 | ☑ done |
-| 14 | **Symmetry extras** — dux-aware OpenAPI for standalone + Nitro; client transport hooks / `signal` / timeout / retry / query serialization | 10 | ☐ planned |
+| 14 | **Symmetry extras** — dux-aware OpenAPI for standalone + Nitro; client transport hooks / `signal` / timeout / retry / query serialization | 10 | ☑ done |
 
 Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
 

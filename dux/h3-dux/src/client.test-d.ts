@@ -88,6 +88,17 @@ test('path interpolation resolves the endpoint, no params option needed', async 
   expectTypeOf(await api.get(`/fruits/${id}`).orThrow()).toEqualTypeOf<Fruit>()
 })
 
+test('transport options are accepted without changing endpoint data types', async () => {
+  const controller = new AbortController()
+  const data = await api.get('/health', {
+    signal: controller.signal,
+    timeout: 1000,
+    retry: 1,
+    querySerializer: 'repeat',
+  }).orThrow()
+  expectTypeOf(data).toEqualTypeOf<{ status: 'ripe', at: string }>()
+})
+
 test('the runtime error instances match the contract error union', () => {
   // The thrown/returned errors are the exported classes.
   expectTypeOf<DuxHTTPError>().toMatchTypeOf<{ kind: 'http', status: number, response: Response }>()

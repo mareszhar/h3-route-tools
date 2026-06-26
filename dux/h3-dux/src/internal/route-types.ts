@@ -38,6 +38,7 @@ import type {
   TypedNativeResponse,
 } from '../response.ts'
 import type { EventStream } from '../sse.ts'
+import type { DuxOpenAPI } from './openapi-types.ts'
 
 /** Flatten an intersection into a plain object type (display only). */
 export type Prettify<T> = { [K in keyof T]: T[K] }
@@ -449,6 +450,8 @@ export interface DuxVerbOpts<
     ? unknown
     : RequirementsIssue<Req, Bindings>)
   meta?: H3RouteMeta
+  /** OpenAPI operation metadata; `false` hides this operation from dux OpenAPI. */
+  openapi?: DuxOpenAPI
   /** Success status code; sets `event.res.status` before the handler runs. */
   status?: Status
   /** Shape this method's validation errors (overrides the route/app hook). */

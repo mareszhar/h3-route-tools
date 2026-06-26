@@ -1,10 +1,10 @@
 import type {
   CreateTypedFetchOptions,
+  FetchLike,
   NormalizeRoutes,
   TypedResponse,
 } from 'h3-route-tools'
 import type { ClientData, ClientError, ClientErrors, HonestResult, ResponseKind, SuccessKindOf } from './internal/contract.ts'
-import { createTypedFetch } from 'h3-route-tools'
 import { DuxHTTPError } from './errors.ts'
 import { DuxCall, parseEventStream } from './sse.ts'
 
@@ -15,6 +15,45 @@ import { DuxCall, parseEventStream } from './sse.ts'
 // definitions exactly, minus the `method` key (the verb fixes it).
 
 type Prettify<T> = { [K in keyof T]: T[K] }
+
+export type QuerySerializer = 'repeat' | ((params: Record<string, unknown>) => string | URLSearchParams)
+
+export type RetryOptions = number | false | {
+  attempts?: number
+  statuses?: readonly number[]
+  methods?: readonly string[]
+}
+
+export interface DuxRequestHookContext {
+  route: string
+  method: string
+  url: string
+  request: Request
+  attempt: number
+}
+
+export interface DuxResponseHookContext extends DuxRequestHookContext {
+  response: Response
+}
+
+export interface DuxRequestErrorHookContext extends DuxRequestHookContext {
+  error: unknown
+}
+
+export interface DuxClientTransportOptions {
+  signal?: AbortSignal
+  timeout?: number
+  retry?: RetryOptions
+  querySerializer?: QuerySerializer
+  onRequest?: (ctx: DuxRequestHookContext) => void | Promise<void>
+  onResponse?: (ctx: DuxResponseHookContext) => void | Promise<void>
+  onRequestError?: (ctx: DuxRequestErrorHookContext) => void | Promise<void>
+  onResponseError?: (ctx: DuxResponseHookContext) => void | Promise<void>
+}
+
+export interface CreateClientOptions extends CreateTypedFetchOptions, DuxClientTransportOptions {}
+
+type TransportCallOptions = Pick<DuxClientTransportOptions, 'signal' | 'timeout' | 'retry' | 'querySerializer'>
 
 /** True when `T` has at least one required key (so the options argument is mandatory). */
 type HasRequired<T> = Partial<T> extends T ? false : true
@@ -45,6 +84,7 @@ type VerbOptions<E, WithParams extends boolean, Req = RequestOf<E>> = Prettify<
   & (Req extends { body: infer B } ? BodyOption<B> : object)
   & { query?: Req extends { query: infer Q } ? Q : never }
   & { headers?: Req extends { headers: infer H } ? H : never }
+  & TransportCallOptions
 >
 
 /**
@@ -207,15 +247,201 @@ export type Client<App, R = RouteMapOf<App>> = BareFetch<R> & {
 
 const VERBS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'] as const
 
+interface RuntimeOptions extends DuxClientTransportOptions {
+  method: string
+  params?: Record<string, unknown>
+  query?: Record<string, unknown>
+  body?: unknown
+  headers?: Record<string, string>
+}
+
+interface ResolvedRetry {
+  attempts: number
+  statuses: readonly number[]
+  methods?: readonly string[]
+  explicit: boolean
+}
+
+const DEFAULT_RETRY_STATUSES = [408, 429, 500, 502, 503, 504] as const
+const DEFAULT_RETRY_METHODS = ['GET', 'HEAD', 'OPTIONS'] as const
+
+function serializeQuery(query: Record<string, unknown>, serializer: QuerySerializer | undefined): string {
+  if (typeof serializer === 'function')
+    return String(serializer(query))
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null)
+      continue
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== null)
+          search.append(key, String(item))
+      }
+      continue
+    }
+    search.set(key, String(value))
+  }
+  return search.toString()
+}
+
+function applyParams(route: string, params: Record<string, unknown> | undefined): string {
+  let path = route
+  if (!params)
+    return path
+  for (const [key, value] of Object.entries(params)) {
+    const encoded = encodeURIComponent(String(value))
+    path = path.replace(`**:${key}`, encoded).replace(`:${key}`, encoded)
+  }
+  return path
+}
+
+function requestURL(url: string): string {
+  try {
+    return new URL(url).toString()
+  }
+  catch {
+    return new URL(url, 'http://h3-dux.local').toString()
+  }
+}
+
+function timeoutSignal(userSignal: AbortSignal | undefined, timeout: number | undefined): { signal?: AbortSignal, cleanup: () => void } {
+  if (timeout === undefined)
+    return { signal: userSignal, cleanup: () => {} }
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const abort = () => controller.abort(userSignal?.reason)
+  if (userSignal?.aborted) {
+    abort()
+  }
+  else {
+    userSignal?.addEventListener('abort', abort, { once: true })
+    timer = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), timeout)
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      if (timer)
+        clearTimeout(timer)
+      userSignal?.removeEventListener('abort', abort)
+    },
+  }
+}
+
+function retryOptions(globalRetry: RetryOptions | undefined, callRetry: RetryOptions | undefined): ResolvedRetry {
+  const source = callRetry ?? globalRetry
+  if (!source)
+    return { attempts: 0, statuses: DEFAULT_RETRY_STATUSES, explicit: callRetry !== undefined }
+  if (typeof source === 'number')
+    return { attempts: Math.max(0, source), statuses: DEFAULT_RETRY_STATUSES, explicit: callRetry !== undefined }
+  return {
+    attempts: Math.max(0, source.attempts ?? 0),
+    statuses: source.statuses ?? DEFAULT_RETRY_STATUSES,
+    methods: source.methods?.map(method => method.toUpperCase()),
+    explicit: callRetry !== undefined || !!source.methods,
+  }
+}
+
+function retryableMethod(method: string, retry: ResolvedRetry): boolean {
+  if (retry.methods)
+    return retry.methods.includes(method)
+  if (DEFAULT_RETRY_METHODS.includes(method as typeof DEFAULT_RETRY_METHODS[number]))
+    return true
+  return retry.explicit
+}
+
+function retryDelay(response: Response): number {
+  const value = response.headers.get('retry-after')
+  if (!value)
+    return 0
+  const seconds = Number(value)
+  if (Number.isFinite(seconds))
+    return Math.max(0, seconds * 1000)
+  const date = Date.parse(value)
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0
+}
+
+function sleep(ms: number): Promise<void> {
+  return ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve()
+}
+
+function createDuxFetch(options: CreateClientOptions): (route: string, opts: RuntimeOptions) => Promise<Response> {
+  const {
+    baseURL = '',
+    fetch: transport = globalThis.fetch as FetchLike,
+    headers: baseHeaders,
+  } = options
+
+  return async (route, opts) => {
+    const method = opts.method.toUpperCase()
+    let url = baseURL + applyParams(route, opts.params)
+    if (opts.query) {
+      const qs = serializeQuery(opts.query, opts.querySerializer ?? options.querySerializer)
+      if (qs)
+        url += (url.includes('?') ? '&' : '?') + qs
+    }
+
+    const headers = new Headers(baseHeaders)
+    if (opts.headers) {
+      for (const [key, value] of Object.entries(opts.headers))
+        headers.set(key, value)
+    }
+    let body: BodyInit | undefined
+    if (opts.body !== undefined) {
+      body = JSON.stringify(opts.body)
+      if (!headers.has('content-type'))
+        headers.set('content-type', 'application/json')
+    }
+
+    const retry = retryOptions(options.retry, opts.retry)
+    const canRetry = retry.attempts > 0 && retryableMethod(method, retry)
+    const maxAttempts = canRetry ? retry.attempts + 1 : 1
+    let lastError: unknown
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { signal, cleanup } = timeoutSignal(opts.signal ?? options.signal, opts.timeout ?? options.timeout)
+      const init: RequestInit = { method, headers: new Headers(headers), body, signal }
+      const request = new Request(requestURL(url), init)
+      const ctx: DuxRequestHookContext = { route, method, url, request, attempt }
+      try {
+        await options.onRequest?.(ctx)
+        const res = await transport(url, {
+          method,
+          headers: request.headers,
+          body,
+          signal,
+        })
+        const responseCtx: DuxResponseHookContext = { ...ctx, response: res }
+        await options.onResponse?.(responseCtx)
+        if (!res.ok)
+          await options.onResponseError?.(responseCtx)
+        if (!res.ok && attempt < maxAttempts && retry.statuses.includes(res.status)) {
+          await sleep(retryDelay(res))
+          continue
+        }
+        return res
+      }
+      catch (error) {
+        lastError = error
+        await options.onRequestError?.({ ...ctx, error })
+        if (attempt >= maxAttempts)
+          throw error
+      }
+      finally {
+        cleanup()
+      }
+    }
+    throw lastError
+  }
+}
+
 /**
  * Build a typed fetch client from a server's `typeof app`. The counterpart of
  * `createServer`. Address routes with the bare `api(path, { method })` form or
  * the verb sugar `api.get(path, opts)` — both are typed end-to-end from the
  * server contract; see docs/dux-conventions.md §5.
  */
-export function createClient<App>(options: CreateTypedFetchOptions = {}): Client<App> {
-  const base = createTypedFetch(options)
-  const call = base as (route: string, opts: Record<string, unknown>) => Promise<unknown>
+export function createClient<App>(options: CreateClientOptions = {}): Client<App> {
+  const call = createDuxFetch(options) as (route: string, opts: RuntimeOptions) => Promise<Response>
 
   const verbs = Object.fromEntries(
     VERBS.map(method => [
@@ -223,10 +449,10 @@ export function createClient<App>(options: CreateTypedFetchOptions = {}): Client
       // A DuxCall handle: `await` runs the JSON fetch; `for await` runs the SSE
       // fetch (only one ever fires, chosen by how the caller consumes it).
       (route: string, opts: Record<string, unknown> = {}) => new DuxCall(
-        () => call(route, { ...opts, method }) as Promise<Response>,
+        () => call(route, { ...opts, method } as RuntimeOptions),
         async function* () {
           const headers = { accept: 'text/event-stream', ...(opts.headers as Record<string, string>) }
-          const res = await call(route, { ...opts, method, headers }) as Response
+          const res = await call(route, { ...opts, method, headers } as RuntimeOptions)
           // A failed stream surfaces as a thrown DuxError, not a silent empty iterator.
           if (!res.ok)
             throw new DuxHTTPError(res.status, await res.json().catch(() => undefined), res)
@@ -238,7 +464,7 @@ export function createClient<App>(options: CreateTypedFetchOptions = {}): Client
 
   // The dynamic verbs can't be statically proven against the precise generic —
   // the one boundary cast, mirroring upstream's `createTypedFetch`.
-  return Object.assign(base, verbs) as unknown as Client<App>
+  return Object.assign(call, verbs) as unknown as Client<App>
 }
 
 /**

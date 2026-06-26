@@ -104,10 +104,19 @@ export async function* parseEventStream<T>(response: Response): AsyncGenerator<T
 export class DuxCall<Result, Data, Kind extends ResponseKind> implements PromiseLike<Result> {
   readonly #fetch: () => Promise<Response>
   readonly #stream: () => AsyncGenerator<unknown>
+  #response?: Promise<Response>
 
   constructor(fetchResponse: () => Promise<Response>, stream: () => AsyncGenerator<unknown>) {
     this.#fetch = fetchResponse
     this.#stream = stream
+  }
+
+  #getResponse(): Promise<Response> {
+    return (this.#response ??= this.#fetch())
+  }
+
+  async #cloneResponse(): Promise<Response> {
+    return (await this.#getResponse()).clone()
   }
 
   /** Default `await`: the honest `{ data, error }` result. */
@@ -115,12 +124,12 @@ export class DuxCall<Result, Data, Kind extends ResponseKind> implements Promise
     onFulfilled?: ((value: Result) => R1 | PromiseLike<R1>) | null,
     onRejected?: ((reason: unknown) => R2 | PromiseLike<R2>) | null,
   ): PromiseLike<R1 | R2> {
-    return (buildResult(this.#fetch) as Promise<Result>).then(onFulfilled, onRejected)
+    return (buildResult(() => this.#cloneResponse()) as Promise<Result>).then(onFulfilled, onRejected)
   }
 
   /** Bubble the error instead of returning it — for scripts, SSR loaders, server-to-server. */
   orThrow(): Promise<Data> {
-    return buildResult(this.#fetch).then((result) => {
+    return buildResult(() => this.#cloneResponse()).then((result) => {
       if (result.error)
         throw result.error
       return result.data as Data
@@ -129,7 +138,7 @@ export class DuxCall<Result, Data, Kind extends ResponseKind> implements Promise
 
   /** The web-standard escape hatch: the native response, never throwing on a non-2xx status. */
   async raw(): Promise<DuxRawResponse<Data, Kind>> {
-    return withParser<Data, Kind>(await this.#fetch())
+    return withParser<Data, Kind>(await this.#cloneResponse())
   }
 
   [Symbol.asyncIterator](): AsyncGenerator<unknown> {

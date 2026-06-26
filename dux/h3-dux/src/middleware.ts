@@ -10,6 +10,7 @@
  * registers with `.use(...)` / `middleware: [...]` exactly like any other.
  */
 import type { H3Event, Middleware } from 'h3'
+import type { DuxOpenAPI } from './internal/openapi-types.ts'
 import { getQuery } from 'h3'
 
 /** A value or a promise of it — h3's middleware return shape, not re-exported by h3. */
@@ -30,6 +31,7 @@ declare const META: unique symbol
 export interface TypedMiddleware<Requires = object, Bindings = object> {
   (event: H3Event, next: () => MaybePromise<unknown>): MaybePromise<unknown>
   readonly [META]: { requires: Requires, bindings: Bindings }
+  readonly '~duxOpenAPI'?: DuxOpenAPI
 }
 
 /**
@@ -83,6 +85,8 @@ export interface MiddlewareSpec<
   Staged,
   Bindings extends object,
 > {
+  /** Docs-only OpenAPI metadata, usually security requirements for auth middleware. */
+  openapi?: DuxOpenAPI
   /** Providers an enclosing scope must already supply — consumed, never executed. */
   requires?: Requires
   /** Private preparation, exposed as `event.staged` to this middleware only. */
@@ -174,7 +178,17 @@ export function defineMiddleware(
 ): TypedMiddleware<any, any> {
   if (typeof input === 'function')
     return input as unknown as TypedMiddleware<any, any>
-  return runSpec(input) as unknown as TypedMiddleware<any, any>
+  return withOpenAPI(runSpec(input), input.openapi) as unknown as TypedMiddleware<any, any>
+}
+
+export function middlewareOpenAPI(input: unknown): DuxOpenAPI | undefined {
+  return (input as { readonly '~duxOpenAPI'?: DuxOpenAPI } | undefined)?.['~duxOpenAPI']
+}
+
+function withOpenAPI<T extends Middleware>(middleware: T, openapi: DuxOpenAPI | undefined): T {
+  if (openapi !== undefined)
+    Object.defineProperty(middleware, '~duxOpenAPI', { value: openapi })
+  return middleware
 }
 
 /**
@@ -225,11 +239,11 @@ function runSpec(spec: MiddlewareSpec<any, any, any>): Middleware {
  */
 export function toMiddleware(input: Middleware | MiddlewareSpec<any, any, any>): Middleware {
   if (typeof input !== 'function')
-    return runSpec(input)
-  return (event, next) => {
+    return withOpenAPI(runSpec(input), input.openapi)
+  return withOpenAPI((event, next) => {
     ensureDuxAccessors(event)
     return (input as Middleware)(event, next)
-  }
+  }, middlewareOpenAPI(input))
 }
 
 // ── type-level composition helpers (consumed by server.ts and router.ts) ──────
