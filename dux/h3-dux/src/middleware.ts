@@ -33,14 +33,18 @@ export interface TypedMiddleware<Requires = object, Bindings = object> {
 }
 
 /**
- * A plain h3 middleware accepted by `.use(...)` — explicitly *not* a branded
- * {@link TypedMiddleware} (its `[META]` is forbidden), so a colliding typed
- * provider can't slip through this overload and dodge the conflict check. Carries
- * its own call signature so `(event, next) => …` params type without annotation.
- * Contributes no bindings.
+ * The bare-callback form of `.use((event, next) => …)` — the inline equivalent of
+ * `defineMiddleware(fn)`, no wrap needed. Its `event` is the {@link BoundEvent} for
+ * the chain's accumulated `Bindings`, so `event.bindings` is typed from whatever
+ * earlier middleware published (strictly better than a plain `H3Event`). It carries
+ * its own call signature so an unwrapped `(event, next) => …` types without
+ * annotation, and forbids the brand (`[META]?: never`) so a typed provider routes
+ * to the bindings-accumulating overload instead — a colliding provider can't dodge
+ * the conflict check through here. It publishes no new bindings (the object form's
+ * `bindings` is how you publish).
  */
-export interface PlainMiddleware {
-  (event: H3Event, next: () => MaybePromise<unknown>): MaybePromise<unknown>
+export interface InlineCallback<Bindings> {
+  (event: BoundEvent<Bindings>, next: () => Promise<unknown>): MaybePromise<unknown>
   readonly [META]?: never
 }
 
@@ -213,9 +217,19 @@ function runSpec(spec: MiddlewareSpec<any, any, any>): Middleware {
   }
 }
 
-/** Coerce an inline options object into a wrapper; pass a function through unchanged. */
+/**
+ * Coerce a `.use(...)` argument into a runtime middleware: an options object
+ * becomes a `runSpec` wrapper; a bare callback is wrapped to install the dux root
+ * accessors first, so its typed `event.bindings`/`event.params/query/body` are
+ * always safe to read (matching `InlineCallback`), exactly as the object form is.
+ */
 export function toMiddleware(input: Middleware | MiddlewareSpec<any, any, any>): Middleware {
-  return typeof input === 'function' ? input : runSpec(input)
+  if (typeof input !== 'function')
+    return runSpec(input)
+  return (event, next) => {
+    ensureDuxAccessors(event)
+    return (input as Middleware)(event, next)
+  }
 }
 
 // ── type-level composition helpers (consumed by server.ts and router.ts) ──────

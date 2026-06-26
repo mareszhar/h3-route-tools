@@ -50,4 +50,15 @@ describe('bare-handler shorthand — editor DX', () => {
     `
     expect(errors).toBeClean()
   })
+
+  it('a bare .use callback types its event/next — no defineMiddleware wrap, no implicit any', () => {
+    const { errors } = project.check`
+      import { createServer, defineMiddleware } from '@mszr/h3-dux'
+      const withSession = defineMiddleware({ bindings: () => ({ tenant: 'acme' }) })
+      void createServer()
+        .use(withSession)
+        .use((e, next) => { void e.bindings.tenant; void e.req.method; return next() })
+    `
+    expect(errors).toBeClean()
+  })
 })

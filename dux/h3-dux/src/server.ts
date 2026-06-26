@@ -23,9 +23,9 @@ import type {
 } from './internal/route-types.ts'
 import type {
   BindingsOf,
+  InlineCallback,
   InlineSpec,
   InlineSpecIssue,
-  PlainMiddleware,
   TypedMiddleware,
   UnsatisfiedKeys,
   UsableMiddleware,
@@ -208,12 +208,18 @@ export class DuxServer<Routes = object, Bindings = object> {
   }
 
   /**
-   * Register middleware (chainable). A {@link TypedMiddleware} from
-   * `defineMiddleware` (or an inline `{ staged, bindings, handler }` object)
-   * publishes typed `event.bindings` to every route declared after it; a plain
-   * `(event, next) => …` works untyped. Two providers may not publish the same
-   * binding key — the collision is a cursor error. This is how auth attaches.
+   * Register middleware (chainable). Three forms, one method:
+   *  - a bare `(event, next) => …` callback — the inline equivalent of
+   *    `defineMiddleware(fn)`, no wrap; `event.bindings` is typed from the chain;
+   *  - an inline `{ staged, bindings, handler }` object — publishes typed bindings;
+   *  - a {@link TypedMiddleware} from `defineMiddleware` — publishes its bindings.
+   *
+   * The bare-callback overload is first so an unwrapped arrow gets its `event`/`next`
+   * typed (not implicit-`any`); a branded provider or an object routes to the
+   * bindings-accumulating overloads. Two providers may not publish the same binding
+   * key — the collision is a cursor error. This is how auth attaches.
    */
+  use(middleware: InlineCallback<Bindings>): this
   use<M extends TypedMiddleware<any, any>>(
     middleware: UsableMiddleware<M, Bindings>,
   ): DuxServer<Routes, Prettify<Bindings & BindingsOf<M>>>
@@ -224,7 +230,6 @@ export class DuxServer<Routes = object, Bindings = object> {
   >(
     spec: InlineSpec<Bindings, Req, Staged, B> & InlineSpecIssue<Bindings, Req, B>,
   ): DuxServer<Routes, Prettify<Bindings & B>>
-  use(middleware: PlainMiddleware): this
   use(route: string, handler: Middleware, opts?: unknown): this
   use(...args: unknown[]): unknown {
     if (typeof args[0] === 'string')

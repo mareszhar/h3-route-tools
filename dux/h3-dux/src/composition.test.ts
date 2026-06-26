@@ -55,7 +55,7 @@ it('a dynamic prefix is inferred in every child handler (event.params.userId)', 
 })
 
 it('mount(outerPrefix, router) prepends a static version segment', async () => {
-  const ping = createRouter('/ping').get('/', { handler: () => ({ ok: true as const }) })
+  const ping = createRouter('/ping').get('/', () => ({ ok: true as const }))
   const app = createServer().mount('/v1', ping)
   const api = createTestClient<typeof app>(app)
 
@@ -80,8 +80,8 @@ it('parentParams lets a dynamic outer mount own a segment the router consumes', 
 
 it('two routers compose into one flat client map', async () => {
   const orchard = createOrchard()
-  const fruits = createRouter('/fruits').get('/:id', { handler: e => orchard.get(e.params.id) })
-  const health = createRouter().get('/health', { handler: () => ({ status: 'ripe' as const }) })
+  const fruits = createRouter('/fruits').get('/:id', e => orchard.get(e.params.id))
+  const health = createRouter().get('/health', () => ({ status: 'ripe' as const }))
 
   const app = createServer().mount(fruits).mount(health)
   const api = createTestClient<typeof app>(app)
@@ -93,12 +93,12 @@ it('two routers compose into one flat client map', async () => {
 it('router middleware is captured in registration order, not applied retroactively', async () => {
   let runs = 0
   const router = createRouter('/ordered')
-    .get('/before', { handler: () => ({ ok: true }) })
+    .get('/before', () => ({ ok: true }))
     .use(defineMiddleware((_event, next) => {
       runs++
       return next()
     }))
-    .get('/after', { handler: () => ({ ok: true }) })
+    .get('/after', () => ({ ok: true }))
 
   const app = createServer().mount(router)
   await app.request('/ordered/before')

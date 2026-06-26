@@ -44,3 +44,12 @@ test('a factory bare handler has the published bindings typed', () => {
     return null
   })
 })
+
+test('a bare .use callback types its event.bindings from the chain', () => {
+  const withSession = defineMiddleware({ bindings: () => ({ tenant: 'acme' }) })
+  createServer().use(withSession).use((e, next) => {
+    expectTypeOf(e.bindings.tenant).toEqualTypeOf<string>()
+    expectTypeOf(e.bindings).toMatchTypeOf<{ tenant: string }>()
+    return next()
+  })
+})

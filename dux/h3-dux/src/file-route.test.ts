@@ -50,7 +50,7 @@ it('a flat route rejects an invalid body with 422', async () => {
 })
 
 it('a flat shared handler answers every method on an unsuffixed file', async () => {
-  const route = defineFileRoute({ handler: () => ({ status: 'ripe' as const }) })
+  const route = defineFileRoute(() => ({ status: 'ripe' as const }))
   const app = new H3().all('/health', route)
 
   expect(await (await app.request('/health')).json()).toEqual({ status: 'ripe' })
@@ -134,7 +134,7 @@ it('factory .use runs middleware and publishes bindings to the handler', async (
   const withRequestId = defineMiddleware({ bindings: () => ({ requestId: 'req-1' }) })
   const defineAppRoute = createFileRouteFactory().use(withRequestId)
 
-  const route = defineAppRoute({ handler: e => ({ requestId: e.bindings.requestId }) })
+  const route = defineAppRoute(e => ({ requestId: e.bindings.requestId }))
   const app = new H3().all('/whoami', route)
 
   expect(await (await app.request('/whoami')).json()).toEqual({ requestId: 'req-1' })
@@ -157,7 +157,7 @@ it('factory .compose satisfies a feature\'s requirement without re-running middl
   const storeFeature = createFileRouteFactory().requires(withDatabase).use(withStore)
   const defineStoreRoute = base.compose(storeFeature)
 
-  const route = defineStoreRoute({ handler: e => ({ store: e.bindings.store }) })
+  const route = defineStoreRoute(e => ({ store: e.bindings.store }))
   const app = new H3().all('/store', route)
 
   expect(await (await app.request('/store')).json()).toEqual({ store: 'store:orchard' })

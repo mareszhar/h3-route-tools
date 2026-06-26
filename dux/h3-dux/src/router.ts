@@ -33,9 +33,9 @@ import type {
 } from './internal/route-types.ts'
 import type {
   BindingsOf,
+  InlineCallback,
   InlineSpec,
   InlineSpecIssue,
-  PlainMiddleware,
   TypedMiddleware,
   UsableMiddleware,
 } from './middleware.ts'
@@ -180,9 +180,12 @@ export class DuxRouter<
 
   /**
    * Register router-scoped middleware (chainable). Identical to a server's
-   * `.use(...)` but the registration runs only for this router's routes — the way
-   * to give a domain exact runtime scope. Typed middleware publishes `event.bindings`.
+   * `.use(...)` — a bare `(event, next) => …` callback (no `defineMiddleware` wrap;
+   * `event.bindings` typed from the chain), an inline `{ staged, bindings, handler }`
+   * object, or a {@link TypedMiddleware} — but the registration runs only for this
+   * router's routes, the way to give a domain exact runtime scope.
    */
+  use(middleware: InlineCallback<Bindings>): this
   use<M extends TypedMiddleware<any, any>>(
     middleware: UsableMiddleware<M, Bindings>,
   ): DuxRouter<Prefix, Routes, Prettify<Bindings & BindingsOf<M>>, Requires, ParentParams>
@@ -193,7 +196,6 @@ export class DuxRouter<
   >(
     spec: InlineSpec<Bindings, Req, Staged, B> & InlineSpecIssue<Bindings, Req, B>,
   ): DuxRouter<Prefix, Routes, Prettify<Bindings & B>, Requires, ParentParams>
-  use(middleware: PlainMiddleware): this
   use(spec: unknown): unknown {
     stateOf(this).middlewares.push(toMiddleware(spec as Middleware))
     return this

@@ -20,10 +20,10 @@ import {
 const orchard = createOrchard()
 
 export const app = createServer()
-  // No validate.response → the response type is INFERRED from the handler return.
-  .get('/health', { handler: () => ({ status: 'ripe' as const, at: new Date().toISOString() }) })
+  // No options needed → pass the handler directly; the response is INFERRED from it.
+  .get('/health', () => ({ status: 'ripe' as const, at: new Date().toISOString() }))
   // Response kinds (delta 10): a string is inferred as text — no marker required.
-  .get('/health/text', { handler: () => 'ripe' })
+  .get('/health/text', () => 'ripe')
   .get('/fruits', {
     validate: { query: FruitQuerySchema, response: v.array(FruitSchema) },
     handler: () => orchard.list(),
@@ -40,11 +40,9 @@ export const app = createServer()
     handler: e => orchard.get(e.context.params.id),
   })
   // A Blob is inferred as binary — the client receives a Blob, with its MIME intact.
-  .get('/fruits/:id/label', {
-    handler: (e) => {
-      const fruit = orchard.get(e.context.params.id)
-      return new Blob([new TextEncoder().encode(`${fruit.emoji} ${fruit.name}`)])
-    },
+  .get('/fruits/:id/label', (e) => {
+    const fruit = orchard.get(e.context.params.id)
+    return new Blob([new TextEncoder().encode(`${fruit.emoji} ${fruit.name}`)])
   })
   // Typed errors (delta 9): `errors` declares the failure; `e.error(409, …)` throws it
   // type-checked; the client's `error` is discriminated by status.

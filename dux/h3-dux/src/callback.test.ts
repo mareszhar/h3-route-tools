@@ -43,3 +43,31 @@ it('a factory call accepts a bare handler, with bindings in scope', async () => 
   const app = new H3().all('/whoami', route)
   expect(await (await app.request('/whoami')).json()).toEqual({ requestId: 'req-1' })
 })
+
+it('.use accepts a bare callback (no defineMiddleware wrap) that reads chain bindings', async () => {
+  const seen: string[] = []
+  const withSession = defineMiddleware({ bindings: () => ({ tenant: 'acme' }) })
+  const app = createServer()
+    .use(withSession)
+    // Bare callback — the inline equivalent of defineMiddleware(fn).
+    .use((e, next) => {
+      seen.push(e.bindings.tenant)
+      return next()
+    })
+    .get('/x', () => ({ ok: true as const }))
+  await app.request('/x')
+  expect(seen).toEqual(['acme'])
+})
+
+it('a bare .use callback installs the dux accessors even with no prior middleware', async () => {
+  let hadBindings = false
+  const app = createServer()
+    .use((e, next) => {
+      // event.bindings is always present (accessors installed), even when empty.
+      hadBindings = typeof e.bindings === 'object' && e.bindings !== null
+      return next()
+    })
+    .get('/x', () => ({ ok: true as const }))
+  await app.request('/x')
+  expect(hadBindings).toBe(true)
+})

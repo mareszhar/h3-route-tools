@@ -14,7 +14,7 @@ it('a binding published by .use is readable on event.bindings downstream', async
 
   const app = createServer()
     .use(withRequestId)
-    .get('/whoami', { handler: e => ({ requestId: e.bindings.requestId }) })
+    .get('/whoami', e => ({ requestId: e.bindings.requestId }))
   const api = createTestClient<typeof app>(app)
 
   const { data } = await api.get('/whoami')
@@ -34,7 +34,7 @@ it('staged feeds bindings but never leaks to the handler payload', async () => {
 
   const app = createServer()
     .use(withUser)
-    .get('/me', { handler: e => e.bindings.user })
+    .get('/me', e => e.bindings.user)
   const api = createTestClient<typeof app>(app)
 
   const { data } = await api.get('/me')
@@ -65,7 +65,7 @@ it('staged scope is restored when bindings preparation throws', async () => {
   const app = createServer()
     .use(outer)
     .use(inner)
-    .get('/x', { handler: () => null })
+    .get('/x', () => null)
 
   const response = await app.request('/x')
   expect(await response.text()).toBe('caught')
@@ -88,7 +88,7 @@ it('a chain of providers sees the earlier bindings (requires consumes, never re-
   const app = createServer()
     .use(withSession)
     .use(withTenant)
-    .get('/tenant', { handler: e => ({ tenant: e.bindings.tenant }) })
+    .get('/tenant', e => ({ tenant: e.bindings.tenant }))
   const api = createTestClient<typeof app>(app)
 
   const { data } = await api.get('/tenant')
@@ -106,7 +106,7 @@ it('a binding is mutable within one request', async () => {
       ;(e.context as { bindings: { user: { name: string } } }).bindings.user.name = 'admin'
       return next()
     }))
-    .get('/name', { handler: e => ({ name: e.bindings.user.name }) })
+    .get('/name', e => ({ name: e.bindings.user.name }))
   const api = createTestClient<typeof app>(app)
 
   expect((await api.get('/name')).data).toEqual({ name: 'admin' })
@@ -118,7 +118,7 @@ it('handler middleware can intercept by not calling next', async () => {
   })
   const app = createServer()
     .use(gate)
-    .get('/secret', { handler: () => ({ ok: true }) })
+    .get('/secret', () => ({ ok: true }))
 
   const res = await app.request('/secret')
   expect(res.status).toBe(403)
@@ -130,11 +130,11 @@ it('router-scoped .use runs only for the router routes', async () => {
     mark++
     return next()
   })
-  const tagged = createRouter('/tagged').use(tag).get('/x', { handler: () => ({ ok: true }) })
+  const tagged = createRouter('/tagged').use(tag).get('/x', () => ({ ok: true }))
 
   const app = createServer()
     .mount(tagged)
-    .get('/untagged', { handler: () => ({ ok: true }) })
+    .get('/untagged', () => ({ ok: true }))
 
   await app.request('/untagged')
   expect(mark).toBe(0) // the router middleware did not run for a non-router route
@@ -146,7 +146,7 @@ it('a router .requires(provider) is satisfied by a parent .use at mount', async 
   const withUser = defineMiddleware({ bindings: () => ({ user: { id: 'u1' } }) })
   const account = createRouter('/account')
     .requires(withUser)
-    .get('/me', { handler: e => e.bindings.user })
+    .get('/me', e => e.bindings.user)
 
   const app = createServer().use(withUser).mount(account)
   const api = createTestClient<typeof app>(app)
