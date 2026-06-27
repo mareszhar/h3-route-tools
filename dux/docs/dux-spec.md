@@ -39,7 +39,7 @@ Generation 1 (phases 0–4) shipped. Generation 2 (phases 5–10) shipped in dep
 | 2 | Server verb authoring (1) — `app.get`, accumulation preserved, response + param inference | ☑ done |
 | 3 | Validation modes (5) — eager default + `eager: false` manual | ☑ done |
 | 4 | Typed SSE (4) — `sse()` brand + client `AsyncGenerator` return | ☑ done |
-| 5 | Cleaner inference + diagnostics-as-contract (6) — single signature, drop `O`/`NoExcess`, Selenita contract | ☑ done (source mode; `forModes`/perf pending W4) |
+| 5 | Cleaner inference + diagnostics-as-contract (6) — single signature, drop `O`/`NoExcess`, Selenita source-mode contract | ☑ done |
 | 6 | The honest core — contract kernel (7), honest client (8), typed errors (9) | ☑ done |
 | 7 | Response fidelity — response kinds + SSE hardening (10) | ☑ done |
 | 8 | Scale — delta-aware composition (11) + typed middleware bindings and event accessors (12) | ☑ done |
@@ -277,7 +277,7 @@ Two wins fell out of the single signature, both beyond the original plan:
 
 **Publish-polish pass.** The return-type half of delta 6 was completed to the same bar as the diagnostic half: the honest result is **inlined** (no `HonestResult` wrapper), the typed error channel is the **real `H3DuxHTTPError<Status, Data>`/`H3DuxTransportError` classes** (principle 3 — the type is the runtime value, narrowed per status), and the wire shape resolves inline (`Serialize`'s object branch is written in place, so a body hovers as `{ id: string; … }`, never `SerializeObject<{ … }>`). A `RETURN_LEAK` guard in [client.dx.test.ts](../h3-dux/src/client.dx.test.ts) fails if any of `Serialize`/`SerializeObject`/`HonestResult`/`ClientError`/`TypedResponse` reappears in a return hover, alongside assertions that the success body, the inline `{ data, error }`, and the per-status `error.data` all read clean. The client's inferred types now read at least as cleanly as Hono's, with strictly more information (honest failure, per-status bodies).
 
-**Status:** ☑ done (source mode). The remaining hardening — `forModes` parity (source vs built `.d.mts`) and the type-perf plane at 100/500/1000 routes — is tracked under workspace phase W4.
+**Status:** ☑ done. Source-mode diagnostics, completions, hovers, and return-type leak guards are part of the publish gate. Built-declaration parity and large-route type-performance checks are post-publish hardening tracked under workspace phase W4; they are not required to publish the current package.
 
 ---
 

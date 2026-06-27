@@ -1,5 +1,7 @@
 # proposal expert S
 
+> Historical draft. This memo predates Generation 2 and is kept as design archaeology only. It is superseded by [dux-vision.md](../dux-vision.md), [dux-language.md](../dux-language.md), [dux-patterns.md](../dux-patterns.md), and [dux-spec.md](../dux-spec.md); do not treat recommendations or status claims here as current h3-dux guidance.
+
 I read through `dux-vision.md`, `dux-conventions.md`, `dux-spec.md`, [server.ts](dux/h3-dux/src/server.ts), [client.ts](dux/h3-dux/src/client.ts), [route-types.ts](dux/h3-dux/src/internal/route-types.ts), the demo, the Nitro demo client, and upstream's `h3-typed.ts`/`nitro.ts`/`codegen.ts`. Here's my own read on each point — I cross-checked the other agent's report against the code rather than taking it on faith, and I diverge from it in a couple of places.
 
 ## 1. The diagnostic problem — feasible, contained, no upstream rewrite

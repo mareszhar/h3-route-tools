@@ -42,7 +42,7 @@ One package, three entrypoints. The root is the standalone server + client; Nitr
 
 | Entrypoint | What it is |
 | --- | --- |
-| `@mszr/h3-dux` | `createServer`, `createClient`, `typedResponse`, `defineRoute`, `sse`, schema/validation helpers, the typed-fetch types |
+| `@mszr/h3-dux` | `createServer`, `createClient`, `typedResponse`, `defineRoute`, `defineFileRoute`, `sse`, validation types, response-kind helpers, the typed-fetch types |
 | `@mszr/h3-dux/nitro` | the Nitro module for file-based routes (`modules: ['@mszr/h3-dux/nitro']`) |
 | `@mszr/h3-dux/codegen` | the route-types / OpenAPI codegen used by the Nitro module and CLI |
 

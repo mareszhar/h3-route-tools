@@ -1,5 +1,7 @@
 # proposal expert X
 
+> Historical draft. This memo predates Generation 2 and is kept as design archaeology only. It is superseded by [dux-vision.md](../dux-vision.md), [dux-language.md](../dux-language.md), [dux-patterns.md](../dux-patterns.md), and [dux-spec.md](../dux-spec.md); do not treat recommendations or status claims here as current h3-dux guidance.
+
 My honest verdict: h3-dux has a genuinely good core idea and several excellent API choices, but it is not yet more delightful than Hono or Elysia overall.
 
 The next step should not be rewriting H3’s runtime. It should be taking ownership of h3-dux’s public contract types instead of letting upstream implementation types leak through them.

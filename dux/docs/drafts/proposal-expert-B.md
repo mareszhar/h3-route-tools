@@ -1,5 +1,7 @@
 # proposal expert B
 
+> Historical draft. This memo predates Generation 2 and is kept as design archaeology only. It is superseded by [dux-vision.md](../dux-vision.md), [dux-language.md](../dux-language.md), [dux-patterns.md](../dux-patterns.md), and [dux-spec.md](../dux-spec.md); do not treat recommendations or status claims here as current h3-dux guidance.
+
 The short version:
 
 - Yes, upstream `h3-route-tools` also returns a typed native `Response`, so it requires `await res.json()`.

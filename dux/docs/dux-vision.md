@@ -87,7 +87,8 @@ The canon. When two pull against each other, the earlier one wins.
 
 ```
 @mszr/h3-dux           the standalone plane: createServer (typed route builder), createClient
-                       (typed fetch), defineRoute, sse, schema/validation helpers, the typed-fetch types
+                       (typed fetch), defineRoute, defineFileRoute, sse, validation types,
+                       response-kind helpers, the typed-fetch types
 @mszr/h3-dux/nitro     the Nitro module for file-based routes + its codegen glue
 @mszr/h3-dux/codegen   the route-types / OpenAPI generators the module and CLI use
 ```

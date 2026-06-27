@@ -10,8 +10,8 @@ The maintainer manual: how h3-dux is laid out, built, linted, tested, kept align
 | W1 | Test foundations: vitest planes, selenita wiring, Orchard fixtures | ☑ done |
 | W2 | Per-delta suites land with each delta (1–5) | ☑ done |
 | W3 | Publishing pipeline: subtree to `mareszhar/h3-dux`, `@mszr` scope | ☑ done |
-| W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6) ☑ source mode; `forModes` parity + type-perf plane (100/500/1000 routes) ☐ | ◑ |
-| W5 | Nitro file-route/codegen harness (delta 13): `defineFileRoute`, factory composition, and generation diagnostics are unit/type/DX-tested; the Nitro demo is migrated to file routes + generated `#h3-dux/routes` and verified through `nitro prepare` + project typecheck ☑. A standalone automated dev-regeneration (add/remove/rename) harness is ◑ pending | ◑ |
+| W4 | Generation-2 test rigor: Selenita diagnostic **contracts** (delta 6) in source mode, including leak guards for diagnostics, completions, hovers, and return types. Built-declaration parity and a 100/500/1000 route type-performance plane are tracked as post-publish hardening. | ☑ publish gate done |
+| W5 | Nitro file-route/codegen harness (delta 13): `defineFileRoute`, factory composition, and generation diagnostics are unit/type/DX-tested; the Nitro demo is migrated to file routes + generated `#h3-dux/routes` and verified through `nitro prepare` + project typecheck. Automated add/remove/rename dev-regeneration remains post-publish hardening. | ☑ publish gate done |
 
 ---
 
@@ -94,10 +94,11 @@ The editor-DX plane is the bar that the rest of the field doesn't test (delta 6)
 - it says **missing / required**;
 - it **lands on** the `body` literal, not the call;
 - the hover stays a **readable public type** (no `ObjectSchema<…>` wall);
-- it holds **across `forModes`** (source and built `.d.mts` behave alike, via Selenita's mode matrix);
-- `toHaveCompletionParity` pins completions between modes.
+- source-mode completions and hovers stay readable and leak-free.
 
-Because every Generation-2 delta adds generic complexity, the diagnostic contract is also a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor. A new **type-performance** plane sanity-checks editor responsiveness at 100 / 500 / 1000 routes, so the kernel's flattening keeps large apps fast (Hono's RPC types have documented IDE-scaling costs; this is where we prove we don't inherit them).
+Because every Generation-2 delta adds generic complexity, the diagnostic contract is also a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor.
+
+Two hardening planes stay intentionally tracked after the publish gate: Selenita source-vs-built declaration parity, and type-performance checks at 100 / 500 / 1000 routes. They are valuable, but they are not allowed to make the current docs imply unverified behavior is already part of the release gate.
 
 ### Nitro codegen harness (phase W5)
 

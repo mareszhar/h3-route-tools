@@ -1,5 +1,7 @@
 # proposal expert O
 
+> Historical draft. This memo predates Generation 2 and is kept as design archaeology only. It is superseded by [dux-vision.md](../dux-vision.md), [dux-language.md](../dux-language.md), [dux-patterns.md](../dux-patterns.md), and [dux-spec.md](../dux-spec.md); do not treat recommendations or status claims here as current h3-dux guidance.
+
 I've now read the vision/conventions/spec docs, the full `dux/h3-dux` implementation (client, server, internal route-types, serialize, sse), the upstream `h3-route-tools` machinery it wraps (`typed-fetch.ts`, `route-handler.ts`, `routes.ts`), the demos (standalone + Nitro), the Selenita DX test, and the [Selenita README](https://raw.githubusercontent.com/mareszhar/selenita/refs/heads/main/README.md). Here's my assessment.
 
 A note on format: I've kept everything in text/markdown tables (no diagrams) since you may hand this to someone who only sees this message, and I reference files as clickable `path:line` so the cause of each claim is verifiable.

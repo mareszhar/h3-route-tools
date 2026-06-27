@@ -16,9 +16,9 @@ import type { ReleaseState } from './lib/release-state.ts'
  *   6. commit "🔖 release v<version>" and tag
  *   7. squash-push the public subtree with "🔖 release v<version>"
  *
- * h3-dux has no demo-deploy step and no workspace-dependency pinning dance —
- * `h3-route-tools` is already a plain npm semver range in package.json, so
- * the only mutation a release makes is the version bump itself.
+ * h3-dux has no demo-deploy step, no runtime dependency on the reference
+ * package, and no workspace-dependency pinning dance. The only manifest
+ * mutation a release makes is the version bump itself.
  *
  * Verification runs ONCE (step 1) and leaves a content-keyed receipt, so the
  * subtree step it drives — and any later resume — don't re-verify unchanged
