@@ -1,13 +1,14 @@
-import { definePlugin } from 'nitro'
+import type { HTTPEvent } from 'h3'
+import { defineNitroPlugin } from 'nitro/runtime'
 
 const startedAt = new WeakMap<Request, number>()
 
 /** Logs `METHOD /path → status (duration)` via Nitro request hooks. */
-export default definePlugin((nitro) => {
-  nitro.hooks.hook('request', (event) => {
+export default defineNitroPlugin((nitro) => {
+  nitro.hooks.hook('request', (event: HTTPEvent) => {
     startedAt.set(event.req, performance.now())
   })
-  nitro.hooks.hook('response', (response, event) => {
+  nitro.hooks.hook('response', (response: Response, event: HTTPEvent) => {
     const start = startedAt.get(event.req) ?? performance.now()
     const ms = (performance.now() - start).toFixed(1)
     console.log(

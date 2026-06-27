@@ -1,6 +1,6 @@
 # h3-dux — vision
 
-> h3-dux is a DX/UX-first reimagining of h3 that expands on the work laid out by [`h3-route-tools`](https://github.com/sandros94/h3-route-tools). It keeps h3 and Nitro exactly as they are, inherits everything the upstream library already does well, and reshapes the authoring surface around one question: *what would feel most delightful to use?*
+> h3-dux is a DX/UX-first reimagining of typed h3 routes. It keeps h3 and Nitro exactly as they are, owns its route implementation end-to-end, and keeps the original h3-route-tools work as reference context while asking one question: *what would feel most delightful to use?*
 
 This is the hub: the philosophy, the principles, the architecture, the scope, and the model that keeps the fork alive. Everything operational lives in the docs it indexes ([§8](#8-the-docs)).
 
@@ -19,13 +19,13 @@ This is the hub: the philosophy, the principles, the architecture, the scope, an
 
 `@mszr/h3-dux` gives an h3 v2 / Nitro v3 app **end-to-end type safety**: a server you author with typed, validated routes, and a client typed entirely from that server's `typeof app` — no hand-written response types, no drift.
 
-The hard problem is already solved upstream. h3-route-tools accumulates every route's contract into the app's type, validates params/query/body/headers/response through [Standard Schema](https://standardschema.dev), ships a [fetchdts](https://github.com/unjs/fetchdts)-style typed client, and carries the whole thing into Nitro with file-based codegen and OpenAPI. h3-dux builds **on top of that**, not around it: we inherit the engine and refine the surface.
+The hard problem is the spine h3-dux owns: every route's contract accumulates into the app's type, validates params/query/body/headers/response through [Standard Schema](https://standardschema.dev), feeds a [fetchdts](https://github.com/unjs/fetchdts)-style typed client, and carries into Nitro with file-based codegen and OpenAPI. The original h3-route-tools implementation proved the shape; h3-dux now owns the implementation so the baseline can evolve under the same design principles as the deltas.
 
 ### The one hard contract
 
 > **h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.**
 
-Everything h3-dux emits is something h3/Nitro already understand, and we track upstream `h3-route-tools` closely so fixes and features flow both ways. Inside that envelope the ergonomics are ours. h3-dux is not a drop-in for h3-route-tools and doesn't pretend to be — but because it is a strict **superset** (it re-exports the entire upstream surface), adopting it is never a lock-in.
+Everything h3-dux emits is something h3/Nitro already understand. Inside that envelope the ergonomics and implementation are ours. h3-dux is not a drop-in for h3-route-tools and does not depend on it; it is an independent package inspired by that foundation and aligned with the wider h3 ecosystem.
 
 ### Primary user
 
@@ -37,16 +37,16 @@ h3-dux is built first for its maintainer: opinionated, deliberate, optimized for
 
 The deltas we want split unevenly. One is purely additive (client verb sugar); three reach into the *accumulating-generic builder* and the client's *return-type derivation* (server verb authoring, typed SSE, validation modes). Wrapping someone else's accumulating-generic builder from the outside while preserving inference is notoriously brittle — you end up with a fragile additive layer beside a can't-be-additive split.
 
-So we fork. We implement the deltas **inside** the surface, on the `dux` branch, keeping `main` a clean upstream mirror for easy diffing. The generalizable deltas (SSE, verb sugar, validation modes) are good upstream-PR candidates; in the ideal case they land there and our fork shrinks toward zero.
+So we forked, then graduated. The reference implementation outside `dux/` stays intact so ecosystem changes remain visible and portable, but `dux/h3-dux` owns the full SDK. Improvements can still flow both ways conceptually; they no longer do so through a runtime dependency.
 
-| What we want | h3-route-tools today | Our path |
+| What we want | Reference foundation | h3-dux path |
 | --- | --- | --- |
-| Route param typing (server + client) | ✅ `event.context.params`, client `params: { id }` | inherit + add `event.params` alias and mounted-prefix requirements |
-| `validate: {}` nesting (params/query/body/headers/response) | ✅ per method | inherit |
-| Standard Schema (zod / valibot) | ✅ | inherit |
-| Nitro file-based codegen | ✅ — *the expensive part* | inherit |
-| OpenAPI 3.1 generation | ✅ | inherit + refine for dux's `422`/errors/kinds |
-| Cascading custom validation errors | ✅ `onValidationError` (app → route → method) | inherit |
+| Route param typing (server + client) | `event.context.params`, client `params: { id }` | own + add `event.params` alias and mounted-prefix requirements |
+| `validate: {}` nesting (params/query/body/headers/response) | per method | own |
+| Standard Schema (zod / valibot) | schema-neutral validation | own |
+| Nitro file-based codegen | typed route projection | own |
+| OpenAPI 3.1 generation | route contract docs | own + refine for dux's `422`/errors/kinds |
+| Cascading custom validation errors | `onValidationError` (app → route → method) | own |
 | `api.get(path, opts)` client verb sugar | ❌ only `api(path, { method })` | **add** (additive) |
 | `app.get(path, opts)` server authoring | ❌ only `.route({ route, get })` | **add** (builder) |
 | Path interpolation `api.get(\`/f/${id}\`)` | ❌ only the `params` key | **add** (client types) |
@@ -71,7 +71,7 @@ The canon. When two pull against each other, the earlier one wins.
 
 5. **Predictable contracts.** Learn one surface, know the rest. The server verb you author and the client verb you call are the same word. One validated-data model across eager and manual. No surprises between siblings.
 
-6. **Additive, never divergent — at the baseline.** The upstream surface is re-exported, not rewritten. Our creativity lives in the layer we add; anything with an upstream counterpart is mirrored, so porting stays mechanical ([§7](#7-how-h3-dux-stays-alive)).
+6. **Independent, ecosystem-aligned.** h3-dux owns its baseline, but it does not invent against h3 or the web. When the wider h3 ecosystem lands a better convention, we evaluate and port it deliberately instead of inheriting it accidentally ([§7](#7-how-h3-dux-stays-alive)).
 
 7. **Plane separation is a lint rule.** The server, client, and Nitro planes keep their boundaries because the linter checks them, not because we remember to. "A Nitro import leaked into the client" is a build error.
 
@@ -92,7 +92,7 @@ The canon. When two pull against each other, the earlier one wins.
 @mszr/h3-dux/codegen   the route-types / OpenAPI generators the module and CLI use
 ```
 
-The root is where authoring happens; `/nitro` and `/codegen` mirror upstream so a Nitro app gets the same end-to-end typing as the standalone builder. Keep the entrypoint count minimal — every subpath is a maintenance and docs surface.
+The root is where authoring happens; `/nitro` and `/codegen` are explicit build-time/server-framework planes. Keep the entrypoint count minimal — every subpath is a maintenance and docs surface.
 
 ### 4.2 Three planes, one source of truth
 
@@ -107,11 +107,11 @@ The root is where authoring happens; `/nitro` and `/codegen` mirror upstream so 
 
 Everything flows from **one contract per route** — the `validate` block plus the handler. The server registers it, the app's type accumulates it, the client is derived from it, and Nitro regenerates it from the filesystem. The DRY win is that no surface re-declares what another already knows: a response type is written once (or inferred once) and read everywhere.
 
-### 4.3 Inherited vs ours
+### 4.3 Baseline vs opinionated surface
 
-| Plane | Inherited from h3-route-tools | Added by h3-dux |
+| Plane | Owned baseline | Opinionated h3-dux surface |
 | --- | --- | --- |
-| Server | `H3Typed`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed middleware bindings, root event accessors, `event.error()`** |
+| Server | `H3DuxApp`, `.route()`, `validate`, `onValidationError`, `defineRoute`/`register` | `createServer`, `app.get/post/…`, response + param inference, validation modes, SSE streaming, **`createRouter`/`.mount` composition, typed middleware bindings, root event accessors, `event.error()`** |
 | Client | `createTypedFetch`, params/query/body/response typing | `createClient`, `api.get/…`, path interpolation, SSE `AsyncGenerator`, **honest `{ data, error }` surface, `.orThrow()`/`.raw()`, typed error channel, transport hooks / cancellation / retry** |
 | Contract | per-method `Endpoint`, status→schema response map, `errors` | **the normalized kernel: plain shapes, per-status responses, response kinds** |
 | Nitro | `defineRouteHandler`, module, codegen, OpenAPI | **`defineFileRoute`/file-route factories, generated kernel route map (no hand-written `Routes`), filename-derived client params, dux-aware OpenAPI enrichment** |
@@ -147,7 +147,7 @@ The work that makes h3-dux more than a rename. Each is a contract in [dux-spec.m
 | 4 | **Typed SSE** — `sse(schema)` brands `validate.response`; client returns `AsyncGenerator<T>` | ☑ done |
 | 5 | **Validation modes** — eager-sequential default; `eager: false` → manual via `event.valid('scope')` | ☑ done |
 
-All five are implemented, each with runtime, type, and editor-DX tests. The package also re-exports the full upstream surface unchanged.
+All five are implemented, each with runtime, type, and editor-DX tests. The package also owns the baseline route primitives they build on.
 
 ### Generation 2 — honesty, errors, scale (shipped)
 
@@ -171,9 +171,9 @@ Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
 
 ## 6. The scope edge
 
-A garden's wall is a promise: opting into h3-dux never locks you out of something h3 or Nitro can do — h3-dux is a superset, and any escape hatch is the upstream surface we already re-export.
+A garden's wall is a promise: opting into h3-dux never locks you out of something h3 or Nitro can do. The native escape hatch is the owned h3-backed app, plus ordinary h3 middleware/plugins.
 
-- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed middleware bindings**, **dux-aware OpenAPI for standalone and Nitro file routes**, and everything h3-route-tools already ships (Nitro codegen, OpenAPI, custom validation errors).
+- **In scope:** typed server authoring, the derived client (now honest about failure), typed SSE, validation control, **a typed error channel**, **response-kind fidelity**, **composition that carries the deltas**, **typed middleware bindings**, **dux-aware OpenAPI for standalone and Nitro file routes**, Nitro codegen, OpenAPI, and custom validation errors.
 - **Pass-through, not a concept:** **auth.** A protected route is `middleware: [...]`; an authenticated client call is a header. h3-dux adds no auth primitive — it would be app-specific. Typed middleware bindings (delta 12) are the general capability mechanism through which any middleware — auth or otherwise — publishes request-scoped values; auth remains an app concern.
 - **Out of scope:** anything that isn't h3/Nitro route typing. Other frameworks (Hono, Elysia) are reference points and competitive bars in `sandbox/demo-comparisons/` — we study what they do best and adopt it the dux way (or better) — but they are not compatibility targets.
 
@@ -181,12 +181,12 @@ A garden's wall is a promise: opting into h3-dux never locks you out of somethin
 
 ## 7. How h3-dux stays alive
 
-The goal: porting upstream changes stays mechanical forever.
+The goal: ecosystem alignment stays deliberate forever.
 
-- **`main` is the mirror; `dux` is the work.** `main` tracks `h3-route-tools` untouched, so a rebase is a clean fast-forward and any diff against upstream is exactly our delta. We develop on `dux`.
+- **The reference stays visible.** The outer repo can track h3-route-tools and h3 ecosystem experiments, but the published SDK lives under `dux/h3-dux` and has no runtime dependency on that reference.
 - **`dux/` is the edit home.** Almost everything we own lives under `dux/` — the package, the docs, our linting, our scripts. Files outside `dux/` change only when unavoidable (ignore globs, a CI guard). This is what keeps rebasing trivial.
-- **Re-export, don't reimplement.** The package is a superset of upstream; our additions sit beside the re-exports. When upstream moves, typecheck breaks loudly at the wrap points and we re-apply only our delta.
-- **Upstream-first.** The generalizable deltas are proposed to h3-route-tools on a separate branch. If they land, our fork shrinks.
+- **Port intentionally.** When the reference gains a useful fix or pattern, we port the idea into h3-dux's owned modules, preserving the contract kernel and dux vocabulary.
+- **Share back when useful.** Generalizable ideas can still become h3 ecosystem proposals; h3-dux no longer needs them to land elsewhere before it can improve.
 
 The maintainer mechanics — build, test, lint, drift, publish — are [dux-spec-workspace.md](./dux-spec-workspace.md).
 

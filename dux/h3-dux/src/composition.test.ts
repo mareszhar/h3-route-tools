@@ -107,9 +107,9 @@ it('router middleware is captured in registration order, not applied retroactive
   expect(runs).toBe(1)
 })
 
-it('.register folds an upstream defineRoute plugin into the accumulated map', async () => {
-  // Native escape hatch: routes added through upstream still accumulate.
-  const { defineRoute } = await import('h3-route-tools')
+it('.register folds a baseline defineRoute plugin into the accumulated map', async () => {
+  // Native escape hatch: routes added through the owned baseline still accumulate.
+  const { defineRoute } = await import('@mszr/h3-dux')
   const plugin = defineRoute({
     route: '/legacy',
     get: { validate: { response: v.object({ legacy: v.boolean() }) }, handler: () => ({ legacy: true }) },

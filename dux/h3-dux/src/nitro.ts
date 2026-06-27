@@ -10,24 +10,35 @@
  * fails the build on the runtime-inspectable contradictions (an unreachable-method
  * file, a body-bearing shared handler, a duplicate route+method).
  *
- * Plain Nitro handlers and inherited upstream `defineRouteHandler` files keep
- * working; inherited upstream handlers keep their `InternalApi`/`$fetch` contract,
- * and all non-dux routes are omitted from the h3-dux client map (an untyped route
- * is never given a fictional contract). OpenAPI enrichment is intentionally left
- * to phase 10's refined design. The full upstream Nitro surface is re-exported below.
+ * Plain Nitro handlers and owned baseline `defineRouteHandler` files keep
+ * working; baseline handlers keep their `InternalApi`/`$fetch` contract, and all
+ * non-dux routes are omitted from the h3-dux client map (an untyped route is
+ * never given a fictional contract).
  */
-import type { NitroModule, NitroTypes } from 'nitro/types'
+import type { NitroModule, NitroTypes, Serialize, Simplify } from 'nitro/types'
 import type { H3DuxFileHandler } from './file-route.ts'
 import type { H3DuxFileRouteInfo } from './internal/nitro-codegen.ts'
 import type { H3DuxOpenAPIDocument, H3DuxOpenAPIRoute, ToOpenAPIOptions } from './openapi.ts'
+import type { RouteHandler } from './route.ts'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import { generateNitroRouteTypes, generateRoutesModule } from './internal/nitro-codegen.ts'
 import { buildOpenAPI } from './openapi.ts'
 
-// Re-export the upstream Nitro surface unchanged (collectRouteHandlers, OpenAPI
-// helpers, …) so advanced users can still reach the inherited building blocks.
-export * from 'h3-route-tools/nitro'
+type NitroSetup = Parameters<NitroModule['setup']>[0]
+type NitroTypeScriptOptions = NonNullable<NitroSetup['options']['typescript']> & {
+  generatedTypesDir?: string
+}
+
+/** Nitro's `InternalApi` value for an owned baseline route handler. */
+export type NitroMethodsOf<H>
+  = H extends RouteHandler<infer _Def, infer Methods>
+    ? {
+        [M in keyof Methods]: Simplify<
+          Serialize<Methods[M] extends { response: infer R } ? R : unknown>
+        >
+      }
+    : never
 
 /** One method entry's generated type strings, as Nitro stores them in its route table. */
 type RouteMethodTypes = readonly string[] | undefined
@@ -41,7 +52,7 @@ interface H3DuxFileMarkers {
   '~routeDef'?: Record<string, unknown>
 }
 
-interface UpstreamRouteInfo {
+interface BaselineRouteInfo {
   routePath: string
   importSpecifier: string
   declared: readonly string[]
@@ -51,7 +62,7 @@ interface UpstreamRouteInfo {
 /** The result of collecting file routes: the dux routes, plus modules we could not inspect. */
 export interface CollectResult {
   infos: H3DuxFileRouteInfo[]
-  upstream: UpstreamRouteInfo[]
+  baseline: BaselineRouteInfo[]
   /** Specifiers whose module threw on import — surfaced as a warning, never dropped in silence. */
   unreadable: string[]
 }
@@ -68,7 +79,7 @@ function declaredMethods(routeDef: Record<string, unknown>): string[] {
 }
 
 /**
- * Import a route module to read its h3-route-tools/dux markers. Returns markers when
+ * Import a route module to read its h3-dux markers. Returns markers when
  * the route is inspectable, `undefined` for a plain Nitro route, or `'error'` when
  * the import throws — surfaced as a warning instead of silently omitting the route.
  * The dux form (flat vs method map) is read here because the *type* cannot express
@@ -95,7 +106,7 @@ async function loadDuxMarkers(spec: string, typesDir: string): Promise<H3DuxFile
  */
 export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: string): Promise<CollectResult> {
   const infos: H3DuxFileRouteInfo[] = []
-  const upstream: UpstreamRouteInfo[] = []
+  const baseline: BaselineRouteInfo[] = []
   const unreadable: string[] = []
   for (const [routePath, methods] of Object.entries(routes)) {
     const table = methods as Record<string, RouteMethodTypes>
@@ -137,7 +148,7 @@ export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: 
         })
       }
       else if (markers['~routeDef']) {
-        upstream.push({
+        baseline.push({
           routePath,
           importSpecifier,
           declared: declaredMethods(markers['~routeDef']),
@@ -146,29 +157,30 @@ export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: 
       }
     }
   }
-  return { infos, upstream, unreadable }
+  return { infos, baseline, unreadable }
 }
 
 /**
  * The directory Nitro writes its generated `tsconfig.json` + route types to — the
  * base the `#h3-dux/routes` path and the route import specifiers resolve against.
- * `typescript.generatedTypesDir` (default `node_modules/.nitro/types`) is the truth;
- * it can diverge from `buildDir/types`.
+ * Stable Nitro derives it from `typescript.tsconfigPath`; newer betas can expose
+ * `typescript.generatedTypesDir` directly. Prefer the direct value when present.
  */
-function typesDirOf(nitro: Parameters<NitroModule['setup']>[0]): string {
-  const generated = nitro.options.typescript?.generatedTypesDir ?? join(nitro.options.buildDir, 'types')
+function typesDirOf(nitro: NitroSetup): string {
+  const ts = nitro.options.typescript as NitroTypeScriptOptions
+  const generated = ts.generatedTypesDir ?? join(nitro.options.buildDir, ts.tsconfigPath, '..')
   return isAbsolute(generated) ? generated : resolve(nitro.options.rootDir, generated)
 }
 
 /** Register the `#h3-dux/routes` import path in Nitro's generated tsconfig. */
-function registerRoutesPath(nitro: Parameters<NitroModule['setup']>[0]): void {
-  const ts = (nitro.options.typescript ??= {})
+function registerRoutesPath(nitro: NitroSetup): void {
+  const ts = nitro.options.typescript
   const tsConfig = (ts.tsConfig ??= {})
   const compilerOptions = (tsConfig.compilerOptions ??= {})
   compilerOptions.paths = { ...compilerOptions.paths, '#h3-dux/routes': ['./h3-dux-routes'] }
 }
 
-function methodLockMessage(route: UpstreamRouteInfo, locked: readonly string[]): string {
+function methodLockMessage(route: BaselineRouteInfo, locked: readonly string[]): string {
   return [
     `  "${route.importSpecifier}" is locked to ${locked.map(method => method.toUpperCase()).join(', ')} by its filename, but defineRouteHandler declares: ${route.declared.join(', ')}.`,
     `  Nitro only routes the filename method(s) to it, so the other method(s) are unreachable.`,
@@ -176,8 +188,8 @@ function methodLockMessage(route: UpstreamRouteInfo, locked: readonly string[]):
   ].join('\n')
 }
 
-function upstreamMethodType(spec: string, method: string): string {
-  return `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('${spec}').default>['${method}']`
+function baselineMethodType(spec: string, method: string): string {
+  return `import("@mszr/h3-dux/nitro").NitroMethodsOf<typeof import('${spec}').default>['${method}']`
 }
 
 function applyRouteTypeEntries(
@@ -195,14 +207,14 @@ function applyRouteTypeEntries(
   }
 }
 
-function applyUpstreamRouteTypes(routes: NitroTypes['routes'], upstream: readonly UpstreamRouteInfo[]): string[] {
+function applyBaselineRouteTypes(routes: NitroTypes['routes'], baseline: readonly BaselineRouteInfo[]): string[] {
   const diagnostics: string[] = []
-  for (const route of upstream) {
+  for (const route of baseline) {
     const current = { ...(routes[route.routePath] as Record<string, RouteMethodTypes> | undefined) }
     if (route.methods === 'all') {
       delete current.default
       for (const method of route.declared)
-        current[method] = [upstreamMethodType(route.importSpecifier, method)]
+        current[method] = [baselineMethodType(route.importSpecifier, method)]
     }
     else {
       const locked = route.methods.map(method => method.toLowerCase())
@@ -213,7 +225,7 @@ function applyUpstreamRouteTypes(routes: NitroTypes['routes'], upstream: readonl
       }
       for (const method of locked) {
         if (route.declared.includes(method))
-          current[method] = [upstreamMethodType(route.importSpecifier, method)]
+          current[method] = [baselineMethodType(route.importSpecifier, method)]
       }
     }
     ;(routes as Record<string, Record<string, readonly string[]>>)[route.routePath] = current as Record<string, readonly string[]>
@@ -351,7 +363,7 @@ export const h3Dux: NitroModule = {
       overrideOpenAPI(nitro, () => overlayJSON)
 
     nitro.hooks.hook('types:extend', async (types) => {
-      const { infos, upstream, unreadable } = await collectFileRoutes(types.routes, typesDir)
+      const { infos, baseline, unreadable } = await collectFileRoutes(types.routes, typesDir)
       // Never drop a route in silence: if a module could not be inspected (it likely
       // imports server-only code that can't run at type generation), say so loudly.
       for (const spec of unreadable) {
@@ -364,7 +376,7 @@ export const h3Dux: NitroModule = {
       const { source, diagnostics } = generateRoutesModule(infos)
       const nitroTypes = generateNitroRouteTypes(infos)
       diagnostics.push(...nitroTypes.diagnostics)
-      diagnostics.push(...applyUpstreamRouteTypes(types.routes, upstream))
+      diagnostics.push(...applyBaselineRouteTypes(types.routes, baseline))
       if (diagnostics.length > 0) {
         throw new Error(
           `[h3-dux] Nitro route generation failed:\n\n${[...new Set(diagnostics)].join('\n\n')}`,

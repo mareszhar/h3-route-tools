@@ -2,14 +2,11 @@
   "extends": "../../../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "#h3-dux/routes": ["./node_modules/.nitro/types/h3-dux-routes.ts"],
+      "#h3-dux/routes": ["./.nitro/types/h3-dux-routes.ts"],
       "@mszr/h3-dux": ["../../../../h3-dux/src/index.ts"],
       "@mszr/h3-dux/nitro": ["../../../../h3-dux/src/nitro.ts"],
-      "@mszr/h3-dux/codegen": ["../../../../h3-dux/src/codegen.ts"],
-      "h3-route-tools": ["../../../../../src/index.ts"],
-      "h3-route-tools/nitro": ["../../../../../src/nitro.ts"],
-      "h3-route-tools/codegen": ["../../../../../src/codegen.ts"]
+      "@mszr/h3-dux/codegen": ["../../../../h3-dux/src/codegen.ts"]
     }
   },
-  "include": ["server", "nitro.config.ts", "node_modules/.nitro/types"]
+  "include": ["server", "nitro.config.ts", ".nitro/types"]
 }

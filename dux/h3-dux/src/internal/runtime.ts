@@ -1,18 +1,18 @@
 /**
  * The shared route runtime (delta 13, step 9A). One implementation of the dux
  * request/event/error/response execution, consumed by both the standalone server
- * (`server.ts`, via upstream's `.route()`) and Nitro file routes (`file-route.ts`,
- * via upstream's `defineRouteHandler`). Extracting it keeps the two surfaces
+ * (`server.ts`, via the owned native app's `.route()`) and Nitro file routes
+ * (`file-route.ts`, via the owned `defineRouteHandler`). Extracting it keeps the two surfaces
  * behaviourally identical — a fix lands once (dux-vision.md §3, principle 2).
  *
- * `buildMethod` turns one method's dux options into upstream's per-method def: the
- * `validate` block upstream value-validates, plus a *wrapped* handler that adds the
+ * `buildMethod` turns one method's dux options into the baseline per-method def:
+ * the `validate` block value-validates, plus a *wrapped* handler that adds the
  * dux layer — success status, root accessors, `event.valid`, typed `event.error`,
  * SSE streaming, and response-kind tagging.
  */
 import type { H3Event } from 'h3'
-import type { OnValidationError, RouteMethod, SchemaWithJSON, ValidateSource } from 'h3-route-tools'
 import type { AnyMethodValidate, ErrorsOption } from './route-types.ts'
+import type { OnValidationError, RouteMethod, SchemaWithJSON, ValidateSource } from './schema-types.ts'
 import { createEventStream, getQuery, HTTPError } from 'h3'
 import { ensureH3DuxAccessors } from '../middleware.ts'
 import {
@@ -123,7 +123,7 @@ function streamSse(
 
 /**
  * Standardize request-validation failures on 422, eager or manual (delta 9). The
- * user's hook still wins; response failures are re-wrapped to 500 by upstream.
+ * user's hook still wins; response failures are re-wrapped to 500 by the validator.
  */
 export function makeOnError(onValidationError: OnValidationError | undefined): OnValidationError {
   return ctx =>
@@ -135,7 +135,7 @@ export function makeOnError(onValidationError: OnValidationError | undefined): O
     }
 }
 
-/** The upstream per-method def: the value-validated `validate` block + the wrapped handler. */
+/** The per-method def: the value-validated `validate` block + the wrapped handler. */
 export interface BuiltMethod {
   validate: AnyMethodValidate | undefined
   handler: (event: H3Event) => Promise<unknown>
@@ -143,8 +143,8 @@ export interface BuiltMethod {
 }
 
 /**
- * Build upstream's per-method def from one method's dux options. The returned
- * `validate` is what upstream value-validates (request scopes in eager mode, the
+ * Build the baseline per-method def from one method's dux options. The returned
+ * `validate` is what value-validates (request scopes in eager mode, the
  * response unless it is a stream/kind marker); the returned `handler` is the dux
  * wrapper that installs the root accessors, `event.valid`, typed `event.error`,
  * then runs the user handler and tags the response by kind (or streams SSE).
@@ -158,9 +158,9 @@ export function buildMethod(method: RouteMethod, options: MethodRuntimeOpts): Bu
   // the server just sends the matching content type so the client decodes by kind.
   const isText = isTextResponse(validate?.response)
   const isBinary = isBinaryResponse(validate?.response)
-  // The response schema upstream value-validates (none for streams or kind markers).
+  // The response schema value-validated by the baseline dispatcher (none for streams or kind markers).
   const response = (sseSchema || isText || isBinary) ? undefined : validate?.response
-  const upstreamValidate = eager
+  const dispatchValidate = eager
     ? { query: schemas.query, body: schemas.body, headers: schemas.headers, response }
     : (response ? { response } : undefined)
 
@@ -208,5 +208,5 @@ export function buildMethod(method: RouteMethod, options: MethodRuntimeOpts): Bu
     return result
   }
 
-  return { validate: upstreamValidate, handler: wrapped, onValidationError: onError }
+  return { validate: dispatchValidate, handler: wrapped, onValidationError: onError }
 }

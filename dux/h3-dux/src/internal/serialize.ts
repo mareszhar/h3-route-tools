@@ -3,10 +3,9 @@
  * shape a fetch client receives). A handler validates the pre-serialization
  * value (e.g. a `Date`); the client gets the serialized form (a `string`).
  *
- * VENDORED, structurally identical in behavior, from `h3-route-tools`
- * `src/internal/serialize.ts` (itself adapted from remix's serialize type). Kept
- * here because upstream does not export it, and our verb-sugar response types must
- * resolve to the same wire shape the base client reports.
+ * Owned by h3-dux, adapted from the original reference implementation (itself
+ * adapted from remix's serialize type). It stays local because response wire
+ * shape is part of h3-dux's contract kernel.
  *
  * One deliberate divergence (display only): the object/tuple branches are written
  * **inline** in the conditional rather than delegated to named `SerializeObject` /
@@ -14,9 +13,8 @@
  * `as`-remap (`[K in keyof T as …]`) rather than `Omit<T, …>`. The resolved type is
  * identical, but with no alias to print TypeScript renders the literal — a
  * serialized response hovers as `{ id: string; … }`, never `SerializeObject<{ … }>`
- * (the wire-shape sibling of the delta-6 leak fix; dux-vision.md principle 3, and
- * how Hono's `JSONParsed` stays clean). The fork-rebase ritual
- * (docs/dux-spec-workspace.md §6) re-checks the behavior.
+ * (the wire-shape sibling of the delta-6 leak fix; dux-vision.md principle 3,
+ * and how Hono's `JSONParsed` stays clean).
  */
 export type Serialize<T>
   = IsAny<T> extends true

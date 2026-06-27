@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@orchard/domain": "workspace:*",
-    "h3": "^2.0.1-rc.22",
+    "h3": ">=2.0.1-rc.22 <3.0.0",
     "valibot": "^1.4.1"
   },
   "devDependencies": {

@@ -1,8 +1,8 @@
 import { defineBuildConfig } from 'obuild/config'
 
-// Mirrors h3-route-tools' own obuild setup: three bundle entries, with the
-// upstream package and its heavy node-only peers kept external so we re-export
-// rather than re-bundle them.
+// Three entrypoints, with runtime peers and heavy node-only tooling kept
+// external. h3-dux owns its route implementation; there is no upstream package
+// to re-export or depend on.
 export default defineBuildConfig({
   entries: [
     {
@@ -10,7 +10,7 @@ export default defineBuildConfig({
       input: ['./src/index.ts'],
       rolldown: {
         platform: 'neutral',
-        external: ['h3-route-tools'],
+        external: ['h3'],
       },
     },
     {
@@ -18,7 +18,7 @@ export default defineBuildConfig({
       input: ['./src/codegen.ts'],
       rolldown: {
         platform: 'node',
-        external: ['typescript', 'h3-route-tools', 'h3-route-tools/codegen'],
+        external: ['typescript', 'h3'],
       },
     },
     {
@@ -26,7 +26,7 @@ export default defineBuildConfig({
       input: ['./src/nitro.ts'],
       rolldown: {
         platform: 'node',
-        external: ['nitro', 'nitro/types', 'h3-route-tools', 'h3-route-tools/nitro'],
+        external: ['h3', 'nitro', 'nitro/types'],
       },
     },
   ],

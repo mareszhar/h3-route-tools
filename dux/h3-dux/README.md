@@ -2,7 +2,7 @@
 
 **End-to-end type-safe routes for [h3](https://h3.dev) v2 and [Nitro](https://nitro.build) v3 — DX first.**
 
-h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros94/h3-route-tools). It keeps everything that already makes h3-route-tools great — an accumulating typed route builder whose `typeof app` is the single source of truth, [Standard Schema](https://standardschema.dev) validation, a [fetchdts](https://github.com/unjs/fetchdts)-style typed client, Nitro file-based codegen, and OpenAPI — and reshapes the authoring surface around one question: *what would feel most delightful to use?*
+h3-dux is a DX/UX-first route kit for h3 v2 and Nitro v3. It owns its typed route builder, [Standard Schema](https://standardschema.dev) validation pipeline, [fetchdts](https://github.com/unjs/fetchdts)-style client types, Nitro file-route codegen, and OpenAPI projection, all shaped around one question: *what would feel most delightful to use?*
 
 ## Highlights
 
@@ -34,11 +34,11 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 npm install @mszr/h3-dux h3
 ```
 
-`h3` is the one required peer. `nitro` and `srvx` are optional peers — add them only for the entrypoint you use.
+`h3` is the one required peer. `nitro` is optional and needed only when importing `@mszr/h3-dux/nitro`.
 
 ## The shape
 
-One package, three entrypoints. The root is the standalone server + client; the others mirror upstream.
+One package, three entrypoints. The root is the standalone server + client; Nitro and codegen stay in explicit subpaths.
 
 | Entrypoint | What it is |
 | --- | --- |
@@ -101,11 +101,11 @@ for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator
 
 ## The one hard contract
 
-**h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is something h3/Nitro already understand, and it tracks upstream `h3-route-tools` closely so improvements flow both ways. Inside that envelope, the ergonomics are ours to reimagine.
+**h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is something h3/Nitro already understand. The original reference implementation remains useful context in the development fork, but the published package owns its implementation and dependencies.
 
 ## Status
 
-**Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes. h3-dux also re-exports the **entire** `h3-route-tools` surface unchanged.
+**Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes.
 
 **Generation 2** — complete (deltas 6–14, all test planes): a normalized contract kernel, an honest `{ data, error }` client whose typed `error` is the real `H3DuxHTTPError<Status, Data>` / `H3DuxTransportError` (narrowed per status, never a structural look-alike), response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface — plus **dux-aware OpenAPI** for standalone and Nitro and a polished client transport (`signal`/timeout/retry/query serialization, request/response hooks). The contract kernel is canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. The inferred types are tuned to read at least as cleanly as Hono's — a serialized body hovers as `{ id: string; … }`, the result as the inline `{ data, error }` — with strictly more information (honest, per-status failure).
 

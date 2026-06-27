@@ -11,7 +11,8 @@
   "dependencies": {
     "@mszr/h3-dux": "workspace:*",
     "@orchard/backend-h3-dux": "workspace:*",
-    "@orchard/domain": "workspace:*"
+    "@orchard/domain": "workspace:*",
+    "h3": ">=2.0.1-rc.22 <3.0.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

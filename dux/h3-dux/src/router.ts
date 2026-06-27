@@ -3,8 +3,8 @@
  * that carries *every* dux delta — verb authoring, validation modes, `sse()`,
  * response/param inference, typed errors, typed middleware bindings — and
  * accumulates a route map without mounting it. A `createServer().mount(router)`
- * folds that map into `typeof app`, so splitting a domain into its own file never
- * drops you back to upstream ergonomics. See docs/dux-patterns.md §9.
+ * folds that map into `typeof app`, so splitting a domain into its own file keeps
+ * the full h3-dux surface. See docs/dux-patterns.md §9.
  *
  * The optional literal prefix belongs to the domain: it is prepended to each
  * endpoint path and participates in param inference, so `createRouter('/users/:userId')`
@@ -13,11 +13,6 @@
  * dynamic outer mount owns a segment the router consumes.
  */
 import type { Middleware } from 'h3'
-import type {
-  MethodValidate,
-  RouteMethod,
-  SchemaWithJSON,
-} from 'h3-route-tools'
 import type { H3DuxOpenAPI } from './internal/openapi-types.ts'
 import type {
   AnyMethodValidate,
@@ -32,6 +27,7 @@ import type {
   PathParamNames,
   Prettify,
 } from './internal/route-types.ts'
+import type { SchemaWithJSON } from './internal/schema-types.ts'
 import type {
   BindingsOf,
   InlineCallback,
@@ -40,6 +36,10 @@ import type {
   TypedMiddleware,
   UsableMiddleware,
 } from './middleware.ts'
+import type {
+  MethodValidate,
+  RouteMethod,
+} from './route.ts'
 import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { toMiddleware } from './middleware.ts'
 

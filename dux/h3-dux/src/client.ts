@@ -1,19 +1,18 @@
+import type { H3DuxTransportError } from './errors.ts'
+import type { ClientData, ClientErrors, ClientHttpError, ResponseKind, SuccessKindOf } from './internal/contract.ts'
 import type {
   CreateTypedFetchOptions,
   FetchLike,
   NormalizeRoutes,
   TypedResponse,
-} from 'h3-route-tools'
-import type { H3DuxTransportError } from './errors.ts'
-import type { ClientData, ClientErrors, ClientHttpError, ResponseKind, SuccessKindOf } from './internal/contract.ts'
+} from './typed-fetch.ts'
 import { H3DuxHTTPError } from './errors.ts'
 import { H3DuxCall, parseEventStream } from './sse.ts'
 
 // ── reconstructing the per-verb option/return shapes ──────────────────────────
-// h3-route-tools doesn't export the internals of its typed fetch, so we rebuild
-// the small pieces we need from the public `Endpoint`-shaped route map (the
-// values of `NormalizeRoutes<App>[route][method]`). These mirror the upstream
-// definitions exactly, minus the `method` key (the verb fixes it).
+// The verb client reads the public endpoint contract map directly. Each verb
+// fixes the method, so the options shape stays plain and native diagnostics do
+// the useful work at the cursor.
 
 type Prettify<T> = { [K in keyof T]: T[K] }
 
@@ -206,9 +205,9 @@ export interface VerbFetch<R, M extends string> {
   ): VerbReturn<MatchEndpoint<R, M, Route>>
 }
 
-// ── the bare call (`api(path, { method })`) — the upstream primitive, kept ─────
+// ── the bare call (`api(path, { method })`) — the low-level primitive, kept ────
 // The verb sugar fixes the method; the bare form names it in the options. It reads
-// the same kernel as the verbs and keeps the upstream `TypedResponse` (double-await)
+// the same kernel as the verbs and keeps the baseline `TypedResponse` (double-await)
 // shape, so `(await api('/x', { method })).json()` stays valid.
 
 /** A route's declared (lowercase) methods plus their uppercase spellings — both accepted. */
@@ -236,7 +235,7 @@ export interface BareFetch<R> {
   ): Promise<TypedResponse<ClientData<BareEndpoint<R, Route, O['method']>>>>
 }
 
-/** The route map behind a server: a dux `createServer` app, an upstream `H3Typed`, or a raw map. */
+/** The route map behind a server, a native h3-dux accumulator, or a raw map. */
 type RouteMapOf<App> = App extends { '~duxRoutes': infer R } ? Prettify<R> : NormalizeRoutes<App>
 
 /**
@@ -471,7 +470,7 @@ export function createClient<App>(options: CreateClientOptions = {}): Client<App
   )
 
   // The dynamic verbs can't be statically proven against the precise generic —
-  // the one boundary cast, mirroring upstream's `createTypedFetch`.
+  // The dynamic verbs can't be statically proven against the precise generic.
   return Object.assign(call, verbs) as unknown as Client<App>
 }
 

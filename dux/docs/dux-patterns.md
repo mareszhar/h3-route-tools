@@ -19,7 +19,7 @@ Each pattern is a contract every plane (server, client, Nitro, OpenAPI) honors i
 
 ## 1. The validated-data model
 
-How a handler reads request data — and the one place h3-dux deliberately improves on upstream's `event.validated` bag. The types describe what has actually been established, never what a client merely claimed:
+How a handler reads request data. The types describe what has actually been established, never what a client merely claimed:
 
 - **Root aliases are the default read.** `event.params`, `event.query`, and `event.body` are getters over the same canonical values as `event.context.params/query/body`; there is one store and one type model, not two implementations.
 - **Eager schemas produce direct typed values.** With the default eager mode, a declared scope is validated before the handler and both aliases expose the schema's output type.
@@ -29,7 +29,7 @@ How a handler reads request data — and the one place h3-dux deliberately impro
 
 A request-validation failure is **`422` regardless of mode** ([§4](#4-validation-errors)): the status a client sees must not depend on a server-internal mode choice (principle 5 — no surprises between siblings).
 
-We **drop `event.validated`** from the surface — from the *types*, not just the docs. `event.valid('body')` reads as the deliberate action it is; eager direct reads use `event.body` (or its `event.context.body` alias). Upstream's accessor stays available underneath for diffing, but the dux `MethodEvent` does not expose it.
+We **drop `event.validated`** from the surface — from the *types*, not just the docs. `event.valid('body')` reads as the deliberate action it is; eager direct reads use `event.body` (or its `event.context.body` alias). The dux `MethodEvent` does not expose a second validated-data bag.
 
 `eager: false` lives **inside the `validate` block**, next to the schemas it governs. So does `params`: on the dux verb surface `validate.params` is where you declare the param schema, so the whole request contract reads from one block — even though params are *route-level* underneath (one schema per path, shared across methods), which is where they live for multi-method routes and grouped routers ([§9](#9-composition--scope)). Full contract and the pipeline order: [dux-spec.md §5](./dux-spec.md).
 
@@ -44,7 +44,7 @@ app.get('/fruits/:id', { handler })        // authoring          (delta 1)
 api.get('/fruits/:id', { params: { id } }) // calling            (delta 2)
 ```
 
-`createServer` and `createClient` are named as counterparts for the same reason — one integrated system, read from both ends. The bare upstream forms (`.route({ … })`, `api(path, { method })`) stay valid; the verb forms are additive sugar.
+`createServer` and `createClient` are named as counterparts for the same reason — one integrated system, read from both ends. The bare baseline forms (`.route({ … })`, `api(path, { method })`) stay valid; the verb forms are the delightful default.
 
 ### The bare-handler shorthand
 
@@ -69,7 +69,7 @@ Response typing is **hybrid**, and the default is zero-ceremony:
 - **Streamed via `sse()`.** `sse(schema)` is the streaming form of `validate.response`: it brands the endpoint so the client returns `AsyncGenerator<T>` instead of a JSON body ([dux-spec.md §4](./dux-spec.md)).
 - **Per-status when you want it.** `validate.response` accepts a status map (`{ 200: Fruit, 404: NotFound }`) and `errors` declares failure schemas — the success projection becomes `data`, the rest become a typed `error` ([§6](#6-the-honest-client), [§7](#7-typed-errors--results)).
 
-Client response types are the **wire shape**: a `v.date()` / `z.date()` field arrives as `string`, because that is what JSON gives you. (Inherited from upstream's `Serialize`.) The *kind* of a response — JSON, plain text, empty (`204`), a stream, or binary — is part of the contract too, so the client decodes it correctly without a guess ([§8](#8-response-kinds)).
+Client response types are the **wire shape**: a `v.date()` / `z.date()` field arrives as `string`, because that is what JSON gives you. The *kind* of a response — JSON, plain text, empty (`204`), a stream, or binary — is part of the contract too, so the client decodes it correctly without a guess ([§8](#8-response-kinds)).
 
 How that typed response is *consumed* — not asserted by hand, not behind a double `await` — is [§6](#6-the-honest-client).
 
@@ -77,14 +77,14 @@ How that typed response is *consumed* — not asserted by hand, not behind a dou
 
 ## 4. Validation errors
 
-We keep upstream's cascade verbatim — it is already excellent. One hook, `onValidationError`, receives `{ source, issues, event }` and runs at three cascading scopes (**method → route → app**, narrower wins). Return `ErrorDetails` to shape the response, or nothing for the default.
+h3-dux owns a single validation-error cascade. One hook, `onValidationError`, receives `{ source, issues, event }` and runs at three cascading scopes (**method → route → app**, narrower wins). Return `ErrorDetails` to shape the response, or nothing for the default.
 
 Two dux refinements to the defaults:
 
 - **One status for request validation: `422`.** Request-validation failures are `422` (well-formed but semantically invalid), eager or manual, carrying `{ source, issues }`. Generation 1 inherited a `400`/`422` split by mode; that split is gone — a malformed request must not change status because the *handler* chose a validation mode ([§1](#1-the-validated-data-model)). Response-validation failures stay `500` — a server-side contract breach is never the caller's fault.
 - **The error envelope is part of the contract.** Upstream has auto schemas for failures it raises, but dux projects request validation as its runtime `422` envelope; `errors: { … }` adds your own. Those schemas don't just feed OpenAPI — they flow into the kernel's `responses` map ([§5](#5-the-contract-kernel)), so the client's typed `error` already knows the validation-failure shape ([§7](#7-typed-errors--results)). One declaration, every consumer.
 
-So h3-dux still adds no new *error-handling* concept — it inherits the cascade — but it stops throwing the error *types* away, and it makes the status predictable.
+So h3-dux adds no new *error-handling* concept beyond the cascade, but it keeps the error *types* and makes the status predictable.
 
 ---
 
@@ -215,13 +215,13 @@ export type App = typeof app
 
 The rules that make composition trustworthy:
 
-- **Routers carry the deltas.** A `createRouter` group is *delta-aware* — verb authoring, validation modes, `sse()`, response/param inference, typed errors, and typed middleware bindings — so splitting a domain into its own file never drops you back to upstream ergonomics. (Composing via upstream's `defineRoute`/`mountRoutes` still works and still accumulates; the router is the form that keeps the deltas.)
+- **Routers carry the deltas.** A `createRouter` group is *delta-aware* — verb authoring, validation modes, `sse()`, response/param inference, typed errors, and typed middleware bindings — so splitting a domain into its own file keeps the full h3-dux ergonomics. Baseline `defineRoute`/`mountRoutes` still work and still accumulate; routers are the form that keeps every dux delta.
 - **A router owns its domain prefix.** `createRouter('/users/:userId')` carries that literal in its type, so every child handler knows `userId` and a hover over the router reveals the path it owns. `createRouter()` remains the prefix-free form.
 - **`mount(router)` merges the router as declared.** `mount('/v1', router)` may add a static outer prefix for versioning or deployment structure; the client still sees one flat route map. This is Hono's `app.route(prefix, sub)` / Elysia's `.group` parity with the domain prefix kept beside the domain definition.
 - **Dynamic params should normally be owned where they are consumed.** Prefer `createRouter('/users/:userId/friends')` when its handlers read `userId`. A dynamic outer mount cannot retroactively contextualize an already-authored router. For the uncommon case where the enclosing router must own that segment, use `createRouter('/friends', { parentParams: ['userId'] })` and mount it at `/users/:userId`; `.mount()` checks the requirement. Missing names and duplicate parent/local param names are cursor diagnostics. When validation or coercion is required, the endpoint's params schema describes the combined parent + owned + local shape and wins over string inference.
 - **Accumulation requires chaining.** `app.get(); app.get();` as separate statements loses the accumulated type — an industry-wide constraint (Hono and Elysia share it). The *escape* from a giant chain is exactly the router/`mount` split above; we say so rather than letting it surprise.
 - **Duplicate route+method is a diagnostic, not silent first-wins.** Defining the same endpoint twice is almost always a mistake; the builder surfaces it at the cursor.
-- **The native escape hatch is `.native`.** The underlying `H3Typed` is reachable as `app.native` (renamed from `.app` for clarity); routes added through it accumulate into the dux contract via `.register`, so the escape hatch doesn't silently desync the client's type.
+- **The native escape hatch is `.native`.** The underlying `H3DuxApp` is reachable as `app.native` (renamed from `.app` for clarity); routes added through it accumulate into the dux contract via `.register`, so the escape hatch doesn't silently desync the client's type.
 
 ---
 

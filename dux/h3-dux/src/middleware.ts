@@ -24,7 +24,7 @@ declare const META: unique symbol
 
 /**
  * A real h3 `Middleware` that also carries, in its type only, the bindings it
- * needs from upstream and the bindings it publishes downstream. The brand
+ * needs from an enclosing/earlier scope and the bindings it publishes downstream. The brand
  * is required (not optional) so two providers of the same key are distinguishable
  * at the cursor; it never exists at runtime.
  */
@@ -53,7 +53,7 @@ export interface InlineCallback<Bindings> {
 /** The bindings a typed middleware publishes (`object` for a plain one). */
 export type BindingsOf<M> = M extends TypedMiddleware<any, infer B> ? B : object
 
-/** The bindings a typed middleware requires upstream (`object` for a plain one). */
+/** The bindings a typed middleware requires from an enclosing/earlier scope (`object` for a plain one). */
 export type RequirementsOf<M> = M extends TypedMiddleware<infer R, any> ? R : object
 
 /** Intersect the published bindings of a tuple of providers. */
@@ -263,7 +263,7 @@ export interface BindingConflict<Key extends PropertyKey> {
   readonly '⚠ binding already provided by an earlier middleware': Key
 }
 
-/** A cursor-legible error for a middleware whose upstream requirements are absent. */
+/** A cursor-legible error for a middleware whose parent-scope requirements are absent. */
 export interface MissingBindings<Key extends PropertyKey> {
   readonly '⚠ middleware requires bindings that are not available yet': Key
 }

@@ -1,20 +1,13 @@
 import type { StandardJSONSchemaV1, StandardTypedV1 } from '@standard-schema/spec'
+import type { H3DuxOpenAPIObject } from './internal/openapi-types.ts'
+import type { AnyMethodValidate } from './internal/route-types.ts'
 import type {
   BodyValidation,
   JSONSchemaDocument,
-  OpenAPIInfo,
-  OpenAPIMediaType,
-  OpenAPIOperation,
-  OpenAPIParameter,
-  OpenAPIPathItem,
-  OpenAPIRequestBody,
-  OpenAPIResponse,
   RouteMethod,
   SchemaWithJSON,
   StatusCodeKey,
-} from 'h3-route-tools'
-import type { H3DuxOpenAPIObject } from './internal/openapi-types.ts'
-import type { AnyMethodValidate } from './internal/route-types.ts'
+} from './internal/schema-types.ts'
 import { isBinaryResponse, isTextResponse } from './response.ts'
 import { isEventStream } from './sse.ts'
 
@@ -33,6 +26,60 @@ export interface ToOpenAPIOptions {
 }
 
 type ComponentsRegistry = Record<string, JSONSchemaDocument>
+
+export interface OpenAPIInfo {
+  title: string
+  version: string
+  summary?: string
+  description?: string
+  termsOfService?: string
+  contact?: { name?: string, url?: string, email?: string }
+  license?: { name: string, identifier?: string, url?: string }
+}
+
+export interface OpenAPIParameter {
+  name: string
+  in: 'query' | 'header' | 'path' | 'cookie'
+  required?: boolean
+  description?: string
+  schema?: JSONSchemaDocument
+}
+
+export interface OpenAPIMediaType {
+  schema?: JSONSchemaDocument
+}
+
+export interface OpenAPIRequestBody {
+  description?: string
+  required?: boolean
+  content: Record<string, OpenAPIMediaType>
+}
+
+export interface OpenAPIResponse {
+  description: string
+  content?: Record<string, OpenAPIMediaType>
+}
+
+export interface OpenAPIOperation {
+  operationId?: string
+  summary?: string
+  description?: string
+  tags?: string[]
+  parameters?: OpenAPIParameter[]
+  requestBody?: OpenAPIRequestBody
+  responses?: Record<StatusCodeKey, OpenAPIResponse>
+  deprecated?: boolean
+  security?: Array<Record<string, string[]>>
+  externalDocs?: Record<string, unknown>
+}
+
+export type OpenAPIPathItem = {
+  [M in RouteMethod]?: OpenAPIOperation;
+} & {
+  summary?: string
+  description?: string
+  parameters?: OpenAPIParameter[]
+}
 
 export interface MapSchemaContext {
   direction: 'input' | 'output'
@@ -344,7 +391,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
-// Vendored from upstream's internal/schema.ts until h3-route-tools exports it.
+// Local JSON Schema extraction helper for Standard Schema implementations.
 function hasJSONSchema<T extends StandardTypedV1>(
   schema: T,
 ): schema is T & StandardJSONSchemaV1<unknown, unknown> {
@@ -368,7 +415,7 @@ function getStandardJSONSchema(
   }
 }
 
-// Vendored from upstream's internal/extract-components.ts until h3-route-tools exports it.
+// Local component extraction helper for `$id`-bearing schemas.
 function extractComponents(jsonSchema: JSONSchemaDocument, existing: ComponentsRegistry): {
   schema: JSONSchemaDocument
   components: ComponentsRegistry

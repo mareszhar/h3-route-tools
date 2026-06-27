@@ -1,7 +1,6 @@
 import type { App, Fruit } from '@test'
-import { createClient, createRouter, createServer } from '@mszr/h3-dux'
+import { createClient, createRouter, createServer, defineRoute } from '@mszr/h3-dux'
 import { FruitSchema, NewFruitSchema } from '@test'
-import { defineRoute } from 'h3-route-tools'
 import { expectTypeOf, test } from 'vitest'
 
 test('a router prefix is inferred in every child handler', () => {

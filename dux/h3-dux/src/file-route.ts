@@ -14,19 +14,12 @@
  *  - **method map** — distinct contracts per method (`{ params?, get, post, … }`),
  *    for an unsuffixed file that answers several methods. Params are route-wide.
  *
- * Runtime: the built handler self-dispatches (reusing upstream's `defineRouteHandler`
+ * Runtime: the built handler self-dispatches (reusing h3-dux's owned `defineRouteHandler`
  * for routing + request validation) and replays its middleware onion inside the
  * matched route. A type-only kernel brand (`~duxFlat`/`~duxMethods`) is what the
  * Nitro codegen reads to emit `#h3-dux/routes` (phase 9C).
  */
 import type { EventHandlerWithFetch, H3Event, H3RouteMeta, Middleware } from 'h3'
-import type {
-  BodylessMethod,
-  MethodValidate,
-  OnValidationError,
-  RouteMethod,
-  SchemaWithJSON,
-} from 'h3-route-tools'
 import type { ClientData } from './internal/contract.ts'
 import type { H3DuxMeta, H3DuxOpenAPI, H3DuxOpenAPIObject } from './internal/openapi-types.ts'
 import type {
@@ -38,6 +31,7 @@ import type {
   InferMethodResponse,
   MethodHandler,
 } from './internal/route-types.ts'
+import type { OnValidationError, SchemaWithJSON } from './internal/schema-types.ts'
 import type {
   BindingsOf,
   MiddlewareTupleIssue,
@@ -46,11 +40,16 @@ import type {
   UnsatisfiedKeys,
   UsableMiddleware,
 } from './middleware.ts'
+import type {
+  BodylessMethod,
+  MethodValidate,
+  RouteMethod,
+} from './route.ts'
 import { defineHandler } from 'h3'
-import { defineRouteHandler } from 'h3-route-tools'
 import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { buildMethod } from './internal/runtime.ts'
 import { toMiddleware } from './middleware.ts'
+import { defineRouteHandler } from './route.ts'
 
 /** The callable methods a file route's client surface can expose. */
 type CallableMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options'
@@ -216,7 +215,7 @@ export interface FlatSource<
 // One contract per method on an unsuffixed file. Params are route-wide (outer);
 // query/body/headers/response stay per method. Per-method validate (`V`), status,
 // and errors are inferred exactly as a verb's; per-method response inference rides
-// a `const` response record so inline literals survive (mirrors upstream).
+// a `const` response record so inline literals survive.
 
 /** One method's def inside a method map — the verb options minus the route-wide `params`/`meta`. */
 interface MethodDef<
@@ -711,7 +710,7 @@ interface RuntimeMethod {
 }
 
 const CALLABLE: readonly CallableMethod[] = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options']
-/** Methods a flat handler is registered under; HEAD is served by upstream's auto-HEAD. */
+/** Methods a flat handler is registered under; HEAD is served by the route dispatcher's auto-HEAD. */
 const FLAT_METHODS: readonly RouteMethod[] = ['get', 'post', 'put', 'patch', 'delete', 'options']
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -733,8 +732,8 @@ function runMiddleware(
   return Promise.resolve(dispatch(0))
 }
 
-/** A loose call to upstream's heavily-generic `defineRouteHandler` from a runtime-built def. */
-type DefineUpstream = (def: Record<string, unknown>, options?: unknown) => EventHandlerWithFetch & Record<string, unknown>
+/** A loose call to the heavily-generic `defineRouteHandler` from a runtime-built def. */
+type DefineBaselineRoute = (def: Record<string, unknown>, options?: unknown) => EventHandlerWithFetch & Record<string, unknown>
 
 /** Build the runtime handler for a file-route def, prepending the factory's middleware. */
 function buildFileHandler(
@@ -745,7 +744,7 @@ function buildFileHandler(
   const def: RuntimeDef = typeof input === 'function' ? { handler: input } : input
   const routeMiddleware = (def.middleware ?? []).map(toMiddleware)
   const middleware = [...factoryMiddleware, ...routeMiddleware]
-  const upstreamDef: Record<string, unknown> = {
+  const routeDef: Record<string, unknown> = {
     params: def.params,
     meta: { ...def.meta, openapi: mergeOpenAPI(def.meta?.openapi, def.openapi) },
     onValidationError: def.onValidationError,
@@ -758,7 +757,7 @@ function buildFileHandler(
     for (const method of mapped) {
       const md = def[method] as RuntimeMethod
       const openapi = mergeOpenAPI(def.meta?.openapi, def.openapi, md.openapi)
-      upstreamDef[method] = buildMethod(method, {
+      routeDef[method] = buildMethod(method, {
         status: md.status,
         onValidationError: md.onValidationError ?? def.onValidationError,
         errors: md.errors,
@@ -777,7 +776,7 @@ function buildFileHandler(
     // Flat: the same handler serves every method (the filename narrows which arrive).
     for (const method of FLAT_METHODS) {
       const openapi = mergeOpenAPI(def.meta?.openapi, def.openapi)
-      upstreamDef[method] = buildMethod(method, {
+      routeDef[method] = buildMethod(method, {
         status: def.status,
         onValidationError: def.onValidationError,
         errors: def.errors,
@@ -793,7 +792,7 @@ function buildFileHandler(
     }
   }
 
-  const inner = (defineRouteHandler as unknown as DefineUpstream)(upstreamDef, { errors: false })
+  const inner = (defineRouteHandler as unknown as DefineBaselineRoute)(routeDef, { errors: false })
   const handler = middleware.length > 0
     ? defineHandler({ handler: (event: H3Event) => runMiddleware(event, middleware, inner) })
     : inner

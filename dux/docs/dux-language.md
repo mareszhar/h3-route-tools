@@ -2,7 +2,7 @@
 
 The words: vocabulary, naming rules, and doc style that make every h3-dux surface read like one library. [dux-vision.md](./dux-vision.md) principles 4 and 5 are the *why* — self-documenting, predictable, learn one and know the rest; this doc is the *what*. The cross-cutting behavioral patterns that vocabulary describes — the validated-data model, the kernel, the honest client, composition, middleware bindings — live in [dux-patterns.md](./dux-patterns.md).
 
-Every name we add answers three questions: does it say what the thing **is** (not what an ancestor called it), is it **technically accurate**, and is it used **consistently** everywhere the concept appears? Where upstream or h3 core already has a precise word, we keep it — renaming for sport is its own kind of boilerplate.
+Every name we add answers three questions: does it say what the thing **is** (not what an ancestor called it), is it **technically accurate**, and is it used **consistently** everywhere the concept appears? Where h3, Nitro, fetchdts, or the web platform already has a precise word, we keep it — renaming for sport is its own kind of boilerplate.
 
 - [0. House style](#0-house-style)
 - [1. Vocabulary](#1-vocabulary)
@@ -78,20 +78,20 @@ The typed client speaks [fetchdts](https://github.com/unjs/fetchdts) — the typ
 ## 3. Values vs types
 
 - **Values are unprefixed:** `createServer`, `createClient`, `defineRoute`, `sse`. The package specifier already namespaces them; a userland clash is one `import { sse as sseStream }` away.
-- **Types stay close to upstream and h3.** We re-export h3-route-tools' type names unchanged (`TypedFetch`, `Endpoint`, `RouteHandler`, …) — renaming them would only make diffing upstream harder. New types we introduce read plainly and domain-scoped (`EventStream<T>`); no vanity brand prefix.
+- **Types stay close to the domain.** Web and h3/fetchdts-aligned names stay plain when they are already precise (`TypedFetch`, `Endpoint`, `RouteHandler`, …). Project-specific shipped types use `H3Dux*` (`H3DuxServer`, `H3DuxEvent`, …).
 
-The rule of thumb: **a re-exported name keeps its upstream spelling; a name we coin is chosen for precision.**
+The rule of thumb: **a standard name stays standard; a name we coin is chosen for precision.**
 
 ---
 
 ## 4. The naming map
 
-Every name h3-dux coins or renames, with the upstream / standard term it maps to and why. New names are settled here once; the spec references this table rather than re-justifying each.
+Every name h3-dux coins or adopts, with the baseline / standard term it maps to and why. New names are settled here once; the spec references this table rather than re-justifying each.
 
 | h3-dux | Upstream / standard | Why |
 | --- | --- | --- |
-| `createServer()` | `new H3Typed()` | counterpart of `createClient`; factory reads better than `new`; self-documents "this is the server" |
-| `createClient<App>()` | `createTypedFetch<App>()` | counterpart of `createServer`; "client" says what it is at the call site |
+| `createServer()` | `new H3DuxApp()` | counterpart of `createClient`; factory reads better than `new`; self-documents "this is the server" |
+| `createClient<App>()` | `createTypedFetch<App>()` | counterpart of `createServer`; "client" says what it is at the call site; `createTypedFetch` remains the low-level native-response primitive |
 | `defineRoute` | `defineRoute` (kept) | already precise and converging with [h3 core](https://github.com/h3js/h3/issues/1088) |
 | `app.get(path, opts)` | `.route({ route, get })` | verb authoring; mirrors the client and the HTTP method |
 | `api.get(path, opts)` | `api(path, { method: 'get' })` | verb sugar; symmetric with the server |
@@ -104,21 +104,21 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `{ data, error }` | — (new) | the honest default result; `data` on 2xx, typed `error` otherwise ([dux-patterns.md §6](./dux-patterns.md#6-the-honest-client)) |
 | `.orThrow()` | ofetch `$fetch` (throws) | legible opt-out: bubble the error instead of returning it |
 | `.raw()` | ofetch `.raw` | native response metadata plus kind-aware `.parse()`; never throws on non-2xx |
-| `errors: { 409: … }` | upstream `errors` (kept, widened) | per-status failure schemas in the contract; feeds client + runtime + OpenAPI ([dux-patterns.md §7](./dux-patterns.md#7-typed-errors--results)) |
+| `errors: { 409: … }` | baseline `errors` (kept, widened) | per-status failure schemas in the contract; feeds client + runtime + OpenAPI ([dux-patterns.md §7](./dux-patterns.md#7-typed-errors--results)) |
 | `event.error(status, data)` | `HTTPError` / `createError` | typed thrower checked against the declared `errors` schema |
 | `createRouter(prefix?, options?)` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([dux-patterns.md §9](./dux-patterns.md#9-composition--scope)) |
 | `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
-| `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
+| `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3DuxApp` escape hatch; clearer than `.app` |
 | `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
 | `H3DuxEvent<Bindings>` | h3 `H3Event` | the route-agnostic handler event a userland utility annotates — the dux counterpart of importing `H3Event`; carries `event.error`/`bindings`/request aliases at their loosest honest types |
 | `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
 | `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
 | `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
-| `defineFileRoute(def)` | Nitro `defineHandler` / upstream `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
+| `defineFileRoute(def)` | Nitro `defineHandler` / baseline `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
 | `createFileRouteFactory()` | — (new) | derive reusable file-route definers with typed middleware providers and requirements |
 | `factory.compose(feature)` | router `.mount()` | satisfy a feature factory's external capabilities and return a callable file-route factory; checks the same laws as `.mount` (requirements present and assignable, registered providers don't collide) and doesn't re-run required middleware |
 | `#h3-dux/routes` | Nitro generated route types | generated, type-only kernel route map consumed by `createClient<Routes>()` |
 
-Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).
+Everything not in this table follows existing h3, Nitro, web-platform, or fetchdts vocabulary unless h3-dux has a clearer project-specific term ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).
 
-**The `H3Dux` prefix.** Every shipped type/class that needs a project-specific name — because it has no upstream counterpart and isn't a generic verb (`H3DuxError`, `H3DuxHTTPError`, `H3DuxTransportError`, `H3DuxServer`, `H3DuxRouter`, `H3DuxCall`, `H3DuxEvent`, …) — is named `H3Dux*`, never bare `Dux*`. The maintainer forks several libraries this way (`idb-dux`, `h3-dux`, …); a bare `Dux*` name is ambiguous the moment two of those forks are imported into the same project, while `H3Dux*` says which one at the name itself. This applies to the shipped surface only — `dux` stays the plain, simple word for this repo, this workspace, and this doc set (`dux/`, "the dux branch", *dux-vision*, *dux-spec*, …).
+**The `H3Dux` prefix.** Every shipped type/class that needs a project-specific name — because it is not a generic h3/web/fetch term (`H3DuxError`, `H3DuxHTTPError`, `H3DuxTransportError`, `H3DuxServer`, `H3DuxRouter`, `H3DuxCall`, `H3DuxEvent`, …) — is named `H3Dux*`, never bare `Dux*`. The maintainer forks several libraries this way (`idb-dux`, `h3-dux`, …); a bare `Dux*` name is ambiguous the moment two of those forks are imported into the same project, while `H3Dux*` says which one at the name itself. This applies to the shipped surface only — `dux` stays the plain, simple word for this repo, this workspace, and this doc set (`dux/`, "the dux branch", *dux-vision*, *dux-spec*, …).

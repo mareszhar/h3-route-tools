@@ -14,12 +14,6 @@ export default defineConfig({
       '@mszr/h3-dux/nitro': local('./src/nitro.ts'),
       '@mszr/h3-dux/codegen': local('./src/codegen.ts'),
       '@mszr/h3-dux': local('./src/index.ts'),
-      // Resolve the upstream we build on to the fork source at runtime too, so
-      // tests exercise our actual upstream (not whatever npm has). Subpaths
-      // first — Vite alias matches by prefix, first hit wins.
-      'h3-route-tools/nitro': local('../../src/nitro.ts'),
-      'h3-route-tools/codegen': local('../../src/codegen.ts'),
-      'h3-route-tools': local('../../src/index.ts'),
     },
   },
   test: {

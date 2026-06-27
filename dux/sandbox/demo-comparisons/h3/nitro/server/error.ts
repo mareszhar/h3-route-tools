@@ -1,8 +1,8 @@
 import { OrchardError } from '@orchard/domain'
-import { defineErrorHandler } from 'nitro'
+import { defineNitroErrorHandler } from 'nitro/runtime'
 
 /** Renders every thrown error as the shared Orchard envelope `{ error, message }`. */
-export default defineErrorHandler((error) => {
+export default defineNitroErrorHandler((error) => {
   const status = error.status ?? 500
   const code
     = (error.data as { error?: string } | undefined)?.error

@@ -1,6 +1,6 @@
 # h3-dux — workspace spec
 
-The maintainer manual: how h3-dux is laid out, built, linted, tested, kept in sync with upstream, and shipped. User-facing behavior is specced in [dux-spec.md](./dux-spec.md); this documents the infrastructure that keeps it honest.
+The maintainer manual: how h3-dux is laid out, built, linted, tested, kept aligned with the h3 ecosystem, and shipped. User-facing behavior is specced in [dux-spec.md](./dux-spec.md); this documents the infrastructure that keeps it honest.
 
 ## Implementation status
 
@@ -39,9 +39,9 @@ dux/
     demo-comparisons/     Orchard SDK comparisons, all managed by this workspace
 ```
 
-### Tooling, and why it differs from upstream
+### Tooling, and why it differs from the outer repo
 
-The outer repo uses **ox** (oxlint + oxfmt). Inside `dux/` we use **ESLint** (`@antfu/eslint-config`, formatters on) and the ESLint formatter — the stack the maintainer standardizes across every dux project. The two never fight because the outer ox config ignores `dux/**` ([§7](#7-changes-outside-dux)). The package build uses **obuild** (ESM-only), matching upstream, so output and externals stay diffable.
+The outer repo uses **ox** (oxlint + oxfmt). Inside `dux/` we use **ESLint** (`@antfu/eslint-config`, formatters on) and the ESLint formatter — the stack the maintainer standardizes across every dux project. The two never fight because the outer ox config ignores `dux/**` ([§7](#7-changes-outside-dux)). The package build uses **obuild** (ESM-only), with externals limited to actual peers and build-time tools.
 
 ---
 
@@ -55,19 +55,19 @@ The outer repo uses **ox** (oxlint + oxfmt). Inside `dux/` we use **ESLint** (`@
 
 ## 3. Package mechanics
 
-`@mszr/h3-dux` is a strict superset of `h3-route-tools`.
+`@mszr/h3-dux` is an independent h3 route kit.
 
-- **Build:** obuild emits three bundle entries (`index`, `nitro`, `codegen`) to `dist/*.mjs` + `*.d.mts`. The upstream package and its node-only peers (`nitro`, `typescript`) are kept **external** (see `h3-dux/build.config.ts`), so we re-export rather than re-bundle — `dist/index.mjs` is a thin `export * from 'h3-route-tools'` plus our additions.
+- **Build:** obuild emits three bundle entries (`index`, `nitro`, `codegen`) to `dist/*.mjs` + `*.d.mts`. `h3` stays external as the required peer; `nitro` and `typescript` stay external in the subpaths that need them.
 - **Exports:** `.`, `./nitro`, `./codegen`, all named, `sideEffects: false` for tree-shaking.
-- **Upstream dependency:** `h3-route-tools` is a runtime `dependency`. For typecheck, `h3-dux/tsconfig.json` maps it to the fork source (`../../src/*`) via `paths`, so we always typecheck against *our* upstream, not whatever is on npm — the whole point of forking. obuild resolves it as an external package name at build time.
-- **Peers:** `h3` is the one needed by every user → it stays a required peer. `nitro` and `srvx` are needed only by a subpath → optional peers. The rule: needed by everyone → dependency/peer; needed by a subpath → optional peer.
+- **Owned baseline:** route definition, validation, typed fetch, Nitro route typing, and OpenAPI helpers live in `h3-dux/src/`. The outer `src/` tree is reference material, not a package dependency.
+- **Peers:** `h3` is the one needed by every user → it stays a required peer. `nitro` is needed only by `/nitro` → optional peer. `typescript` is needed only by `/codegen` route flattening → optional peer. The rule: needed by everyone → required peer; needed by a subpath → optional peer.
 - **Manifest stays npm-only.** `h3-dux/package.json` carries no `scripts` — only what npm needs to describe and resolve the published artifact (name, exports, files, peer/runtime deps, the devDependencies that pull build/test tools into `h3-dux/node_modules`). The orchestrator (`dux/package.json`, [§8](#8-scripts)) is the one place that controls how the package is built, linted, tested, and published, invoking those tools directly (`cd h3-dux && bun x <tool>`) rather than through package-local scripts.
 
 ---
 
 ## 4. Boundaries
 
-Three planes — **server**, **client**, **nitro** — plus the schema/validation helpers they share. The law (principle 7): the client plane never imports the nitro plane, and neither imports node-only internals the other doesn't need. Today the package is mostly re-exports, so the boundary is thin; as the deltas land, each plane gets its own module and the boundary becomes ESLint `no-restricted-imports` rules in `eslint.config.ts`. A boundary violation is a build error, not a review note.
+Three planes — **server**, **client**, **nitro** — plus the schema/validation helpers they share. The law (principle 7): the client plane never imports the nitro plane, and neither imports node-only internals the other doesn't need. Each plane owns a module boundary; the next hardening step is ESLint `no-restricted-imports` rules in `eslint.config.ts`. A boundary violation is a build error, not a review note.
 
 The **contract kernel** (`internal/contract.ts`, delta 7) is the one *type* module every plane is allowed to import — it is the single source of truth all typed planes derive from, and it carries no runtime, no node-only deps, no plane allegiance. Server, client, and codegen read the kernel; OpenAPI follows its status/error/kind rules while reading runtime route schemas for JSON Schema emission. Planes do not read each other. Keeping the cross-plane dependency funnelled through the kernel plus explicit runtime route metadata is what lets a projection fix land everywhere without widening the boundary.
 
@@ -83,7 +83,7 @@ One runner (Vitest), three assertion planes, one fixture set. No delta is "done"
 | Type shapes | `*.test-d.ts` | inferred response types, the accumulated `typeof app`, client narrowing, typed `error` discrimination, merged context | Vitest `--typecheck` |
 | Editor DX | `*.dx.test.ts` | completions and diagnostics land on the intended cursor with the intended message | [selenita](https://github.com/mareszhar/selenita) on Vitest |
 
-`vitest run --typecheck` locks all three. Tests collocate beside the code they exercise; the larger Orchard comparison schemas live in `sandbox/demo-comparisons/fixtures/`. A **parity** check pins that h3-dux's inherited behavior still matches `h3-route-tools` for the routes both express — when upstream moves, parity fails before a user does.
+`vitest run --typecheck` locks all three. Tests collocate beside the code they exercise; the larger Orchard comparison schemas live in `sandbox/demo-comparisons/fixtures/`. Reference comparisons belong in sandbox demos and review, not as a runtime package contract.
 
 ### Diagnostics are a contract, not an accident (Generation 2)
 
@@ -111,22 +111,22 @@ Phase 9 adds a real Nitro fixture rather than testing generated strings in isola
 - duplicate path+method, method-lock mismatch, unresolved requirements, binding collisions, and invalid body-bearing shared handlers;
 - add, remove, and rename regeneration without restarting from a clean build;
 - `#h3-dux/routes` source/built declaration parity and leak guards (no schema implementation types);
-- graceful coexistence with plain Nitro and inherited upstream handlers, which remain valid but are omitted from the h3-dux client map.
+- graceful coexistence with plain Nitro and owned baseline handlers, while untyped routes remain omitted from the h3-dux client map.
 
 Nuxt integration is not a W5 target. It begins only after Nuxt 5 publishes a stable h3 v2/Nitro v3 module and type-generation contract.
 
 ---
 
-## 6. Staying in sync (the fork-rebase ritual)
+## 6. Staying Aligned
 
-`main` mirrors `h3-route-tools` untouched; we work on `dux`. On each upstream sync:
+The outer reference can track h3-route-tools or other h3 ecosystem proposals, but `dux/h3-dux` is the owned implementation. On each reference sync:
 
-1. Rebase `dux` onto the updated `main` (or merge upstream into `main`, then rebase). Because our edits live under `dux/`, conflicts are rare and localized.
-2. Run `bun run sdk:typecheck` — upstream API changes break our re-export and `paths`-resolved wrap points loudly.
-3. Run the full suite (`bun run sdk:test`), including parity — behavioral drift surfaces here.
-4. Re-apply only our delta where a wrap point moved; the contract in [dux-spec.md](./dux-spec.md) is the guide.
+1. Review the reference diff for fixes, conventions, or h3/Nitro compatibility changes worth porting.
+2. Port the idea into the owned h3-dux module that owns the concept; do not add a package dependency to recover old behavior.
+3. Run `bun run sdk:typecheck` and the full suite (`bun run sdk:test`).
+4. Update the contract docs when the port changes h3-dux behavior.
 
-Generalizable deltas (SSE, verb sugar, validation modes) are proposed upstream on a separate branch. If they land, the corresponding delta here shrinks to a re-export.
+Generalizable ideas can still be proposed back to the h3 ecosystem, but h3-dux does not wait on that process to improve.
 
 ---
 
@@ -154,7 +154,7 @@ Run from `dux/`.
 | --- | --- |
 | `bun run lint` / `lint:fix` | ESLint across `dux/` |
 | `bun run sdk:build:ours` | build `@mszr/h3-dux` (obuild → `dist`) |
-| `bun run sdk:build:all` | build upstream `h3-route-tools`, then ours |
+| `bun run sdk:build:all` | build the reference package, then ours |
 | `bun run sdk:typecheck` | `tsc --noEmit` for the package |
 | `bun run sdk:test` / `sdk:test:watch` | Vitest (all three planes) |
 | `bun run sdk:dev` | obuild stub for fast iteration |
@@ -173,9 +173,9 @@ Run from `dux/`.
 
 ## 9. Publishing
 
-The published `mareszhar/h3-dux` repo is the package + docs face, not the development home — development stays in this fork, because typechecking against the fork's upstream source is the point. Releases push the `h3-dux/` subtree to the public repo as a single squashed commit and publish `@mszr/h3-dux` to npm under the `@mszr` scope. The pipeline lives in `dux/scripts/publish/`.
+The published `mareszhar/h3-dux` repo is the package + docs face, not the development home — development stays in this fork so the reference context and sandbox comparisons remain nearby. Releases push the `h3-dux/` subtree to the public repo as a single squashed commit and publish `@mszr/h3-dux` to npm under the `@mszr` scope. The pipeline lives in `dux/scripts/publish/`.
 
-There is no demo-deploy step and no workspace-dependency pinning dance: h3-dux has no Vercel-hosted demo, and `h3-route-tools` is already a plain npm semver range in `h3-dux/package.json` rather than a `workspace:*` link — so a release's only mutation is the version bump itself.
+There is no demo-deploy step and no workspace-dependency pinning dance: h3-dux has no Vercel-hosted demo and no runtime dependency on the reference package, so a release's only manifest mutation is the version bump itself.
 
 **The flow** (`bun run publish:sdk:<patch|minor|major>`):
 

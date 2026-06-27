@@ -1,13 +1,5 @@
 import type { H3Event, H3Plugin, Middleware } from 'h3'
-import type {
-  H3TypedConfig,
-  InferRoutes,
-  MethodValidate,
-  OnValidationError,
-  RouteMethod,
-  RoutePlugin,
-  SchemaWithJSON,
-} from 'h3-route-tools'
+import type { H3DuxAppConfig } from './h3-app.ts'
 import type {
   H3DuxMeta,
   H3DuxOpenAPI,
@@ -26,6 +18,7 @@ import type {
   PathParamNames,
   Prettify,
 } from './internal/route-types.ts'
+import type { OnValidationError, SchemaWithJSON } from './internal/schema-types.ts'
 import type {
   BindingsOf,
   InlineCallback,
@@ -35,8 +28,14 @@ import type {
   UnsatisfiedKeys,
   UsableMiddleware,
 } from './middleware.ts'
+import type {
+  MethodValidate,
+  RouteMethod,
+  RoutePlugin,
+} from './route.ts'
 import type { H3DuxRouter } from './router.ts'
-import { H3Typed } from 'h3-route-tools'
+import type { InferRoutes } from './routes.ts'
+import { H3DuxApp } from './h3-app.ts'
 import { mergeOpenAPI } from './internal/openapi-types.ts'
 import { buildMethod } from './internal/runtime.ts'
 import { middlewareOpenAPI, toMiddleware } from './middleware.ts'
@@ -128,11 +127,11 @@ function toRuntimeOpts(arg: unknown): RuntimeOpts {
 }
 
 /**
- * Split a verb's flattened options into upstream's route/method def and mount it.
+ * Split a verb's flattened options into the owned route/method def and mount it.
  * The per-method execution — validation mode, SSE, response kinds, the dux event
  * layer — is built once in {@link buildMethod} and shared with Nitro file routes.
  */
-function mount(app: H3Typed, method: RouteMethod, route: string, options: RuntimeOpts): void {
+function mount(app: H3DuxApp, method: RouteMethod, route: string, options: RuntimeOpts): void {
   const { params, middleware, meta, openapi } = options
   const built = buildMethod(method, options)
   ;(app.route as RouteCall)({
@@ -190,7 +189,7 @@ type VerbArg<
     | MethodHandler<MethodValidate, undefined, Ret, Route, M, undefined, undefined, Bindings, object>
 
 /**
- * The dux server: a typed route builder around upstream's `H3Typed`. Author with
+ * The dux server: a typed route builder around the owned h3-backed accumulator. Author with
  * per-verb methods (`app.get(path, opts)`) that read symmetrically with the
  * client and infer the response from the handler when no `validate.response` is
  * declared. The accumulated `typeof app` is the single source of truth a
@@ -209,7 +208,7 @@ export class H3DuxServer<Routes = object, Bindings = object> {
   declare readonly '~duxRoutes': Routes
 
   /** The underlying h3 app — the escape hatch for native h3 and `.route(...)`. */
-  readonly native: H3Typed
+  readonly native: H3DuxApp
 
   /** Web-standard fetch handler — `serve(app)` or `serve({ fetch: app.fetch })`. */
   readonly fetch: (request: Request) => Response | Promise<Response>
@@ -219,8 +218,8 @@ export class H3DuxServer<Routes = object, Bindings = object> {
 
   readonly #openapi: H3DuxOpenAPI[] = []
 
-  constructor(config?: H3TypedConfig) {
-    this.native = new H3Typed(config)
+  constructor(config?: H3DuxAppConfig) {
+    this.native = new H3DuxApp(config)
     this.fetch = request => this.native.fetch(request)
     this.request = (input, init) => this.native.request(input, init)
   }
@@ -302,7 +301,7 @@ export class H3DuxServer<Routes = object, Bindings = object> {
   }
 
   /**
-   * Register an upstream h3 plugin (chainable). A `defineRoute` route-plugin also
+   * Register an h3 plugin (chainable). A `defineRoute` route-plugin also
    * folds its routes into `typeof app`, so the escape hatch never desyncs the
    * client's type; any other plugin behaves as in base h3.
    */
@@ -447,6 +446,6 @@ export class H3DuxServer<Routes = object, Bindings = object> {
  * build here is the single source of truth the client is typed from
  * (`createClient<typeof app>()`). See docs/dux-patterns.md §2.
  */
-export function createServer(config?: H3TypedConfig): H3DuxServer {
+export function createServer(config?: H3DuxAppConfig): H3DuxServer {
   return new H3DuxServer(config)
 }

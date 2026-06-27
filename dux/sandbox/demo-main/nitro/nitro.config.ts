@@ -1,15 +1,15 @@
-import { defineConfig } from 'nitro'
+import { defineNitroConfig } from 'nitro/config'
 
-// The h3-dux Nitro module (re-exported from upstream) types nitro's InternalApi
-// from each route file's contract, and enriches the OpenAPI document.
-export default defineConfig({
+// The h3-dux Nitro module types nitro's InternalApi from each route file's
+// contract, and enriches the OpenAPI document.
+export default defineNitroConfig({
   modules: ['@mszr/h3-dux/nitro'],
-  serverDir: './server',
+  srcDir: './server',
   compatibilityDate: '2026-06-23',
   experimental: { openAPI: true },
   typescript: {
-    generatedTypesDir: '.nitro/types',
     generateTsConfig: true,
+    tsconfigPath: 'types/tsconfig.json',
     tsConfig: {
       compilerOptions: {
         noEmit: true,

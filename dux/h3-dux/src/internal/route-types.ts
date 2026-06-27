@@ -1,11 +1,9 @@
 /**
  * The per-method type machinery for the dux server builder.
  *
- * VENDORED from `h3-route-tools` `src/route-handler.ts` + `src/internal/types.ts`
- * — these types are not part of upstream's public exports, but we need them to
- * type a handler's `event` and to derive the route contract our `createServer`
- * accumulates. Kept faithful to upstream; the fork-rebase ritual
- * (docs/dux-spec-workspace.md §6) re-checks them.
+ * Owned route type machinery, adapted from the reference implementation and
+ * shaped around the h3-dux contract kernel. These types are local because
+ * h3-dux owns the handler event model and the client projection.
  *
  * Two dux additions:
  *  - response *inference*: a method with no `validate.response` contributes the
@@ -15,16 +13,6 @@
  */
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { EventHandlerRequest, H3Event, H3RouteMeta, HTTPError, Middleware } from 'h3'
-import type {
-  BodylessMethod,
-  InferInput,
-  InferOutput,
-  MethodValidate,
-  OnValidationError,
-  RouteMethod,
-  SchemaWithJSON,
-  StatusCodeKey,
-} from 'h3-route-tools'
 import type {
   MiddlewareTupleIssue,
   RequirementsIssue,
@@ -37,8 +25,17 @@ import type {
   TextResponse,
   TypedNativeResponse,
 } from '../response.ts'
+import type { BodylessMethod, MethodValidate } from '../route.ts'
 import type { EventStream } from '../sse.ts'
 import type { H3DuxOpenAPI } from './openapi-types.ts'
+import type {
+  InferInput,
+  InferOutput,
+  OnValidationError,
+  RouteMethod,
+  SchemaWithJSON,
+  StatusCodeKey,
+} from './schema-types.ts'
 
 /** Flatten an intersection into a plain object type (display only). */
 export type Prettify<T> = { [K in keyof T]: T[K] }
@@ -48,7 +45,7 @@ type ResponseSchema<V extends AnyMethodValidate> = V extends { response?: infer 
 
 export type AnyMethodValidate = MethodValidate<any, any, any, any>
 
-// ── inference helpers (verbatim from upstream) ────────────────────────────────
+// ── inference helpers ─────────────────────────────────────────────────────────
 
 type Direction = 'input' | 'output'
 type InferDir<S extends SchemaWithJSON, D extends Direction> = D extends 'input'
@@ -316,7 +313,7 @@ type ValidFn<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined, 
  * canonical store: the root aliases `event.params/query/body` (and their
  * `event.context.*` originals), validated in eager mode and raw until `valid()` in
  * manual mode; and `event.valid(scope)`, the deliberate, idempotent validator.
- * `event.bindings` exposes the typed capabilities upstream middleware published
+ * `event.bindings` exposes the typed capabilities parent middleware published
  * (delta 12). `ExtraParams` folds in params a router owns from a dynamic outer
  * mount (`parentParams`, delta 11). See docs/dux-patterns.md §1, §10.
  */

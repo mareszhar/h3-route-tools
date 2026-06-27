@@ -20,8 +20,24 @@ export type {
   ResolveFileParams,
   WithFilenameParams,
 } from './file-route.ts'
+// ── owned h3 baseline ─────────────────────────────────────────────────────────
+// h3-dux keeps the useful low-level route primitives local so the package is
+// dependency-free beyond h3 itself. The delightful path is still createServer /
+// createClient; these exports are the escape hatches and type utilities those
+// surfaces build on.
+export { H3DuxApp } from './h3-app.ts'
+export type { H3DuxAppConfig } from './h3-app.ts'
 export type { EndpointContract, ResponseKind } from './internal/contract.ts'
 export type { H3DuxEvent } from './internal/route-types.ts'
+export type {
+  BodyValidation,
+  InferInput,
+  InferOutput,
+  JSONSchemaDocument,
+  OnValidationError,
+  SchemaWithJSON,
+  ValidateSource,
+} from './internal/schema-types.ts'
 export { defineMiddleware } from './middleware.ts'
 export type {
   BindingsOf,
@@ -40,11 +56,37 @@ export {
   type TypedNativeResponse,
   typedResponse,
 } from './response.ts'
+export {
+  defineRoute,
+  defineRouteHandler,
+  mountRouteHandler,
+} from './route.ts'
+export type {
+  BodylessMethod,
+  CallableMethod,
+  DocumentableMethodDef,
+  DocumentableRouteDef,
+  DocumentableRouteHandler,
+  Endpoint,
+  ErrorResponsesOption,
+  MethodStream,
+  MethodValidate,
+  MountableRouteHandler,
+  ResponseStreamMap,
+  ResponseValidation,
+  RouteHandler,
+  RouteHandlerDef,
+  RouteHandlerOptions,
+  RouteMethod,
+  RoutePlugin,
+  RouteRecord,
+  StatusCodeKey,
+} from './route.ts'
 export { createRouter } from './router.ts'
 export type { H3DuxRouter } from './router.ts'
+export { mountRoutes } from './routes.ts'
+export type { AnyRouteHandler, InferMethods, InferRoutes, RouteMap } from './routes.ts'
 export { createServer, H3DuxServer } from './server.ts'
 export { type EventStream, sse } from './sse.ts'
-// ── upstream surface ──────────────────────────────────────────────────────────
-// h3-dux is a superset of h3-route-tools: everything upstream exports is
-// available here unchanged, so tracking upstream stays a re-export, not a rewrite.
-export * from 'h3-route-tools'
+export { createTypedFetch } from './typed-fetch.ts'
+export type { CreateTypedFetchOptions, FetchLike, NormalizeRoutes, TypedFetch, TypedResponse } from './typed-fetch.ts'
