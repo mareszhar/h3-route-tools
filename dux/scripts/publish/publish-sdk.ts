@@ -34,7 +34,7 @@ import type { ReleaseState } from './lib/release-state.ts'
 import fs from 'node:fs'
 import process from 'node:process'
 import { runPrepublishGates } from './lib/gates.ts'
-import { isLoggedIn, isVersionOnNpm } from './lib/npm.ts'
+import { checkVersionOnNpm, isLoggedIn, npmEnv } from './lib/npm.ts'
 import { PKG_DIR, PKG_JSON, PKG_NAME, WORKSPACE_ROOT } from './lib/paths.ts'
 import { clearReleaseState, loadReleaseState, saveReleaseState } from './lib/release-state.ts'
 import { capture, createLogger, run, sleep } from './lib/shell.ts'
@@ -67,14 +67,21 @@ function bumpVersion(current: string, type: string): string {
 function waitForNpm(version: string, { timeoutMs = 300_000, intervalMs = 5_000 } = {}): void {
   const deadline = Date.now() + timeoutMs
   log.log(`waiting for ${PKG_NAME}@${version} to resolve on npm…`)
+  let lastOutput = ''
   while (Date.now() < deadline) {
-    if (isVersionOnNpm(PKG_NAME, version, { preferOnline: true })) {
+    const check = checkVersionOnNpm(PKG_NAME, version, { preferOnline: true })
+    if (check.found) {
       log.log(`${PKG_NAME}@${version} is live on npm.`)
       return
     }
+    lastOutput = check.output
     sleep(intervalMs)
   }
-  log.fail(`${PKG_NAME}@${version} did not appear on npm within ${timeoutMs / 1000}s. It may still be propagating; re-run the same publish:sdk command to resume.`)
+  log.fail([
+    `${PKG_NAME}@${version} did not appear on npm within ${timeoutMs / 1000}s.`,
+    lastOutput ? `Last npm response: ${lastOutput}` : 'npm returned no output.',
+    `Re-run the same publish:sdk command to resume.`,
+  ].join('\n'))
 }
 
 /**
@@ -117,7 +124,7 @@ const originalRaw = fs.readFileSync(PKG_JSON, 'utf8')
 // ── Dry run: build → publish --dry-run. No bump, no side effects.
 if (dryRun) {
   log.log('packaging rehearsal — no version bump, nothing published.')
-  run('npm', ['publish', '--access', 'public', '--dry-run'], { cwd: PKG_DIR })
+  run('npm', ['publish', '--access', 'public', '--dry-run'], { cwd: PKG_DIR, env: npmEnv })
   log.log('dry-run complete.')
   process.exit(0)
 }
@@ -151,7 +158,7 @@ else {
 
     // 3) build, publish.
     run('bun', ['run', 'sdk:build:ours'], { cwd: WORKSPACE_ROOT })
-    run('npm', ['publish', '--access', 'public'], { cwd: PKG_DIR })
+    run('npm', ['publish', '--access', 'public'], { cwd: PKG_DIR, env: npmEnv })
     log.log(`published ${PKG_NAME}@${releasedVersion}`)
   }
   catch (error) {
