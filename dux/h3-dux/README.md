@@ -1,6 +1,6 @@
 # @mszr/h3-dux
 
-**A DX-first h3 and Nitro route kit with honest typed clients, validation, streaming, and OpenAPI.**
+**A DX-first h3 v2 and Nitro v3 route kit with honest typed clients, validation, streaming, and OpenAPI docs.**
 
 h3-dux was inspired by [h3-route-tools](https://github.com/sandros94/h3-route-tools), then reimagined around one question: *what would feel most delightful to use?* It keeps h3 and Nitro as the runtime foundation while making route authoring, client calls, validation, errors, file routes, and docs feel like one coherent system.
 
@@ -14,9 +14,9 @@ h3-dux was inspired by [h3-route-tools](https://github.com/sandros94/h3-route-to
 
 👻 **Typed errors, narrowed by status** — declare `errors: { 409: ConflictSchema }`, throw with `event.error(409, data)`, and the client sees `error.data` narrowed by `error.status`.
 
-⛰️ **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`api.get('/fruits/:id', { params: { id } })`), whichever reads best at the call site.
+⛰️ **Path params, both ways** — interpolated params are automatically detected, or pass them explicitly in a plain object, whichever reads best at the call site.
 
-🤖 **Validation you control** — eager and sequential by default; flip `validate.eager` to `false` for deliberate, on-demand validation through `event.valid('body')`.
+🤖 **Validation you control** — eager and sequential by default; flip `validate.eager` to `false` for deliberate, on-demand validation, like `event.valid('body')`.
 
 🫀 **Response kinds are part of the contract** — JSON, text, empty, binary, and `sse()` streams decode to the right client type. `typedResponse()` keeps native `Response` bodies typed when you need the platform object.
 
@@ -138,6 +138,12 @@ export const api = createClient<Routes>({ baseURL: '/api' })
 
 The filename owns the path and method; h3-dux owns the contract projected from the route definition. No hand-written `Routes` interface.
 
+## Get Started
+
+> Check out our minimal demo! ([public link](https://github.com/mareszhar/h3-route-tools/tree/dux/dux/sandbox/demo-main) | [local fork path](../sandbox/demo-main)
+>
+> It showcases all the main features of h3-dux ^-^ 💜
+
 ## Existing h3 Utilities
 
 Concrete h3-dux handler events keep the native h3 event surface, so ordinary helpers that accept `H3Event` keep working when the route's `context.params` stays in h3's string-shaped model:
@@ -203,4 +209,3 @@ The public `h3-dux` repo is the package face. Design docs, maintainer scripts, a
 - `dux-language.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-language.md) | [local fork path](../docs/dux-language.md)) — vocabulary, naming rules, doc style
 - `dux-patterns.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-patterns.md) | [local fork path](../docs/dux-patterns.md)) — validated data, honest client, errors, composition, middleware bindings
 - `dux-spec.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-spec.md) | [local fork path](../docs/dux-spec.md)) — shipped behavior by delta
-- `dux-spec-workspace.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-spec-workspace.md) | [local fork path](../docs/dux-spec-workspace.md)) — maintainer workflow, tests, publishing
