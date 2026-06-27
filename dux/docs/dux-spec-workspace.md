@@ -159,6 +159,10 @@ Run from `dux/`.
 | `bun run sdk:typecheck` | `tsc --noEmit` for the package |
 | `bun run sdk:test` / `sdk:test:watch` | Vitest (all three planes) |
 | `bun run sdk:dev` | obuild stub for fast iteration |
+| `bun run demo:all:list` | list sandbox packages discovered from the workspace manifest |
+| `bun run demo:all:upi` | run interactive dependency updates across sandbox package manifests |
+| `bun run demo:all:refresh` / `demo:all:install` | refresh the workspace install after package-manifest changes |
+| `bun run demo:all:prep` / `typecheck` / `build` | run that script across sandbox packages that define it, skipping the rest |
 | `bun run typecheck` / `test` / `build` | turbo across the workspace |
 | `bun run validate` / `val` | lint + typecheck + test |
 | `bun run demo:main:standalone` | focused h3-dux standalone demo trip |

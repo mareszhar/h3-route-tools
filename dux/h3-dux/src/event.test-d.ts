@@ -1,4 +1,5 @@
 import type { H3DuxEvent } from '@mszr/h3-dux'
+import type { H3Event } from 'h3'
 import { createFileRouteFactory, createRouter, createServer, defineFileRoute, defineMiddleware } from '@mszr/h3-dux'
 import * as v from 'valibot'
 import { expectTypeOf, test } from 'vitest'
@@ -20,11 +21,26 @@ function rethrow(e: H3DuxEvent, cause: unknown): never {
   throw e.error(500, { cause: String(cause) })
 }
 
+function readNativeRequest(e: H3Event): string | null {
+  return e.req.headers.get('authorization')
+}
+
+type EventWithParams = Omit<H3Event, 'context'> & {
+  context: Omit<H3Event['context'], 'params'> & {
+    params?: Record<string, unknown>
+  }
+}
+
+function readSharedParam(e: EventWithParams): unknown {
+  return e.context.params?.id
+}
+
 test('a H3DuxEvent util accepts every standalone handler shape', () => {
   createServer()
     // no declared errors, inferred response
     .get('/health', (e) => {
       requireKey(e)
+      readNativeRequest(e)
       return { ok: true }
     })
     // declared errors + params inferred from the pattern
@@ -55,6 +71,7 @@ test('a H3DuxEvent util accepts every standalone handler shape', () => {
       params: v.object({ id: v.pipe(v.string(), v.transform(Number)) }),
       handler: (e) => {
         requireKey(e)
+        readSharedParam(e)
         return { id: e.context.params.id }
       },
     })
@@ -66,6 +83,11 @@ test('a H3DuxEvent util accepts every standalone handler shape', () => {
         return { ok: true }
       },
     })
+})
+
+test('shared h3 / h3-dux utilities can widen only context.params', () => {
+  const event = undefined as unknown as H3Event
+  readSharedParam(event)
 })
 
 test('a H3DuxEvent util accepts router and file-route handler events', () => {

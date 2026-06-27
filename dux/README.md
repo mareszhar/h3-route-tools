@@ -36,4 +36,6 @@ Run from `dux/` (bun + turbo):
 3. `bun run sdk:typecheck` — typecheck the package
 4. `bun run sdk:test` — every assertion plane (runtime, types, editor DX)
 5. `bun run lint` / `lint:fix` — ESLint across `dux/`
-6. `bun run demo:main:standalone` — run the focused h3-dux standalone trip
+6. `bun run demo:all:list` — show every sandbox package the maintainer runner can control
+7. `bun run demo:all:typecheck` — typecheck every sandbox package with a `typecheck` script
+8. `bun run demo:main:standalone` — run the focused h3-dux standalone trip

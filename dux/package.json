@@ -39,6 +39,14 @@
     "sdk:build:ours": "rm -rf h3-dux/dist && cd h3-dux && bun x obuild",
     "sdk:build:all": "bun run sdk:build:upstream && bun run sdk:build:ours",
 
+    "demo:all:list": "bun scripts/run-demo-command.ts list",
+    "demo:all:upi": "bun scripts/run-demo-command.ts upi",
+    "demo:all:install": "bun scripts/run-demo-command.ts install",
+    "demo:all:refresh": "bun scripts/run-demo-command.ts refresh",
+    "demo:all:prep": "bun scripts/run-demo-command.ts prep",
+    "demo:all:typecheck": "bun scripts/run-demo-command.ts typecheck",
+    "demo:all:build": "bun scripts/run-demo-command.ts build",
+
     "prepublish:verify": "bun scripts/publish/prepublish-verify.ts",
     "publish:sdk:dry-run": "bun scripts/publish/publish-sdk.ts --dry-run",
     "publish:sdk:patch": "bun scripts/publish/publish-sdk.ts patch",

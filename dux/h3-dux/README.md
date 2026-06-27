@@ -1,32 +1,32 @@
 # @mszr/h3-dux
 
-**End-to-end type-safe routes for [h3](https://h3.dev) v2 and [Nitro](https://nitro.build) v3 — DX first.**
+**A DX-first h3 and Nitro route kit with honest typed clients, validation, streaming, and OpenAPI.**
 
-h3-dux is a DX/UX-first route kit for h3 v2 and Nitro v3. It owns its typed route builder, [Standard Schema](https://standardschema.dev) validation pipeline, [fetchdts](https://github.com/unjs/fetchdts)-style client types, Nitro file-route codegen, and OpenAPI projection, all shaped around one question: *what would feel most delightful to use?*
+h3-dux was inspired by [h3-route-tools](https://github.com/sandros94/h3-route-tools), then reimagined around one question: *what would feel most delightful to use?* It keeps h3 and Nitro as the runtime foundation while making route authoring, client calls, validation, errors, file routes, and docs feel like one coherent system.
 
 ## Highlights
 
-🪞 **Server and client read as counterparts** — `createServer()` builds the routes; `createClient<typeof app>()` consumes them. Same verbs on both sides (`app.get` ↔ `api.get`), so a route and its call site mirror each other.
+💞 **Server and client read as counterparts** — `createServer()` builds the routes; `createClient<typeof app>()` consumes them. Same verbs on both sides (`app.get` ↔ `api.get`), so the route and the call site mirror each other.
 
-🎯 **Responses are inferred, not asserted** — the handler's return *is* the client's type. No `request<Receipt>(…)` to drift out of sync. Opt into runtime response validation by declaring `validate.response`.
+💫 **Responses are inferred, not asserted** — the handler's return is the client's type. No `request<Receipt>(...)` to drift out of sync. Add `validate.response` only when you want runtime response validation too.
 
-🧭 **Honest by default** — a call resolves to `{ data, error }`, so a failure is handled at the cursor, not surfaced later as a throw. `.orThrow()` bubbles it; `.raw()` hands you the native `Response` with a kind-aware `.parse()`. The `error` is discriminated and typed per status.
+😇 **Honest by default** — a call resolves to `{ data, error }`, so transport failures and non-2xx responses are visible at the cursor. `.orThrow()` is the deliberate opt-out; `.raw()` gives you the native `Response` plus kind-aware `.parse()`.
 
-🔗 **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`{ params: { id } }`), whichever reads best at the call site.
+👻 **Typed errors, narrowed by status** — declare `errors: { 409: ConflictSchema }`, throw with `event.error(409, data)`, and the client sees `error.data` narrowed by `error.status`.
 
-📡 **Typed SSE** — `sse(schema)` makes a streaming endpoint return an `AsyncGenerator<T>` on the client, not a hand-parsed `text/event-stream`.
+⛰️ **Path params, both ways** — interpolate (`api.get(\`/fruits/${id}\`)`) or key them (`api.get('/fruits/:id', { params: { id } })`), whichever reads best at the call site.
 
-🧱 **Response kinds, inferred** — return a string, Blob, empty value, or object and the client receives `string`, `Blob`, `undefined`, or JSON automatically. `sse()` adds streams; `typedResponse()` keeps native Response bodies typed.
+🤖 **Validation you control** — eager and sequential by default; flip `validate.eager` to `false` for deliberate, on-demand validation through `event.valid('body')`.
 
-🚦 **Validation you control** — eager and sequential by default (params → query → body, short-circuit); flip `eager: false` for deliberate, on-demand validation via `event.valid('body')`.
+🫀 **Response kinds are part of the contract** — JSON, text, empty, binary, and `sse()` streams decode to the right client type. `typedResponse()` keeps native `Response` bodies typed when you need the platform object.
 
-🧩 **Composition that carries the deltas** — split a domain into `createRouter('/fruits').get(…)` and `createServer().mount(router)`; the prefix infers child params and the client still sees one flat map. Duplicate route+method is a cursor error, not silent first-wins.
+🧩 **Composition that scales** — split domains with `createRouter('/fruits')`, mount them into a server, and the client still sees one flat route map. Duplicate route+method definitions fail at the cursor.
 
-🪪 **Typed middleware bindings** — `defineMiddleware({ bindings })` publishes request-scoped values that downstream handlers read as `event.bindings`, fully typed. `requires` consumes a parent capability without re-registering it; `.mount` checks it.
+🤝 **Typed middleware bindings** — `defineMiddleware({ bindings })` publishes request-scoped capabilities to downstream handlers as `event.bindings`; `requires` consumes parent capabilities without re-running providers.
 
-🧰 **Utilities just import a type** — a helper that works with any handler's `event` annotates `H3DuxEvent` (the dux counterpart of h3's `H3Event`); no hand-rolled interface. `H3DuxEvent<{ user: User }>` types a helper that depends on a middleware capability.
+📂 **Nitro file routes with no hand-written route map** — `defineFileRoute` carries the same validation, response, error, middleware, and streaming model into filesystem routes. The Nitro module generates `#h3-dux/routes`, so `createClient<Routes>()` is typed from the files.
 
-📁 **Nitro file routes, fully typed** — `defineFileRoute` carries every delta into a filesystem route (the filename owns the path/method); `createFileRouteFactory().use(…)` carries middleware capabilities across files. The Nitro module generates `#h3-dux/routes`, so `createClient<Routes>()` is typed end-to-end with **no hand-written route interface**.
+🌱 **OpenAPI documentation for free** — standalone apps and Nitro file routes document the same statuses, validation envelopes, response kinds, errors, and metadata.
 
 ## Install
 
@@ -34,46 +34,53 @@ h3-dux is a DX/UX-first route kit for h3 v2 and Nitro v3. It owns its typed rout
 npm install @mszr/h3-dux h3
 ```
 
-`h3` is the one required peer. `nitro` is optional and needed only when importing `@mszr/h3-dux/nitro`.
+`h3` is the required peer. `nitro` is optional and needed only when importing `@mszr/h3-dux/nitro`; `typescript` is optional and needed only for codegen helpers.
 
-## The shape
+## The Shape
 
-One package, three entrypoints. The root is the standalone server + client; Nitro and codegen stay in explicit subpaths.
+One package, three entrypoints. The root is the runtime authoring and client surface; Nitro and codegen stay in explicit subpaths.
 
 | Entrypoint | What it is |
 | --- | --- |
-| `@mszr/h3-dux` | `createServer`, `createClient`, `typedResponse`, `defineRoute`, `defineFileRoute`, `sse`, validation types, response-kind helpers, the typed-fetch types |
-| `@mszr/h3-dux/nitro` | the Nitro module for file-based routes (`modules: ['@mszr/h3-dux/nitro']`) |
-| `@mszr/h3-dux/codegen` | the route-types / OpenAPI codegen used by the Nitro module and CLI |
+| `@mszr/h3-dux` | `createServer`, `createRouter`, `createClient`, `defineFileRoute`, `defineMiddleware`, `typedResponse`, `sse`, validation/error helpers, response-kind helpers, typed-fetch types |
+| `@mszr/h3-dux/nitro` | the Nitro module for generated file-route types and OpenAPI overlay |
+| `@mszr/h3-dux/codegen` | route declaration and OpenAPI file writers for build tooling |
 
-## A taste
+The client/server surface is schema-library neutral through [Standard Schema](https://standardschema.dev), so Valibot, Zod, and other compatible validators can feed the same contract.
+
+## A Taste
 
 ```ts
-// server.ts — the routes are the schema
+// server.ts
 import { createServer, sse } from '@mszr/h3-dux'
-import { ConflictSchema, NewFruitSchema, RipenTickSchema } from '@orchard/domain'
+import { ConflictSchema, FruitSchema, NewFruitSchema, RipenTickSchema } from '@orchard/domain'
 
 export const app = createServer()
-  // No options needed → pass the handler directly. `:id` typed from the pattern,
-  // response inferred from the return — zero ceremony.
-  .get('/fruits/:id', e => orchard.get(e.context.params.id))
-  // validate.body → e.context.body is typed AND validated; status sets the success code.
-  // errors → a typed failure channel; e.error(409, …) is checked against the schema.
+  .get('/fruits/:id', {
+    validate: { response: FruitSchema },
+    handler: event => orchard.get(event.params.id),
+  })
   .post('/fruits', {
     status: 201,
-    validate: { body: NewFruitSchema },
-    errors: { 409: ConflictSchema },
-    handler: (e) => {
-      if (orchard.has(e.context.body.name))
-        throw e.error(409, { reason: 'already_exists' })
-      return orchard.create(e.context.body)
+    validate: {
+      body: NewFruitSchema,
+      response: FruitSchema,
+    },
+    errors: {
+      409: ConflictSchema,
+    },
+    handler: (event) => {
+      if (orchard.has(event.body.name))
+        throw event.error(409, { reason: 'already_exists' })
+
+      return orchard.create(event.body)
     },
   })
-  // sse() makes this a typed stream on the client.
   .get('/fruits/:id/ripen', {
     validate: { response: sse(RipenTickSchema) },
-    handler: async function* (e) {
-      for (const tick of orchard.ripen(e.context.params.id)) yield tick
+    handler: async function* (event) {
+      for (const tick of orchard.ripen(event.params.id))
+        yield tick
     },
   })
 
@@ -81,38 +88,119 @@ export type App = typeof app
 ```
 
 ```ts
-// client.ts — typed end-to-end from `typeof app`, never hand-typed
+// client.ts
 import { createClient } from '@mszr/h3-dux'
 import type { App } from './server'
 
 const api = createClient<App>({ baseURL })
 
-const { data } = await api.get(`/fruits/${id}`) // data: Fruit (wire shape) | undefined
+const { data, error } = await api.get(`/fruits/${id}`)
 
-// The error is the real class, typed per status — narrow it at the cursor:
-const { error } = await api.post('/fruits', { body: mango })
-if (error?.status === 409)
-  error.data // Conflict — narrowed by status from the typed H3DuxHTTPError union
-const created = await api.post('/fruits', { body: mango }).orThrow() // or bubble it
+if (error?.status === 404)
+  error.data // narrowed to the 404/error body when that status is declared
 
-for await (const tick of api.get(`/fruits/${id}/ripen`)) // typed AsyncGenerator<RipenTick>
+if (data)
+  data.name // Fruit wire shape
+
+const created = await api.post('/fruits', { body: mango }).orThrow()
+
+for await (const tick of api.get(`/fruits/${id}/ripen`))
   console.log(tick.ripeness)
 ```
 
-## The one hard contract
+## Nitro File Routes
 
-**h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is something h3/Nitro already understand. The original reference implementation remains useful context in the development fork, but the published package owns its implementation and dependencies.
+```ts
+// server/routes/fruits/[id].get.ts
+import { defineFileRoute } from '@mszr/h3-dux'
+import { FruitSchema } from '@orchard/domain'
 
-## Status
+export default defineFileRoute({
+  validate: { response: FruitSchema },
+  handler: event => orchard.get(event.params.id),
+})
+```
 
-**Generation 1** — all five DX deltas are implemented and tested (runtime, type, and editor-DX planes): per-verb server authoring (with response + param inference), client verb sugar, path interpolation, typed SSE, and eager/manual validation modes.
+```ts
+// nitro.config.ts
+export default defineNitroConfig({
+  modules: ['@mszr/h3-dux/nitro'],
+})
+```
 
-**Generation 2** — complete (deltas 6–14, all test planes): a normalized contract kernel, an honest `{ data, error }` client whose typed `error` is the real `H3DuxHTTPError<Status, Data>` / `H3DuxTransportError` (narrowed per status, never a structural look-alike), response kinds (`text`/`binary`/`empty`/`sse`) with a hardened SSE parser, **delta-aware composition** (`createRouter`/`.mount`/`.register`, prefix param inference, duplicate-route diagnostics), **typed middleware bindings** (`defineMiddleware`, `event.bindings`/`staged`, `requires`, root event accessors), the **Nitro file-routing moat** — `defineFileRoute` (flat + method-map), capability-carrying `createFileRouteFactory` (`.use`/`.requires`/`.compose`), and a generated `#h3-dux/routes` map that types `createClient<Routes>()` with no hand-written route interface — plus **dux-aware OpenAPI** for standalone and Nitro and a polished client transport (`signal`/timeout/retry/query serialization, request/response hooks). The contract kernel is canonical: `typeof app` and `#h3-dux/routes` produce the same `{ request, responses, success }` shape, read by one client. The inferred types are tuned to read at least as cleanly as Hono's — a serialized body hovers as `{ id: string; … }`, the result as the inline `{ data, error }` — with strictly more information (honest, per-status failure).
+```ts
+// app/api.ts
+import { createClient } from '@mszr/h3-dux'
+import type { Routes } from '#h3-dux/routes'
+
+export const api = createClient<Routes>({ baseURL: '/api' })
+```
+
+The filename owns the path and method; h3-dux owns the contract projected from the route definition. No hand-written `Routes` interface.
+
+## Existing h3 Utilities
+
+Concrete h3-dux handler events keep the native h3 event surface, so ordinary helpers that accept `H3Event` keep working when the route's `context.params` stays in h3's string-shaped model:
+
+```ts
+import { createServer } from '@mszr/h3-dux'
+import type { H3Event } from 'h3'
+
+function readSession(event: H3Event) {
+  return event.req.headers.get('authorization')
+}
+
+createServer().get('/me', event => readSession(event))
+```
+
+Use `H3DuxEvent` when a helper wants dux additions such as `event.error`, `event.bindings`, `event.params`, `event.query`, or `event.body`:
+
+```ts
+import type { H3DuxEvent } from '@mszr/h3-dux'
+
+function requireUser(event: H3DuxEvent<{ user: User }>) {
+  return event.bindings.user
+}
+```
+
+For helpers shared by plain h3 and h3-dux, prefer the narrow structural surface the helper actually reads. That avoids coupling the utility to either framework's full event type:
+
+```ts
+import type { H3Event } from 'h3'
+
+type EventWithRequest = Pick<H3Event, 'req' | 'url'>
+
+function authHeader(event: EventWithRequest) {
+  return event.req.headers.get('authorization')
+}
+```
+
+If the shared helper needs `context.params`, widen only that slot:
+
+```ts
+import type { H3Event } from 'h3'
+
+type EventWithParams = Omit<H3Event, 'context'> & {
+  context: Omit<H3Event['context'], 'params'> & {
+    params?: Record<string, unknown>
+  }
+}
+```
+
+That shape accepts plain h3 params (`Record<string, string>`) and h3-dux routes whose params schema coerces values.
+
+## The One Hard Contract
+
+**h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is something h3/Nitro already understand. Inside that envelope, h3-dux is free to make the authoring and client experience more delightful.
 
 ## Development
 
-This published package is the front door. The maintainer workspace, design docs, and runnable sandbox demos live in the `dux/` folder of the development fork.
+The public `h3-dux` repo is the package face. Design docs, maintainer scripts, and sandbox comparisons live in the dux workspace inside the h3-route-tools fork ([public link](https://github.com/mareszhar/h3-route-tools/tree/dux/dux) | [local fork path](..)).
 
 ## Docs
 
-- [Development fork](https://github.com/mareszhar/h3-route-tools/tree/dux/dux) — maintainer workspace, design docs, and sandbox demos
+- `dux-vision.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-vision.md) | [local fork path](../docs/dux-vision.md)) — philosophy, principles, architecture, scope
+- `dux-language.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-language.md) | [local fork path](../docs/dux-language.md)) — vocabulary, naming rules, doc style
+- `dux-patterns.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-patterns.md) | [local fork path](../docs/dux-patterns.md)) — validated data, honest client, errors, composition, middleware bindings
+- `dux-spec.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-spec.md) | [local fork path](../docs/dux-spec.md)) — shipped behavior by delta
+- `dux-spec-workspace.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-spec-workspace.md) | [local fork path](../docs/dux-spec-workspace.md)) — maintainer workflow, tests, publishing
