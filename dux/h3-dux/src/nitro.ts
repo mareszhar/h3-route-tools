@@ -362,7 +362,7 @@ export const h3Dux: NitroModule = {
     if (nitro.options.experimental?.openAPI)
       overrideOpenAPI(nitro, () => overlayJSON)
 
-    nitro.hooks.hook('types:extend', async (types) => {
+    nitro.hooks.hook('types:extend', async (types: NitroTypes) => {
       const { infos, baseline, unreadable } = await collectFileRoutes(types.routes, typesDir)
       // Never drop a route in silence: if a module could not be inspected (it likely
       // imports server-only code that can't run at type generation), say so loudly.
