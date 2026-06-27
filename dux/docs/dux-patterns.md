@@ -303,3 +303,19 @@ event.context // canonical h3-compatible storage and escape hatch
 ```
 
 There are no single-letter aliases. The first-class names are already concise and remain self-documenting.
+
+### Writing utilities for the event
+
+A utility that works with a handler's `event` annotates **`H3DuxEvent`** — the route-agnostic handler event, and the dux counterpart of reaching for h3's `H3Event`. No interface to hand-roll:
+
+```ts
+import type { H3DuxEvent } from '@mszr/h3-dux'
+
+// Accepts the event from ANY route — standalone, router, or file route.
+function requireKey(e: H3DuxEvent): void {
+  if (e.req.headers.get('x-key') !== KEY)
+    throw e.error(401, { error: 'unauthorized' })
+}
+```
+
+`H3DuxEvent` is the public base every per-route handler event is assignable to: the full `H3Event` surface plus the dux additions at their loosest honest types — `event.error(status, data)` (route-agnostic here; narrowed to the *declared* statuses inside a handler, where the contract is known), the request aliases, and `event.bindings`. When a util depends on a middleware capability, parameterize it — `function requireOwner(e: H3DuxEvent<{ user: User }>)` — and `e.bindings.user` is typed. This is the principle-9 payoff for composability: plugging your own helpers into h3-dux costs an import, not a hand-written interface.

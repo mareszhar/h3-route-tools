@@ -21,6 +21,7 @@ export type {
   WithFilenameParams,
 } from './file-route.ts'
 export type { EndpointContract, ResponseKind } from './internal/contract.ts'
+export type { H3DuxEvent } from './internal/route-types.ts'
 export { defineMiddleware } from './middleware.ts'
 export type {
   BindingsOf,

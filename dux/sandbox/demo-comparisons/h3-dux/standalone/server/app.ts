@@ -1,3 +1,4 @@
+import type { H3DuxEvent } from '@mszr/h3-dux'
 import { createServer, sse } from '@mszr/h3-dux'
 import {
   CheckoutOrderSchema,
@@ -19,21 +20,18 @@ import {
 const orchard = createOrchard()
 const writeKey = process.env.ORCHARD_KEY ?? ORCHARD_KEY
 
-interface DuxErrorEvent {
-  req?: Request
-  error: (status: any, body: any) => Error
-}
-
-function toDuxError(e: DuxErrorEvent, error: OrchardError): Error {
+// Utilities that work with any h3-dux handler event just annotate `H3DuxEvent` —
+// the same way plain-h3 utils take `H3Event`. No interface to hand-roll.
+function toDuxError(e: H3DuxEvent, error: OrchardError): Error {
   return e.error(error.status, error.toBody())
 }
 
-function requireKey(e: DuxErrorEvent & { req: Request }): void {
+function requireKey(e: H3DuxEvent): void {
   if (e.req.headers.get(ORCHARD_KEY_HEADER) !== writeKey)
     throw toDuxError(e, new UnauthorizedError())
 }
 
-function rethrowDomain(e: DuxErrorEvent, cause: unknown): never {
+function rethrowDomain(e: H3DuxEvent, cause: unknown): never {
   if (cause instanceof OrchardError)
     throw toDuxError(e, cause)
   throw cause

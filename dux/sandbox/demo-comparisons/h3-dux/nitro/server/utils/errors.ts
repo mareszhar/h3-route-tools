@@ -1,21 +1,13 @@
-import type { OrchardError } from '@orchard/domain'
+import type { H3DuxEvent } from '@mszr/h3-dux'
+import { OrchardError } from '@orchard/domain'
 
-interface DuxErrorEvent {
-  error: (status: any, body: any) => Error
-}
-
-export function toDuxError(
-  e: DuxErrorEvent,
-  error: OrchardError,
-): Error {
+// `H3DuxEvent` is the route-agnostic handler event — no interface to hand-roll.
+export function toDuxError(e: H3DuxEvent, error: OrchardError): Error {
   return e.error(error.status, error.toBody())
 }
 
-export function rethrowDomain(
-  e: DuxErrorEvent,
-  cause: unknown,
-): never {
-  if (cause && typeof cause === 'object' && 'status' in cause && 'toBody' in cause)
-    throw toDuxError(e, cause as OrchardError)
+export function rethrowDomain(e: H3DuxEvent, cause: unknown): never {
+  if (cause instanceof OrchardError)
+    throw toDuxError(e, cause)
   throw cause
 }

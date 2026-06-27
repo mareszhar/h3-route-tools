@@ -46,6 +46,7 @@ These words carry exactly these meanings across the server, client, and Nitro su
 | **contract** | a method's full type: its `validate` block + handler return; what accumulates into `typeof app` |
 | **validate block** | the `validate: { params, query, body, headers, response, eager? }` object on a method |
 | **handler** | the function that runs for a method; receives the typed `event`, returns the response |
+| **H3DuxEvent** | the route-agnostic handler event — the public base every per-route handler event is assignable to; annotate a userland utility with it (the `H3Event` of h3-dux), optionally `H3DuxEvent<Bindings>` to depend on a middleware capability |
 | **middleware** | h3 middleware, optionally carrying typed requirements and downstream bindings; how auth and cross-cutting concerns attach (never a kit concept) |
 | **eager / manual** | the two validation modes — auto-run before the handler, or on-demand via `event.valid()` ([dux-patterns.md §1](./dux-patterns.md#1-the-validated-data-model)) |
 | **EventStream** | a response branded by `sse(schema)` — a typed `text/event-stream`, consumed as `AsyncGenerator<T>` |
@@ -109,6 +110,7 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 | `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
 | `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3Typed` escape hatch; clearer than `.app` |
 | `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
+| `H3DuxEvent<Bindings>` | h3 `H3Event` | the route-agnostic handler event a userland utility annotates — the dux counterpart of importing `H3Event`; carries `event.error`/`bindings`/request aliases at their loosest honest types |
 | `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
 | `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
 | `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
@@ -119,4 +121,4 @@ Every name h3-dux coins or renames, with the upstream / standard term it maps to
 
 Everything not in this table is re-exported from h3-route-tools **unchanged** — that is the default, and it is what keeps the fork diffable ([dux-vision.md §7](./dux-vision.md#7-how-h3-dux-stays-alive)).
 
-**The `H3Dux` prefix.** Every shipped type/class that needs a project-specific name — because it has no upstream counterpart and isn't a generic verb (`H3DuxError`, `H3DuxHTTPError`, `H3DuxTransportError`, `H3DuxServer`, `H3DuxRouter`, `H3DuxCall`, …) — is named `H3Dux*`, never bare `Dux*`. The maintainer forks several libraries this way (`idb-dux`, `h3-dux`, …); a bare `Dux*` name is ambiguous the moment two of those forks are imported into the same project, while `H3Dux*` says which one at the name itself. This applies to the shipped surface only — `dux` stays the plain, simple word for this repo, this workspace, and this doc set (`dux/`, "the dux branch", *dux-vision*, *dux-spec*, …).
+**The `H3Dux` prefix.** Every shipped type/class that needs a project-specific name — because it has no upstream counterpart and isn't a generic verb (`H3DuxError`, `H3DuxHTTPError`, `H3DuxTransportError`, `H3DuxServer`, `H3DuxRouter`, `H3DuxCall`, `H3DuxEvent`, …) — is named `H3Dux*`, never bare `Dux*`. The maintainer forks several libraries this way (`idb-dux`, `h3-dux`, …); a bare `Dux*` name is ambiguous the moment two of those forks are imported into the same project, while `H3Dux*` says which one at the name itself. This applies to the shipped surface only — `dux` stays the plain, simple word for this repo, this workspace, and this doc set (`dux/`, "the dux branch", *dux-vision*, *dux-spec*, …).

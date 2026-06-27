@@ -212,6 +212,47 @@ type ResolvedParams<P extends SchemaWithJSON | undefined, Route extends string>
 export type JoinPath<Prefix extends string, Local extends string>
   = Local extends '/' ? (Prefix extends '' ? '/' : Prefix) : `${Prefix}${Local}`
 
+// ── the public, route-agnostic handler event (for userland utilities) ─────────
+
+/**
+ * The h3-dux handler event, route-agnostic — annotate a **utility** with this to
+ * accept any handler's `event`, the way plain-h3 utils take `H3Event`. No interface
+ * to hand-roll: `function requireKey(e: H3DuxEvent) { … e.error(401, body) }` just
+ * works, and every per-route handler event is assignable to it.
+ *
+ * It is the public base over `H3Event`: the full native surface plus the dux
+ * additions at their loosest honest types — the `event.error(status, data)` thrower
+ * (route-agnostic here; narrowed to the *declared* statuses inside a handler, where
+ * the contract is known), the request aliases (`params`/`query`/`body`), and
+ * `event.bindings`. Parameterize `Bindings` when a util depends on a middleware
+ * capability: `function requireOwner(e: H3DuxEvent<{ user: User }>)`.
+ *
+ * `error` is a method (not an arrow property) on purpose: the bivariant parameter
+ * check is what lets a handler's status-narrowed `error` stay assignable here.
+ */
+export interface H3DuxEvent<Bindings = unknown> extends Omit<H3Event, 'context'> {
+  /** Throw a declared error: `throw e.error(status, data)` (delta 9). */
+  // Method syntax is deliberate here: its *bivariant* parameter check is what keeps
+  // a handler's status-narrowed `error` (e.g. `(409, Conflict) => …`) assignable to
+  // this route-agnostic base. The arrow-property form the rule prefers is
+  // contravariant and would reject every endpoint that declares `errors`.
+  // eslint-disable-next-line ts/method-signature-style -- bivariance is required (see above)
+  error(status: StatusCodeKey, data?: unknown): HTTPError
+  /** Request-scoped capabilities published by typed middleware (delta 12). */
+  bindings: Bindings
+  /** Route params, by name (validated/coerced inside a handler). */
+  params: Record<string, unknown>
+  /** The request query (validated/raw). */
+  query: Record<string, unknown>
+  /** The request body (validated/raw). */
+  body: unknown
+  /**
+   * The native h3 context, with `params` widened to accept coerced values (a
+   * `:id` schema can turn it into a `number`), so every handler event is assignable.
+   */
+  context: Omit<H3Event['context'], 'params'> & { params: Record<string, unknown> }
+}
+
 // ── the handler event ─────────────────────────────────────────────────────────
 
 /** H3Event whose `context.params` is narrowed to the resolved params and required. */

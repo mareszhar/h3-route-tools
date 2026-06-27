@@ -24,6 +24,8 @@ h3-dux is a DX/UX-first layer over [`h3-route-tools`](https://github.com/sandros
 
 🪪 **Typed middleware bindings** — `defineMiddleware({ bindings })` publishes request-scoped values that downstream handlers read as `event.bindings`, fully typed. `requires` consumes a parent capability without re-registering it; `.mount` checks it.
 
+🧰 **Utilities just import a type** — a helper that works with any handler's `event` annotates `H3DuxEvent` (the dux counterpart of h3's `H3Event`); no hand-rolled interface. `H3DuxEvent<{ user: User }>` types a helper that depends on a middleware capability.
+
 📁 **Nitro file routes, fully typed** — `defineFileRoute` carries every delta into a filesystem route (the filename owns the path/method); `createFileRouteFactory().use(…)` carries middleware capabilities across files. The Nitro module generates `#h3-dux/routes`, so `createClient<Routes>()` is typed end-to-end with **no hand-written route interface**.
 
 ## Install
