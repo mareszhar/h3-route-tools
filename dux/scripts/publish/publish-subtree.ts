@@ -14,6 +14,7 @@
  * keystroke and editing is right there. Pass `--message` to skip the editor:
  *
  *   bun run publish:subtree:squash -- --message "🔖 release v0.1.0"
+ *   bun run publish:subtree:squash -- --tag v1.0.1
  *
  * An automatic version-derived message is the happy path's job, not the
  * ad-hoc one's: the `publish:sdk:*` orchestrator always passes `--message`,
@@ -71,12 +72,14 @@ export function publishSubtree({
   remote = DEFAULT_REMOTE,
   branch = 'main',
   message,
+  tag,
   dryRun = false,
   skipVerify = false,
 }: {
   remote?: string
   branch?: string
   message?: string
+  tag?: string | false
   dryRun?: boolean
   skipVerify?: boolean
 } = {}): string | null {
@@ -125,11 +128,14 @@ export function publishSubtree({
   run('git', ['push', remote, `${commit}:refs/heads/${branch}`], { cwd: repoRoot })
   log.log(`pushed ${commit.slice(0, 10)} to ${branch}.`)
 
-  const rawPkg = capture('git', ['show', `HEAD:${SUBTREE_PREFIX}/package.json`], { cwd: repoRoot })
-  const pkgVersion = rawPkg ? JSON.parse(rawPkg).version : undefined
-  if (pkgVersion) {
-    run('git', ['push', remote, `${commit}:refs/tags/v${pkgVersion}`], { cwd: repoRoot })
-    log.log(`pushed tag v${pkgVersion} to ${remote}.`)
+  if (tag) {
+    if (capture('git', ['ls-remote', '--tags', remote, tag], { cwd: repoRoot })) {
+      log.log(`tag ${tag} already exists on ${remote}; leaving it untouched.`)
+    }
+    else {
+      run('git', ['push', remote, `${commit}:refs/tags/${tag}`], { cwd: repoRoot })
+      log.log(`pushed tag ${tag} to ${remote}.`)
+    }
   }
 
   return commit
@@ -146,6 +152,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     remote: valueOf('--remote'),
     branch: valueOf('--branch'),
     message: valueOf('--message'),
+    tag: valueOf('--tag'),
     dryRun: argv.includes('--dry-run'),
   })
 }

@@ -190,7 +190,7 @@ try {
 
   // 6) squash-push the public subtree.
   if (!state.steps.subtreePushed) {
-    publishSubtree({ message: `🔖 release v${releasedVersion}`, skipVerify: true })
+    publishSubtree({ message: `🔖 release v${releasedVersion}`, tag: `v${releasedVersion}`, skipVerify: true })
     state.steps.subtreePushed = true
     saveReleaseState(state)
   }
