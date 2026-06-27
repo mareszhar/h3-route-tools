@@ -2,6 +2,8 @@ packages:
   - ./
   - playgrounds/*
   - test/fixtures/nitro-app
+  - "!dux"
+  - "!dux/**"
 
 allowBuilds:
   '@parcel/watcher': false
