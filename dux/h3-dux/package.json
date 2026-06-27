@@ -2,7 +2,7 @@
   "name": "@mszr/h3-dux",
   "type": "module",
   "version": "1.0.0",
-  "description": "DX-first h3 and Nitro routes with honest typed clients, validation, streaming, and OpenAPI",
+  "description": "A DX-first h3 v2 and Nitro v3 route kit with honest typed clients, validation, streaming, and OpenAPI docs",
   "author": "Mares (https://github.com/mareszhar)",
   "license": "MIT",
   "homepage": "https://github.com/mareszhar/h3-dux",
