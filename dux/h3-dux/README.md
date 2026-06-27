@@ -140,9 +140,9 @@ The filename owns the path and method; h3-dux owns the contract projected from t
 
 ## Get Started
 
-> Check out our minimal demo! ([public link](https://github.com/mareszhar/h3-route-tools/tree/dux/dux/sandbox/demo-main) | [local fork path](../sandbox/demo-main)
+> Check out our minimal demo! ([public link](https://github.com/mareszhar/h3-route-tools/tree/dux/dux/sandbox/demo-main) | [local fork path](../sandbox/demo-main))
 >
-> It showcases all the main features of h3-dux ^-^ 💜
+> It provides usage examples for all the main features of h3-dux ^-^ 💜
 
 ## Existing h3 Utilities
 
