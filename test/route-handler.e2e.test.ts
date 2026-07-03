@@ -106,17 +106,20 @@ describe("defineRoute — e2e", () => {
     });
   });
 
-  it("exposes coerced query via event.validated.query", async () => {
+  it("exposes coerced query via event.context.query, mirrored on event.validated.query", async () => {
     app.register(
       defineRoute({
         route: "/search",
         get: {
           validate: { query: z.object({ limit: z.coerce.number() }) },
-          handler: (event) => ({ limit: event.validated.query.limit }),
+          handler: (event) => ({
+            ctx: event.context.query.limit,
+            bag: event.validated.query.limit,
+          }),
         },
       })
     );
-    expect(await (await app.request("/search?limit=10")).json()).toEqual({ limit: 10 });
+    expect(await (await app.request("/search?limit=10")).json()).toEqual({ ctx: 10, bag: 10 });
     expect((await app.request("/search?limit=abc")).status).toBe(400);
   });
 

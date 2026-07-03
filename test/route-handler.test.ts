@@ -196,7 +196,7 @@ describe("defineRouteHandler end-to-end handler inference", () => {
     });
   });
 
-  it("types event.validated.{query,params,headers} (coerced) and event.context.params", () => {
+  it("types event.context.{params,query,headers} (coerced) and mirrors them on event.validated", () => {
     defineRouteHandler({
       params: z.object({ id: z.coerce.number() }),
       get: {
@@ -205,21 +205,23 @@ describe("defineRouteHandler end-to-end handler inference", () => {
           headers: z.object({ "x-token": z.string() }),
         },
         handler: (event) => {
+          expectTypeOf(event.context.params).toEqualTypeOf<{ id: number }>();
+          expectTypeOf(event.context.query).toEqualTypeOf<{ limit: number }>();
+          expectTypeOf(event.context.headers).toEqualTypeOf<{ "x-token": string }>();
           expectTypeOf(event.validated.params).toEqualTypeOf<{ id: number }>();
           expectTypeOf(event.validated.query).toEqualTypeOf<{ limit: number }>();
           expectTypeOf(event.validated.headers).toEqualTypeOf<{ "x-token": string }>();
-          expectTypeOf(event.context.params).toEqualTypeOf<{ id: number }>();
           return null;
         },
       },
     });
   });
 
-  it("keeps event.context.params optional when no params schema is given", () => {
+  it("defaults event.context.params to Record<string, string> when no params schema is given", () => {
     defineRouteHandler({
       get: {
         handler: (event) => {
-          expectTypeOf(event.context.params).toEqualTypeOf<Record<string, string> | undefined>();
+          expectTypeOf(event.context.params).toEqualTypeOf<Record<string, string>>();
           return null;
         },
       },

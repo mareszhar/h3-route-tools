@@ -83,7 +83,7 @@ export type MethodRequest<
   routerParams: InferRouteParams<P>;
 };
 
-/** The coerced, validated request data exposed at `event.validated`. */
+/** The coerced, validated request data — a view over `event.context.{params,query,headers}`. */
 export interface ValidatedData<V extends AnyMethodValidate, P extends SchemaWithJSON | undefined> {
   query: InferMethodQuery<V>;
   params: InferRouteParams<P>;
@@ -91,16 +91,19 @@ export interface ValidatedData<V extends AnyMethodValidate, P extends SchemaWith
 }
 
 /**
- * The `event` a method's handler receives. `event.validated` holds the coerced query/params/headers;
- * with a validated params schema `event.context.params` is required, else it stays optional (h3 default).
- * The validated body is read lazily via `event.req.json()`.
+ * The `event` a method's handler receives. `event.context.{params,query,headers}` hold the coerced,
+ * validated request data (always populated); `event.validated` is a stable view over them. The
+ * validated body is read lazily via `event.req.json()`.
  */
 export type MethodEvent<
   V extends AnyMethodValidate,
   P extends SchemaWithJSON | undefined,
-> = (P extends SchemaWithJSON
-  ? ValidatedH3Event<MethodRequest<V, P>, InferOutput<P>>
-  : H3Event<MethodRequest<V, P>>) & {
+> = ValidatedH3Event<
+  MethodRequest<V, P>,
+  InferRouteParams<P>,
+  InferMethodQuery<V>,
+  InferMethodHeaders<V>
+> & {
   validated: ValidatedData<V, P>;
 };
 
@@ -647,7 +650,7 @@ function makeDispatcher(
 
       if (!isRuntimeMethod(entry)) return methodNotAllowed(computeAllow(event, methods));
 
-      const validated = await runRequestValidation(
+      await runRequestValidation(
         event,
         params,
         entry.validate,
@@ -655,7 +658,7 @@ function makeDispatcher(
         entry.onValidationError ?? onValidationError,
         options.decode
       );
-      Reflect.set(event, "validated", validated);
+      Reflect.set(event, "validated", makeValidatedView(event));
 
       // @ts-expect-error: the event is request-validated at this point; its static type narrows
       // context.params, req.body and `validated` beyond what h3's base H3Event proves here.
@@ -676,6 +679,11 @@ function makeDispatcher(
   });
 }
 
+/**
+ * Coerce and validate the request, writing the results to `event.context.{params,query,headers}` — the
+ * canonical storage. All three are always populated (coerced when a schema is set, raw otherwise), so
+ * the {@link makeValidatedView} view is a pure read-through.
+ */
 async function runRequestValidation(
   event: H3Event,
   params: SchemaWithJSON | undefined,
@@ -683,27 +691,23 @@ async function runRequestValidation(
   stream: MethodStream | undefined,
   onValidationError: OnValidationError | undefined,
   decode: boolean | undefined
-): Promise<Record<string, unknown>> {
+): Promise<void> {
   const mk = (source: ValidateSource) => resolveOnError(source, event, onValidationError);
 
-  let resolvedParams: unknown;
-  if (params) {
-    resolvedParams = await validateParams(event, params, {
-      decode,
-      onError: mk("params"),
-    });
-    Reflect.set(event.context, "params", resolvedParams);
-  } else {
-    resolvedParams = event.context.params ?? {};
-  }
+  const resolvedParams = params
+    ? await validateParams(event, params, { decode, onError: mk("params") })
+    : (event.context.params ?? {});
+  Reflect.set(event.context, "params", resolvedParams);
 
   const query = validate?.query
     ? await validateQuery(event, validate.query, { onError: mk("query") })
     : getQuery(event);
+  Reflect.set(event.context, "query", query);
 
   const headers = validate?.headers
     ? await validateHeaders(event, validate.headers, { onError: mk("headers") })
     : Object.fromEntries(event.req.headers.entries());
+  Reflect.set(event.context, "headers", headers);
 
   if (validate?.body || stream?.body) {
     const req = validateBody(
@@ -713,8 +717,21 @@ async function runRequestValidation(
     );
     Reflect.set(event, "req", req);
   }
+}
 
-  return { query, params: resolvedParams, headers };
+/** A stable object whose getters read `event.context.{params,query,headers}` — the `event.validated` view. */
+function makeValidatedView(event: H3Event): object {
+  return {
+    get params() {
+      return event.context.params;
+    },
+    get query() {
+      return event.context.query;
+    },
+    get headers() {
+      return event.context.headers;
+    },
+  };
 }
 
 function isRuntimeMethod(entry: unknown): entry is RuntimeMethod {

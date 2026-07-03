@@ -158,11 +158,11 @@ export type StringHeaders<T> = {
 };
 
 /**
- * H3Event with `context.params` narrowed to the inferred schema output and required.
- * Use when params have been validated; otherwise plain `H3Event` already keeps `params` optional.
+ * H3Event with `context.params`/`context.query`/`context.headers` narrowed to their validated shapes
+ * and required — the canonical storage a validated handler reads. `event.validated` is a view over them.
  */
-export type ValidatedH3Event<RequestT extends EventHandlerRequest, Params> = {
+export type ValidatedH3Event<RequestT extends EventHandlerRequest, Params, Query, Headers> = {
   [K in keyof H3Event<RequestT>]: K extends "context"
-    ? Omit<H3Event<RequestT>[K], "params"> & { params: Params }
+    ? Omit<H3Event<RequestT>[K], "params"> & { params: Params; query: Query; headers: Headers }
     : H3Event<RequestT>[K];
 };
