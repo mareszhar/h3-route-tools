@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { extractComponents } from "../../src/internal/extract-components.ts";
+import { extractComponents } from "../../src/openapi/extract-components.ts";
 
 describe("extractComponents — top-level $id", () => {
   it("lifts a $id-tagged schema into components and returns a $ref", () => {

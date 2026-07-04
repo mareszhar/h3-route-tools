@@ -370,9 +370,9 @@ describe("defineRoute — e2e", () => {
   });
 
   it("exposes the typed def + options on the handler built by defineRouteHandler", () => {
-    const handler = defineRouteHandler({ get: { handler: () => "x" } }, { errors: false });
+    const handler = defineRouteHandler({ get: { handler: () => "x" } }, { decode: true });
     expect(typeof handler).toBe("function");
     expect(handler["~routeDef"].get).toBeDefined();
-    expect(handler["~options"].errors).toBe(false);
+    expect(handler["~options"].decode).toBe(true);
   });
 });

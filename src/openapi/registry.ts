@@ -1,15 +1,19 @@
 import type { H3 } from "h3";
 
-import {
-  type DocumentableRouteHandler,
-  type ErrorResponsesOption,
-  type RouteMethod,
-  type ValidatedHandler,
-  documentableFromValidated,
-} from "./route-handler.ts";
-import type { OpenAPIInfo, RegisteredRoute } from "./openapi.ts";
+import type {
+  DocumentableRouteDef,
+  DocumentableRouteHandler,
+  RouteMethod,
+  ValidatedHandler,
+} from "../route-handler.ts";
+import type {
+  ErrorResponsesOption,
+  OpenAPIDocumentHook,
+  OpenAPIInfo,
+  RegisteredRoute,
+} from "./document.ts";
 
-export type { RegisteredRoute } from "./openapi.ts";
+export type { RegisteredRoute } from "./document.ts";
 
 /** h3's internal route table; the single point of coupling for {@link harvestRoutes}. */
 const ROUTES_KEY = "~routes";
@@ -21,6 +25,7 @@ export interface OpenAPIConfig {
   info: OpenAPIInfo;
   path?: string;
   errors?: ErrorResponsesOption;
+  document?: OpenAPIDocumentHook;
 }
 
 /** A read view of an app's OpenAPI state: its configured info plus the routes harvested from h3. */
@@ -84,6 +89,20 @@ function isDocumentable(handler: unknown): handler is DocumentableRouteHandler {
 
 function isValidated(handler: unknown): handler is ValidatedHandler {
   return typeof handler === "function" && "~validatedDef" in handler;
+}
+
+/**
+ * Project a {@link ValidatedHandler} (method-agnostic) into a single-method {@link DocumentableRouteHandler}
+ * for OpenAPI — the `method` comes from the mount (an `H3Typed.get` call, a nitro filename).
+ */
+export function documentableFromValidated(
+  handler: ValidatedHandler,
+  method: RouteMethod
+): DocumentableRouteHandler {
+  const def = handler["~validatedDef"];
+  const routeDef: DocumentableRouteDef = { params: def.params, meta: def.meta };
+  routeDef[method] = { validate: def.validate, stream: def.stream, meta: def.meta };
+  return { "~routeDef": routeDef };
 }
 
 const HTTP_METHODS = new Set(["get", "head", "post", "put", "patch", "delete", "options"]);

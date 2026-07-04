@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { H3 } from "h3";
 
-import { attachRegistry, getOpenAPIConfig, getRegistry, harvestRoutes } from "../src/registry.ts";
+import {
+  attachRegistry,
+  getOpenAPIConfig,
+  getRegistry,
+  harvestRoutes,
+} from "../src/openapi/registry.ts";
 import { defineRoute, defineRouteHandler } from "../src/route-handler.ts";
 
 const info = { title: "Test API", version: "1.0.0" };

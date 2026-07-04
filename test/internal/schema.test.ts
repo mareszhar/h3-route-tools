@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import * as v from "valibot";
 
-import { hasJSONSchema, getStandardJSONSchema, readSchemaId } from "../../src/internal/schema.ts";
+import {
+  hasJSONSchema,
+  getStandardJSONSchema,
+  readSchemaId,
+} from "../../src/openapi/json-schema.ts";
 
 describe("hasJSONSchema", () => {
   it("returns true for schemas that implement StandardJSONSchemaV1 (zod 4)", () => {

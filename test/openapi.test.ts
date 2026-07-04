@@ -4,16 +4,16 @@ import * as v from "valibot";
 import { toStandardJsonSchema } from "@valibot/to-json-schema";
 
 import { defineRouteHandler } from "../src/route-handler.ts";
-import { defineSchema } from "../src/define-schema.ts";
+import { defineSchema } from "../src/openapi/define-schema.ts";
 import type { SchemaWithJSON } from "../src/internal/types.ts";
-import type { RegisteredRoute } from "../src/registry.ts";
+import type { RegisteredRoute } from "../src/openapi/registry.ts";
 import {
   buildOpenAPIDocument,
   schemaToParameters,
   toOpenAPIOperation,
   toOpenAPIPath,
   toOpenAPIPathItem,
-} from "../src/openapi.ts";
+} from "../src/openapi/document.ts";
 
 const info = { title: "Test API", version: "1.0.0" };
 
@@ -234,13 +234,6 @@ describe("toOpenAPIOperation", () => {
       properties: { custom: expect.anything() },
     });
   });
-
-  it("pulls operation metadata from meta.openapi", () => {
-    const op = toOpenAPIOperation({
-      meta: { openapi: { summary: "List", tags: ["users"], operationId: "listUsers" } },
-    });
-    expect(op).toMatchObject({ summary: "List", tags: ["users"], operationId: "listUsers" });
-  });
 });
 
 describe("toOpenAPIPathItem", () => {
@@ -258,12 +251,11 @@ describe("toOpenAPIPathItem", () => {
     expect(item.post?.requestBody).toBeDefined();
   });
 
-  it("respects the route handler's own errors option", () => {
-    const handler = defineRouteHandler(
-      { post: { validate: { body: z.object({ name: z.string() }) }, handler: () => ({}) } },
-      { errors: false }
-    );
-    const item = toOpenAPIPathItem(handler);
+  it("omits auto error responses when `errors: false` is passed", () => {
+    const handler = defineRouteHandler({
+      post: { validate: { body: z.object({ name: z.string() }) }, handler: () => ({}) },
+    });
+    const item = toOpenAPIPathItem(handler, { errors: false });
     expect(item.post?.responses?.["400"]).toBeUndefined();
   });
 
@@ -286,11 +278,14 @@ describe("toOpenAPIPathItem", () => {
     const item = toOpenAPIPathItem(
       defineRouteHandler({
         get: { handler: () => "g" },
-        options: { meta: { openapi: { summary: "Custom preflight" } }, handler: () => null },
+        options: {
+          validate: { response: z.object({ ok: z.boolean() }) },
+          handler: () => ({ ok: true }),
+        },
       })
     );
     expect(item.options).toBeDefined();
-    expect(item.options?.summary).toBe("Custom preflight");
+    expect(item.options?.responses?.["200"]).toBeDefined();
   });
 });
 
@@ -317,7 +312,7 @@ describe("buildOpenAPIDocument", () => {
   });
 
   it("hoists $id schemas into components and references them", () => {
-    const User = defineSchema("User", z.object({ id: z.string(), name: z.string() }));
+    const User = defineSchema(z.object({ id: z.string(), name: z.string() }), { id: "User" });
     const handler = defineRouteHandler({
       post: { validate: { body: User, response: User }, handler: () => ({ id: "1", name: "a" }) },
     });

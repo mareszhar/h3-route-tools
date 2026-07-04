@@ -61,10 +61,10 @@ describe("defineValidatedHandler — return stamp", () => {
         validate: { response: z.object({ id: z.number() }) },
         handler: (event) => ({ id: event.context.params.id }),
       },
-      { errors: false }
+      { decode: true }
     );
     expect(h["~validatedDef"].handler).toBeTypeOf("function");
-    expect(h["~options"].errors).toBe(false);
+    expect(h["~options"].decode).toBe(true);
 
     type E = NonNullable<(typeof h)["~inferEndpoint"]>;
     expectTypeOf<E["params"]>().toEqualTypeOf<{ id: number }>();

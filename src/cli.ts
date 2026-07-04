@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { resolve } from "node:path";
 
 import { generateRoutesDts, writeRoutesDts, writeOpenAPIDocument } from "h3-route-tools/codegen";
-import { getOpenAPIDocument } from "h3-route-tools";
+import { getOpenAPIDocument } from "h3-route-tools/openapi";
 
 const HELP = `h3-route-tools — route type-gen & OpenAPI emit
 

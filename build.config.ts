@@ -11,10 +11,17 @@ export default defineBuildConfig({
     },
     {
       type: "bundle",
+      input: ["./src/openapi/index.ts"],
+      rolldown: {
+        platform: "neutral",
+      },
+    },
+    {
+      type: "bundle",
       input: ["./src/codegen.ts"],
       rolldown: {
         platform: "node",
-        external: ["typescript", "h3-route-tools"],
+        external: ["typescript", "h3-route-tools", "h3-route-tools/openapi"],
       },
     },
     {
@@ -24,7 +31,7 @@ export default defineBuildConfig({
         platform: "node",
         // The CLI is a thin wrapper over the package's own entries — keep them external so it doesn't
         // re-bundle the codegen/openapi graphs.
-        external: ["h3-route-tools", "h3-route-tools/codegen"],
+        external: ["h3-route-tools", "h3-route-tools/codegen", "h3-route-tools/openapi"],
       },
     },
     {
@@ -32,7 +39,7 @@ export default defineBuildConfig({
       input: ["./src/nitro.ts"],
       rolldown: {
         platform: "node",
-        external: ["nitro", "nitro/types", "h3-route-tools"],
+        external: ["nitro", "nitro/types", "h3-route-tools", "h3-route-tools/openapi"],
       },
     },
   ],

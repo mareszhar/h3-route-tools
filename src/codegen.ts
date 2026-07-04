@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
 import type { H3 } from "h3";
 
-import { type OpenAPIDocument, getOpenAPIDocument } from "h3-route-tools";
+import { type OpenAPIDocument, getOpenAPIDocument } from "h3-route-tools/openapi";
 
 /*
   Build-time tooling for the `h3-route-tools/codegen` entry (Node-only, never imported at runtime):

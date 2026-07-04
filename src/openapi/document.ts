@@ -9,22 +9,27 @@ import type {
   StatusCodeKey,
   StreamDoc,
   StreamMap,
-} from "./internal/types.ts";
+} from "../internal/types.ts";
 import {
   type DocumentableMethodDef,
   type DocumentableRouteHandler,
-  type ErrorResponsesOption,
   METHOD_KEYS,
   type ResponseStreamMap,
   type ResponseValidation,
-} from "./route-handler.ts";
-import { getStandardJSONSchema } from "./internal/schema.ts";
-import { extractComponents } from "./internal/extract-components.ts";
+} from "../route-handler.ts";
+import { getStandardJSONSchema } from "./json-schema.ts";
+import { extractComponents } from "./extract-components.ts";
 import {
   HTTPErrorSchema,
   UnsupportedMediaTypeSchema,
   ValidationErrorSchema,
 } from "./error-schemas.ts";
+
+/**
+ * Controls auto-registered error response schemas (400, 415, 500).
+ * `false` disables auto-registration entirely; a partial map overrides the schema per status.
+ */
+export type ErrorResponsesOption = false | Partial<Record<StatusCodeKey, SchemaWithJSON>>;
 
 /** The OpenAPI version this library emits. */
 export type OpenAPIVersion = "3.1.0";
@@ -106,6 +111,41 @@ export interface RegisteredRoute {
   handler: DocumentableRouteHandler;
 }
 
+/** An OpenAPI object of shape `T` plus any spec fields the library doesn't model (`security`, `servers`, …). */
+export type OpenAPIObject<T> = T & Record<string, unknown>;
+
+/** Handed to a {@link OpenAPIDocumentHook}: a direction-aware JSON-Schema accessor + the harvested routes. */
+export interface OpenAPIDocumentContext {
+  jsonSchema(
+    schema: StandardTypedV1,
+    options?: { direction?: "input" | "output" }
+  ): JSONSchemaDocument | undefined;
+  routes: RegisteredRoute[];
+}
+
+/**
+ * Customize the built document: a full-replace value, or a `(doc, ctx) => doc` transform (you merge).
+ * `doc` carries an open index so you can add/read spec fields the library doesn't model (`servers`, …)
+ * and still `return doc`.
+ */
+export type OpenAPIDocumentHook =
+  | OpenAPIObject<OpenAPIDocument>
+  | ((
+      doc: OpenAPIObject<OpenAPIDocument>,
+      ctx: OpenAPIDocumentContext
+    ) => OpenAPIObject<OpenAPIDocument>);
+
+/** Apply a {@link OpenAPIDocumentHook} to a built document (no-op when absent). */
+export function applyDocumentHook(
+  doc: OpenAPIDocument,
+  hook: OpenAPIDocumentHook | undefined,
+  routes: RegisteredRoute[]
+): OpenAPIDocument {
+  if (hook === undefined) return doc;
+  if (typeof hook !== "function") return hook;
+  return hook(doc as OpenAPIObject<OpenAPIDocument>, { jsonSchema: getStandardJSONSchema, routes });
+}
+
 const STATUS_TEXT: Record<number, string> = {
   200: "OK",
   201: "Created",
@@ -148,7 +188,7 @@ export function schemaToParameters(
   }));
 }
 
-/** Convert one method definition to an OpenAPI Operation Object. */
+/** Convert one method definition to an OpenAPI Operation Object; `meta.openapi` shallow-merges over it. */
 export function toOpenAPIOperation(
   method: DocumentableMethodDef,
   options: { hasRouteParams?: boolean; errors?: ErrorResponsesOption } = {}
@@ -182,8 +222,9 @@ export function toOpenAPIOperation(
   const responses = toResponses(response, streamResponse, autoErrors);
   if (Object.keys(responses).length) operation.responses = responses;
 
-  applyOperationMeta(operation, method.meta);
-  return operation;
+  // `meta.openapi` (from `defineOperation`) is an open bag on h3's route meta; boundary-cast at the read.
+  const openapiMeta = method.meta?.["openapi"];
+  return isRecord(openapiMeta) ? ({ ...operation, ...openapiMeta } as OpenAPIOperation) : operation;
 }
 
 /** Convert a documentable route handler to an OpenAPI Path Item Object. */
@@ -192,7 +233,7 @@ export function toOpenAPIPathItem(
   options: { errors?: ErrorResponsesOption } = {}
 ): OpenAPIPathItem {
   const def = handler["~routeDef"];
-  const errors = handler["~options"]?.errors ?? options.errors;
+  const errors = options.errors;
   const hasRouteParams = !!def.params;
 
   const pathItem: OpenAPIPathItem = {};
@@ -345,17 +386,6 @@ function computeAutoErrors(input: {
   if (needs500) out.push(["500", overrides?.[500] ?? HTTPErrorSchema]);
 
   return out;
-}
-
-function applyOperationMeta(operation: OpenAPIOperation, meta: unknown): void {
-  const metaRecord = asRecord(meta);
-  const oapi = asRecord(metaRecord?.["openapi"]);
-  if (!oapi) return;
-  if (typeof oapi["summary"] === "string") operation.summary = oapi["summary"];
-  if (typeof oapi["description"] === "string") operation.description = oapi["description"];
-  if (typeof oapi["operationId"] === "string") operation.operationId = oapi["operationId"];
-  const tags = asStringArray(oapi["tags"]);
-  if (tags.length) operation.tags = tags;
 }
 
 /** Walk every schema slot in the paths object, lifting `$id` subschemas into a shared components map. */

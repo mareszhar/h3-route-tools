@@ -269,16 +269,8 @@ export interface RouteHandlerInput<
   connect?: PerMethodDef<Connect, P, "connect", R["connect"]>;
 }
 
-/**
- * Controls auto-registered error response schemas (400, 415, 500).
- * `false` disables auto-registration entirely; a partial map overrides the schema per status.
- */
-export type ErrorResponsesOption = false | Partial<Record<StatusCodeKey, SchemaWithJSON>>;
-
 /** Options passed at definition time. */
 export interface RouteHandlerOptions {
-  /** Override or opt out of the auto-registered error response schemas (400, 415, 500). */
-  errors?: ErrorResponsesOption;
   /** Decode route params with `decodeURIComponent` before validation (default off, h3 parity). */
   decode?: boolean;
 }
@@ -326,7 +318,6 @@ export type DocumentableRouteDef = Pick<RouteHandlerDef, "params" | "meta"> & {
  */
 export interface DocumentableRouteHandler {
   readonly "~routeDef": DocumentableRouteDef;
-  readonly "~options"?: { errors?: ErrorResponsesOption };
 }
 
 // ─── Inference helpers ────────────────────────────────────────────────────────
@@ -658,20 +649,6 @@ export function mountRouteHandler(h3: H3, route: string, handler: MountableRoute
     if (isRuntimeMethod(Reflect.get(def, method))) h3.on(method, route, handler, opts);
   }
   h3.all(route, handler, opts);
-}
-
-/**
- * Project a {@link ValidatedHandler} (method-agnostic) into a single-method {@link DocumentableRouteHandler}
- * for OpenAPI — the `method` comes from the mount (an `H3Typed.get` call, a nitro filename).
- */
-export function documentableFromValidated(
-  handler: ValidatedHandler,
-  method: RouteMethod
-): DocumentableRouteHandler {
-  const def = handler["~validatedDef"];
-  const routeDef: DocumentableRouteDef = { params: def.params, meta: def.meta };
-  routeDef[method] = { validate: def.validate, stream: def.stream, meta: def.meta };
-  return { "~routeDef": routeDef, "~options": handler["~options"] };
 }
 
 /**

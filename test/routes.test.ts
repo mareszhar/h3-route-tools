@@ -3,7 +3,7 @@ import { H3 } from "h3";
 import { z } from "zod";
 
 import { defineRoute } from "../src/route-handler.ts";
-import { harvestRoutes } from "../src/registry.ts";
+import { harvestRoutes } from "../src/openapi/registry.ts";
 import type { InferRouteTypes, InferRoutes } from "../src/routes.ts";
 
 // A realistic resource: GET reads a post, POST creates one (body has an input transform so request

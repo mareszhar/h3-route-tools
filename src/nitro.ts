@@ -1,13 +1,11 @@
 import { join, resolve } from "node:path";
 import type { NitroModule, NitroTypes, Serialize, Simplify } from "nitro/types";
+import type { RouteHandler, RouteMethod, ValidatedHandler } from "h3-route-tools";
 import {
   buildOpenAPIDocument,
   documentableFromValidated,
   type RegisteredRoute,
-  type RouteHandler,
-  type RouteMethod,
-  type ValidatedHandler,
-} from "h3-route-tools";
+} from "h3-route-tools/openapi";
 
 /** Callable HTTP methods (mirrors the contract's `CallableMethod`; trace/connect are never fetchable). */
 const CALLABLE_METHODS = ["get", "head", "post", "put", "patch", "delete", "options"] as const;

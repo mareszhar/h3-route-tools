@@ -25,7 +25,7 @@ import {
 import type { OnValidationError, SchemaWithJSON } from "./internal/types.ts";
 import type { InferRouteTypes, MergePair } from "./routes.ts";
 import type { Prettify } from "./internal/types.ts";
-import { defineOpenAPI, type OpenAPIPluginOptions } from "./define-openapi.ts";
+import { defineOpenAPI, type OpenAPIPluginOptions } from "./openapi/plugin.ts";
 
 /** Loose {@link ValidatedHandlerDef} for the per-method overloads' runtime signature. */
 type AnyValidatedDef = ValidatedHandlerDef<AnyMethodValidate, SchemaWithJSON | undefined>;

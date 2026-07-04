@@ -1,5 +1,5 @@
 import type { StandardJSONSchemaV1, StandardTypedV1 } from "@standard-schema/spec";
-import type { GetJSONSchemaOptions } from "./types.ts";
+import type { GetJSONSchemaOptions } from "../internal/types.ts";
 
 /**
  * Type guard: does this schema additionally implement `StandardJSONSchemaV1`?

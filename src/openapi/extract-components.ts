@@ -3,7 +3,7 @@ import type {
   ExtractComponentsOptions,
   ExtractComponentsResult,
   JSONSchemaDocument,
-} from "./types.ts";
+} from "../internal/types.ts";
 
 /**
  * Walk a JSON Schema and extract every `$id`-bearing subschema into a components map,

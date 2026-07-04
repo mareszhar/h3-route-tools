@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { H3 } from "h3";
 import { z } from "zod";
 
-import { defineOpenAPI } from "../src/define-openapi.ts";
+import { defineOpenAPI } from "../src/openapi/plugin.ts";
 import { defineRoute } from "../src/route-handler.ts";
-import { defineSchema } from "../src/define-schema.ts";
-import type { OpenAPIDocument } from "../src/openapi.ts";
+import { defineSchema } from "../src/openapi/define-schema.ts";
+import type { OpenAPIDocument } from "../src/openapi/document.ts";
 
 const info = { title: "Test API", version: "1.0.0" };
 
@@ -62,7 +62,7 @@ describe("defineOpenAPI — e2e", () => {
   });
 
   it("hoists $id schemas into components", async () => {
-    const User = defineSchema("User", z.object({ id: z.string(), name: z.string() }));
+    const User = defineSchema(z.object({ id: z.string(), name: z.string() }), { id: "User" });
     app.register(defineOpenAPI({ info }));
     app.register(
       defineRoute({

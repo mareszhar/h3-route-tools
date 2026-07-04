@@ -3,7 +3,6 @@ export {
   defineValidatedHandler,
   defineRoute,
   mountRouteHandler,
-  documentableFromValidated,
 } from "./route-handler.ts";
 export type {
   RouteHandler,
@@ -16,10 +15,6 @@ export type {
   MethodStream,
   ResponseValidation,
   ResponseStreamMap,
-  ErrorResponsesOption,
-  DocumentableRouteHandler,
-  DocumentableRouteDef,
-  DocumentableMethodDef,
   RouteMethod,
   StatusCodeKey,
   RoutePlugin,
@@ -47,43 +42,12 @@ export type {
   FetchLike,
 } from "./typed-fetch.ts";
 
-export { defineSchema } from "./define-schema.ts";
-
-export { defineOpenAPI } from "./define-openapi.ts";
-export type { OpenAPIPluginOptions } from "./define-openapi.ts";
-export { buildOpenAPIDocument } from "./openapi.ts";
-export type {
-  OpenAPIDocument,
-  OpenAPIInfo,
-  OpenAPIOperation,
-  OpenAPIPathItem,
-  OpenAPIParameter,
-  OpenAPIMediaType,
-  OpenAPIRequestBody,
-  OpenAPIResponse,
-  OpenAPIComponents,
-  OpenAPIVersion,
-  RegisteredRoute,
-} from "./openapi.ts";
-
-export { attachRegistry, getRegistry, getOpenAPIConfig, harvestRoutes } from "./registry.ts";
-export type { OpenAPIRegistry, OpenAPIConfig } from "./registry.ts";
-
-export { getOpenAPIDocument } from "./generate.ts";
-
-export {
-  HTTPErrorSchema,
-  ValidationErrorSchema,
-  UnsupportedMediaTypeSchema,
-} from "./error-schemas.ts";
-
 export type {
   SchemaWithJSON,
   BodyValidation,
   MediaTypeMap,
   StreamDoc,
   StreamMap,
-  JSONSchemaDocument,
   OnValidationError,
   ValidationFailure,
   ValidateSource,

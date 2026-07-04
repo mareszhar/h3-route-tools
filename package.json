@@ -35,6 +35,10 @@
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
+    "./openapi": {
+      "types": "./dist/openapi/index.d.mts",
+      "import": "./dist/openapi/index.mjs"
+    },
     "./codegen": {
       "types": "./dist/codegen.d.mts",
       "import": "./dist/codegen.mjs"
