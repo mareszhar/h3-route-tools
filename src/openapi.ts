@@ -135,7 +135,8 @@ export function schemaToParameters(
   schema: SchemaWithJSON,
   options: { in: "query" | "header" | "path" }
 ): OpenAPIParameter[] {
-  const json = getStandardJSONSchema(schema);
+  // Parameters are request-side: document the `input` shape (what the caller sends, pre-coercion).
+  const json = getStandardJSONSchema(schema, { direction: "input" });
   const properties = asRecord(json?.["properties"]);
   if (!properties) return [];
   const required = new Set(asStringArray(json?.["required"]));
@@ -240,16 +241,16 @@ function toRequestBody(
   const content: Record<string, OpenAPIMediaType> = {};
   if (body) {
     if (isStandardSchema(body)) {
-      content["application/json"] = toMediaType(body);
+      content["application/json"] = toMediaType(body, "input");
     } else {
       for (const [mediaType, schema] of Object.entries(body)) {
-        content[mediaType] = toMediaType(schema);
+        content[mediaType] = toMediaType(schema, "input");
       }
     }
   }
   if (stream) {
     for (const [mediaType, doc] of Object.entries(stream)) {
-      content[mediaType] = streamMediaType(doc);
+      content[mediaType] = streamMediaType(doc, "input");
     }
   }
   return { required: true, content };
@@ -259,9 +260,9 @@ function toRequestBody(
  * A streamed content type is documented by its {@link StreamDoc}; `true` emits an empty media-type
  * object — the content-type key already identifies the payload, and OpenAPI 3.1 has no `format: "binary"`.
  */
-function streamMediaType(doc: StreamDoc): OpenAPIMediaType {
+function streamMediaType(doc: StreamDoc, direction: "input" | "output"): OpenAPIMediaType {
   if (doc === true) return {};
-  return isDocSchema(doc) ? toMediaType(doc) : { schema: doc };
+  return isDocSchema(doc) ? toMediaType(doc, direction) : { schema: doc };
 }
 
 function isStandardSchema(value: object): value is SchemaWithJSON {
@@ -296,7 +297,7 @@ function toResponses(
       const res = responses[code] ?? { description: describeStatus(code), content: {} };
       res.content ??= {};
       for (const [mediaType, doc] of Object.entries(streamMap)) {
-        res.content[mediaType] = streamMediaType(doc);
+        res.content[mediaType] = streamMediaType(doc, "output");
       }
       responses[code] = res;
     }
@@ -312,12 +313,13 @@ function toResponses(
 function toResponseObject(code: StatusCodeKey, schema: StandardTypedV1): OpenAPIResponse {
   return {
     description: describeStatus(code),
-    content: { "application/json": toMediaType(schema) },
+    content: { "application/json": toMediaType(schema, "output") },
   };
 }
 
-function toMediaType(schema: StandardTypedV1): OpenAPIMediaType {
-  const json = getStandardJSONSchema(schema);
+/** `input` = the caller-sent (request) shape; `output` = the validated (response) shape. */
+function toMediaType(schema: StandardTypedV1, direction: "input" | "output"): OpenAPIMediaType {
+  const json = getStandardJSONSchema(schema, { direction });
   return json ? { schema: json } : {};
 }
 

@@ -204,14 +204,21 @@ export default defineConfig({
 });
 ```
 
-## Choosing a validator (the valibot caveat)
+## JSON Schema for OpenAPI
 
-Validation and TypeScript types work with any Standard Schema validator. **OpenAPI / JSON-Schema generation does not** — it depends on the validator's `to-json-schema`, and the two common choices differ a lot:
+Validation and TypeScript types work with **any** [Standard Schema](https://standardschema.dev) validator. OpenAPI generation needs one thing more: the schema must also expose a JSON Schema through the Standard Schema `~standard.jsonSchema` extension. That's the only thing checked — no per-library special-casing.
 
-- **zod** — rich output. Only a `Date` field can't be represented (no library can) and shows as `{}`.
-- **valibot** — `@valibot/to-json-schema` throws on `pipe` / `transform` / `date` schemas, and generation then degrades the **whole containing object** to `{}`. Because coercion like `v.pipe(v.string(), v.toNumber())` is so common, valibot routes often produce empty OpenAPI schemas — even though their validation and TS types are perfectly fine.
+- **zod** (v4) — implements it natively; works out of the box.
+- **valibot** — does **not** on its own. Wrap each schema with [`@valibot/to-json-schema`](https://github.com/fabian-hiller/valibot/tree/main/packages/to-json-schema)'s `toStandardJsonSchema()`. A bare `v.object(...)` emits an empty schema (`{}`) — validation and TS types are unaffected, only the document is.
 
-So if you rely on the generated OpenAPI (or codegen), prefer **zod** quick and dirty tests, or refer to **valibot**'s overrides for manual schema definition. Otherwise, valibot is fine for validation and TS types, and is smaller and faster than zod 😜.
+Schemas are documented in the right **direction**: a request uses the schema's **input** (what the caller sends), a response its **output**. So a coercion like `v.pipe(v.string(), v.toNumber())` on a param documents correctly as `string` — the transform is irrelevant to the wire, only the accepted input matters.
+
+Two things still can't be represented and degrade to `{}` (any library):
+
+- a **`Date`** field — JSON Schema has no date type (it's a `string` on the wire; the typed client already models that);
+- a **response** produced by a `transform` — the post-transform shape isn't derivable from the schema.
+
+For those the emitted schema is `{}`; document them by hand if you need the detail.
 
 ## License
 

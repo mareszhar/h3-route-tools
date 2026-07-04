@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
+import * as v from "valibot";
+import { toStandardJsonSchema } from "@valibot/to-json-schema";
 
 import { defineRouteHandler } from "../src/route-handler.ts";
 import { defineSchema } from "../src/define-schema.ts";
+import type { SchemaWithJSON } from "../src/internal/types.ts";
 import type { RegisteredRoute } from "../src/registry.ts";
 import {
   buildOpenAPIDocument,
@@ -57,6 +60,32 @@ describe("toOpenAPIOperation", () => {
     const op = toOpenAPIOperation({ validate: { body: z.object({ name: z.string() }) } });
     expect(op.requestBody?.content["application/json"]?.schema).toMatchObject({ type: "object" });
     expect(op.requestBody?.required).toBe(true);
+  });
+
+  it("documents a request body as its input shape and a response as its output shape", () => {
+    // `.transform()` input is the pre-transform `string`; zod's output object is strict
+    // (`additionalProperties: false`). The two markers pin request→input vs response→output.
+    const schema = z.object({ raw: z.string().transform((v) => v.length) });
+    const op = toOpenAPIOperation({ validate: { body: schema, response: schema } });
+
+    const reqSchema = op.requestBody?.content["application/json"]?.schema;
+    expect(reqSchema).toMatchObject({ properties: { raw: { type: "string" } } });
+    expect(reqSchema).not.toHaveProperty("additionalProperties");
+
+    expect(op.responses?.["200"]?.content?.["application/json"]?.schema).toMatchObject({
+      additionalProperties: false,
+    });
+  });
+
+  it("documents a valibot coercing param (via toStandardJsonSchema) as its input `string`", () => {
+    // The common valibot case: `pipe(string, toNumber)`. Its `input` is `string` (URL text);
+    // its `output` (number) isn't representable and would degrade — request-side must use `input`.
+    const params = toStandardJsonSchema(
+      v.object({ id: v.pipe(v.string(), v.toNumber()) })
+    ) as SchemaWithJSON;
+    expect(schemaToParameters(params, { in: "path" })).toEqual([
+      { name: "id", in: "path", required: true, schema: { type: "string" } },
+    ]);
   });
 
   it("emits one content entry per media type for a body map", () => {
