@@ -86,7 +86,7 @@ interface RuntimeOptions {
   params?: Record<string, unknown>;
   query?: Record<string, unknown>;
   body?: unknown;
-  headers?: Record<string, string>;
+  headers?: Record<string, unknown>;
 }
 
 /** A fetch-compatible transport: the global `fetch`, or an `H3Typed` app's `request`, etc. */
@@ -120,7 +120,7 @@ export function createTypedFetch<Source>(
     let path = route;
     if (opts.params) {
       for (const [key, value] of Object.entries(opts.params)) {
-        const encoded = encodeURIComponent(String(value));
+        const encoded = encodeURIComponent(paramValue(value));
         path = path.replace(`**:${key}`, encoded).replace(`:${key}`, encoded);
       }
     }
@@ -129,7 +129,12 @@ export function createTypedFetch<Source>(
     if (opts.query) {
       const search = new URLSearchParams();
       for (const [key, value] of Object.entries(opts.query)) {
-        if (value !== undefined && value !== null) search.set(key, String(value));
+        if (value === undefined || value === null) continue;
+        if (Array.isArray(value)) {
+          for (const item of value) search.append(key, paramValue(item));
+        } else {
+          search.append(key, paramValue(value));
+        }
       }
       const qs = search.toString();
       if (qs) url += (url.includes("?") ? "&" : "?") + qs;
@@ -137,7 +142,10 @@ export function createTypedFetch<Source>(
 
     const headers = new Headers(baseHeaders);
     if (opts.headers) {
-      for (const [key, value] of Object.entries(opts.headers)) headers.set(key, value);
+      for (const [key, value] of Object.entries(opts.headers)) {
+        if (value === undefined || value === null) continue;
+        headers.set(key, paramValue(value));
+      }
     }
     const init: RequestInit = { method: opts.method.toUpperCase(), headers };
     if (opts.body !== undefined) {
@@ -150,4 +158,19 @@ export function createTypedFetch<Source>(
 
   // The dynamic impl can't be statically proven against the precise generic — the one boundary cast.
   return run as TypedFetch<Source>;
+}
+
+function paramValue(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  switch (typeof value) {
+    case "string":
+      return value;
+    case "number":
+    case "bigint":
+    case "boolean":
+      return String(value);
+  }
+  throw new TypeError(
+    `cannot serialize ${value === null ? "null" : typeof value} as a URL parameter`,
+  );
 }

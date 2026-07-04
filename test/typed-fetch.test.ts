@@ -207,3 +207,77 @@ describe("createTypedFetch — runtime over a real app's request", () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 });
+
+describe("createTypedFetch — request serialization round-trips through a real app", () => {
+  const echo = defineRoute({
+    route: "/echo/:id",
+    params: z.object({ id: z.coerce.number() }),
+    get: {
+      validate: {
+        query: z.object({
+          s: z.string().optional(),
+          n: z.coerce.number().optional(),
+          flag: z.coerce.boolean().optional(),
+          since: z.coerce.date().optional(),
+          tags: z.array(z.string()).optional(),
+          ids: z.array(z.coerce.number()).optional(),
+        }),
+      },
+      handler: (event) => ({ id: event.context.params.id, query: event.context.query }),
+    },
+  });
+  const echoApp = new H3Typed().register(echo);
+  const api = createTypedFetch<typeof echoApp>({ fetch: echoApp.request });
+  const read = (res: TypedResponse<unknown>) =>
+    res.json() as Promise<{ id: number; query: Record<string, unknown> }>;
+
+  it("coerces a numeric path param", async () => {
+    const res = await api("/echo/:id", { method: "get", params: { id: 42 } });
+    expect((await read(res)).id).toBe(42);
+  });
+
+  it("round-trips scalars (string, number, boolean)", async () => {
+    const res = await api("/echo/:id", {
+      method: "get",
+      params: { id: 1 },
+      query: { s: "a b", n: 5, flag: true },
+    });
+    expect((await read(res)).query).toEqual({ s: "a b", n: 5, flag: true });
+  });
+
+  it("round-trips a Date as bare ISO into coerce.date", async () => {
+    const res = await api("/echo/:id", {
+      method: "get",
+      params: { id: 1 },
+      query: { since: new Date("2026-07-04T00:00:00.000Z") },
+    });
+    expect((await read(res)).query.since).toBe("2026-07-04T00:00:00.000Z");
+  });
+
+  it("round-trips arrays as repeated params", async () => {
+    const res = await api("/echo/:id", {
+      method: "get",
+      params: { id: 1 },
+      query: { tags: ["a", "b"], ids: [1, 2] },
+    });
+    expect((await read(res)).query).toEqual({ tags: ["a", "b"], ids: [1, 2] });
+  });
+
+  it("omits an undefined query value and an empty array", async () => {
+    const res = await api("/echo/:id", {
+      method: "get",
+      params: { id: 1 },
+      query: { s: undefined, tags: [] },
+    });
+    expect((await read(res)).query).toEqual({});
+  });
+
+  it("throws a TypeError on a non-serializable object value", async () => {
+    const call = api("/echo/:id", {
+      method: "get",
+      params: { id: 1 },
+      query: { s: { nested: true } as unknown as string },
+    });
+    await expect(call).rejects.toThrow(TypeError);
+  });
+});
