@@ -104,7 +104,7 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "10.33.1",
+      "version": "11.9.0",
       "onFail": "download"
     },
     "runtime": {
@@ -112,5 +112,6 @@
       "version": ">=24.17",
       "onFail": "error"
     }
-  }
+  },
+  "packageManager": "pnpm@11.9.0"
 }

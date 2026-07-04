@@ -3,4 +3,9 @@ packages:
   - playgrounds/*
   - test/fixtures/nitro-app
 
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  simple-git-hooks: true
+
 ignoreWorkspaceRootCheck: true
