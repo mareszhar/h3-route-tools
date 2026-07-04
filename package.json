@@ -50,6 +50,7 @@
   },
   "scripts": {
     "build": "obuild",
+    "stub": "obuild --stub",
     "dev:h3": "pnpm -F playground-h3 dev",
     "dev:vue": "pnpm -F playground-nitro-vue dev",
     "dev:prepare": "obuild --stub && pnpm simple-git-hooks",
@@ -57,7 +58,6 @@
     "fmt": "oxlint --fix . && oxfmt .",
     "prepack": "pnpm build",
     "release": "pnpm test && pnpm prepack && changelogen --release --push",
-    "stub": "obuild --stub",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsgo --noEmit",
@@ -72,7 +72,6 @@
     "@vitest/coverage-v8": "^4.1.7",
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
-    "nano-staged": "^1.0.2",
     "nitro": "^3.0.260610-beta",
     "obuild": "^0.4.36",
     "oxfmt": "^0.55.0",
@@ -101,12 +100,18 @@
     "h3-route-tools": "link:."
   },
   "simple-git-hooks": {
-    "pre-commit": "./node_modules/.bin/nano-staged"
+    "pre-commit": "pnpm stub && pnpm lint && pnpm typecheck"
   },
-  "nano-staged": {
-    "*.{js,ts,mjs,cjs,json,yml,md}": [
-      "pnpm run fmt"
-    ]
-  },
-  "packageManager": "pnpm@10.33.1"
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "10.33.1",
+      "onFail": "download"
+    },
+    "runtime": {
+      "name": "node",
+      "version": ">=24.17",
+      "onFail": "error"
+    }
+  }
 }
