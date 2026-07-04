@@ -3,6 +3,7 @@ export {
   defineValidatedHandler,
   defineRoute,
   mountRouteHandler,
+  documentableFromValidated,
 } from "./route-handler.ts";
 export type {
   RouteHandler,
@@ -24,6 +25,8 @@ export type {
   RoutePlugin,
   RouteRecord,
   MethodsRecord,
+  SingleMethodRecord,
+  MethodEndpoint,
   Endpoint,
   CallableMethod,
   BodylessMethod,

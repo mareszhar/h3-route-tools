@@ -535,6 +535,17 @@ export interface Endpoint<V extends AnyMethodValidate, P extends SchemaWithJSON 
   response: InferMethodResponse<V>;
 }
 
+/** {@link Endpoint} for method `M`: `head` drops `body`+`response`, other bodyless methods drop `body`. */
+export type MethodEndpoint<
+  M extends CallableMethod,
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+> = M extends "head"
+  ? Omit<Endpoint<V, P>, "body" | "response">
+  : M extends BodylessMethod
+    ? Omit<Endpoint<V, P>, "body">
+    : Endpoint<V, P>;
+
 /** Per-method validate types keyed by method, used to extract each declared method's {@link Endpoint}. */
 interface MethodValidates<
   Get extends AnyMethodValidate,
@@ -576,21 +587,20 @@ export type MethodsRecord<
   Trace extends AnyMethodValidate,
   Connect extends AnyMethodValidate,
 > = {
-  [M in CallableMethod as M extends K ? M : never]: M extends "head"
-    ? Omit<
-        Endpoint<MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M], P>,
-        "body" | "response"
-      >
-    : M extends BodylessMethod
-      ? Omit<
-          Endpoint<
-            MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
-            P
-          >,
-          "body"
-        >
-      : Endpoint<MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M], P>;
+  [M in CallableMethod as M extends K ? M : never]: MethodEndpoint<
+    M,
+    MethodValidates<Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>[M],
+    P
+  >;
 };
+
+/** One method's typed-routes contribution: `{ [route]: { [method]: Endpoint } }` — for `H3Typed.get`/`.post`/… */
+export type SingleMethodRecord<
+  R extends string,
+  M extends CallableMethod,
+  V extends AnyMethodValidate,
+  P extends SchemaWithJSON | undefined,
+> = { [Route in R]: { [K in M]: MethodEndpoint<K, V, P> } };
 
 /**
  * The typed-routes contribution of a single `defineRoute`: `{ [route]: { [declaredMethod]: Endpoint } }`
@@ -648,6 +658,20 @@ export function mountRouteHandler(h3: H3, route: string, handler: MountableRoute
     if (isRuntimeMethod(Reflect.get(def, method))) h3.on(method, route, handler, opts);
   }
   h3.all(route, handler, opts);
+}
+
+/**
+ * Project a {@link ValidatedHandler} (method-agnostic) into a single-method {@link DocumentableRouteHandler}
+ * for OpenAPI — the `method` comes from the mount (an `H3Typed.get` call, a nitro filename).
+ */
+export function documentableFromValidated(
+  handler: ValidatedHandler,
+  method: RouteMethod
+): DocumentableRouteHandler {
+  const def = handler["~validatedDef"];
+  const routeDef: DocumentableRouteDef = { params: def.params, meta: def.meta };
+  routeDef[method] = { validate: def.validate, stream: def.stream, meta: def.meta };
+  return { "~routeDef": routeDef, "~options": handler["~options"] };
 }
 
 /**

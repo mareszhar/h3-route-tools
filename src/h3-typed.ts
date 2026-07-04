@@ -1,20 +1,48 @@
-import { type H3Config, type H3Plugin, H3 } from "h3";
+import {
+  type H3Config,
+  type H3Plugin,
+  type HTTPHandler,
+  type HTTPMethod,
+  type RouteOptions,
+  H3,
+} from "h3";
 
 import {
   type AnyMethodValidate,
+  type InferMethodResponse,
   type MethodValidate,
   type RouteHandlerInput,
   type ResponseRecord,
   type RouteHandlerOptions,
   type RouteRecord,
   type RoutePlugin,
+  type SingleMethodRecord,
+  type ValidatedHandlerDef,
   defineRouteHandler,
+  defineValidatedHandler,
   mountRouteHandler,
 } from "./route-handler.ts";
 import type { OnValidationError, SchemaWithJSON } from "./internal/types.ts";
 import type { InferRouteTypes, MergePair } from "./routes.ts";
 import type { Prettify } from "./internal/types.ts";
 import { defineOpenAPI, type OpenAPIPluginOptions } from "./define-openapi.ts";
+
+/** Loose {@link ValidatedHandlerDef} for the per-method overloads' runtime signature. */
+type AnyValidatedDef = ValidatedHandlerDef<AnyMethodValidate, SchemaWithJSON | undefined>;
+
+/** The 2nd arg of `H3Typed.get`/`.post`/…: an h3 handler (plain) or a validated def (typed). */
+type MethodInput = HTTPHandler | AnyValidatedDef;
+
+/** A validated def (object with a `handler` fn) vs an h3 handler / `{ fetch }` / sub-app (which carries `fetch`). */
+function isValidatedDef(x: MethodInput): x is AnyValidatedDef {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    "handler" in x &&
+    typeof x.handler === "function" &&
+    !("fetch" in x)
+  );
+}
 
 /** {@link H3} config plus an optional `openapi` block that serves the generated document. */
 export interface H3TypedConfig extends H3Config {
@@ -116,6 +144,175 @@ export class H3Typed<Routes = {}> extends H3 {
       options
     );
     mountRouteHandler(this, route, handler);
+    return this;
+  }
+
+  /**
+   * Register one method. A **function** is plain h3 (returns `this`, untyped). A **validated def**
+   * (`{ params?, validate?, handler, … }`) is wrapped via `defineValidatedHandler`, mounted, and its
+   * route type recorded for `InferRoutes<typeof app>`.
+   *
+   * @example
+   * app.get("/users/:id", {
+   *   params: z.object({ id: z.coerce.number() }),
+   *   validate: { response: User },
+   *   handler: (e) => getUser(e.context.params.id),
+   * })
+   */
+  override get(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override get<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "get", V, P>>>>;
+  override get(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("GET", route, handlerOrDef, options);
+  }
+
+  /** Register a POST route — validated def → typed + validated, function → plain h3. See {@link get}. */
+  override post(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override post<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "post", V, P>>>>;
+  override post(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("POST", route, handlerOrDef, options);
+  }
+
+  /** Register a PUT route — validated def → typed + validated, function → plain h3. See {@link get}. */
+  override put(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override put<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "put", V, P>>>>;
+  override put(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("PUT", route, handlerOrDef, options);
+  }
+
+  /** Register a PATCH route — validated def → typed + validated, function → plain h3. See {@link get}. */
+  override patch(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override patch<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "patch", V, P>>>>;
+  override patch(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("PATCH", route, handlerOrDef, options);
+  }
+
+  /** Register a DELETE route — validated def → typed + validated, function → plain h3. See {@link get}. */
+  override delete(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override delete<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "delete", V, P>>>>;
+  override delete(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("DELETE", route, handlerOrDef, options);
+  }
+
+  /** Register a HEAD route — validated def → typed + validated, function → plain h3. See {@link get}. */
+  override head(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override head<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "head", V, P>>>>;
+  override head(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("HEAD", route, handlerOrDef, options);
+  }
+
+  /** Register an OPTIONS route — validated def → typed + validated, function → plain h3. See {@link get}. */
+  override options(route: string, handler: HTTPHandler, opts?: RouteOptions): this;
+  override options<
+    R extends string,
+    P extends SchemaWithJSON | undefined = undefined,
+    V extends AnyMethodValidate = MethodValidate,
+    const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+  >(
+    route: R,
+    def: ValidatedHandlerDef<V, P, RH>,
+    options?: RouteHandlerOptions
+  ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "options", V, P>>>>;
+  override options(
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    return this.#mount("OPTIONS", route, handlerOrDef, options);
+  }
+
+  #mount(
+    method: HTTPMethod,
+    route: string,
+    handlerOrDef: MethodInput,
+    options?: RouteOptions | RouteHandlerOptions
+  ): this {
+    if (isValidatedDef(handlerOrDef)) {
+      const def = {
+        ...handlerOrDef,
+        onValidationError: handlerOrDef.onValidationError ?? this.#onValidationError,
+      };
+      super.on(method, route, defineValidatedHandler(def, options as RouteHandlerOptions));
+    } else {
+      super.on(method, route, handlerOrDef, options as RouteOptions);
+    }
     return this;
   }
 }

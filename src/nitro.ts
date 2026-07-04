@@ -2,8 +2,10 @@ import { join, resolve } from "node:path";
 import type { NitroModule, NitroTypes, Serialize, Simplify } from "nitro/types";
 import {
   buildOpenAPIDocument,
+  documentableFromValidated,
   type RegisteredRoute,
   type RouteHandler,
+  type RouteMethod,
   type ValidatedHandler,
 } from "h3-route-tools";
 
@@ -255,24 +257,11 @@ export async function buildOpenAPIOverlay(
           registered.push({ route: routePath, handler: d });
         }
       } else if (d?.["~validatedDef"] && methodKey !== "default") {
-        // A defineValidatedHandler documents only when its method is known (a locked filename); its
-        // contract, keyed to that method, becomes a single-method path item. A non-method file (`default`)
-        // is skipped — bare minimum, warned during type generation.
-        const vdef = d["~validatedDef"];
+        // A defineValidatedHandler documents only when its method is known (a locked filename); a
+        // non-method file (`default`) is skipped — bare minimum, warned during type generation.
         registered.push({
           route: routePath,
-          handler: {
-            "~routeDef": {
-              params: vdef.params,
-              meta: vdef.meta,
-              [methodKey.toLowerCase()]: {
-                validate: vdef.validate,
-                stream: vdef.stream,
-                meta: vdef.meta,
-              },
-            },
-            "~options": d["~options"],
-          },
+          handler: documentableFromValidated(d, methodKey.toLowerCase() as RouteMethod),
         });
       }
     }

@@ -179,6 +179,81 @@ describe("H3Typed — openapi config serves a document built from the chained ro
   });
 });
 
+describe("H3Typed.get/.post/… — object def: validated, typed, documented", () => {
+  function makeUsers() {
+    return new H3Typed()
+      .get("/users/:id", {
+        params: z.object({ id: z.coerce.number() }),
+        validate: { response: z.object({ id: z.number(), name: z.string() }) },
+        handler: (e) => ({ id: e.context.params.id, name: "Ada" }),
+      })
+      .post("/users/:id", {
+        params: z.object({ id: z.coerce.number() }),
+        validate: { body: z.object({ name: z.string() }), response: z.object({ ok: z.boolean() }) },
+        handler: async (e) => ({ ok: (await e.req.json()).name.length > 0 }),
+      });
+  }
+
+  it("records each method's endpoint into InferRoutes", () => {
+    type App = InferRoutes<ReturnType<typeof makeUsers>>;
+    expectTypeOf<keyof App>().toEqualTypeOf<"/users/:id">();
+    expectTypeOf<keyof App["/users/:id"]>().toEqualTypeOf<"get" | "post">();
+    expectTypeOf<App["/users/:id"]["get"]["params"]>().toEqualTypeOf<{ id: number }>();
+    expectTypeOf<App["/users/:id"]["get"]["response"]>().toEqualTypeOf<{
+      id: number;
+      name: string;
+    }>();
+    expectTypeOf<App["/users/:id"]["post"]["body"]>().toEqualTypeOf<{ name: string }>();
+  });
+
+  it("validates + serves both methods on the path", async () => {
+    const app = makeUsers();
+    expect(await (await app.request("/users/7")).json()).toEqual({ id: 7, name: "Ada" });
+    expect((await app.request("/users/abc")).status).toBe(400);
+
+    const post = await app.request("/users/1", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "x" }),
+    });
+    expect(await post.json()).toEqual({ ok: true });
+  });
+
+  it("feeds the OpenAPI document from the contract", async () => {
+    const app = new H3Typed({ openapi: { info: { title: "T", version: "1.0.0" } } }).get(
+      "/status/:id",
+      {
+        params: z.object({ id: z.coerce.number() }),
+        validate: { response: z.object({ id: z.number() }) },
+        handler: (e) => ({ id: e.context.params.id }),
+      }
+    );
+    const doc = await (await app.request("/openapi.json")).json();
+    expect(doc.paths["/status/{id}"].get.responses["200"].content).toBeDefined();
+  });
+});
+
+describe("H3Typed.get/.post/… — function form stays plain h3", () => {
+  it("serves a raw handler and records nothing into the typed map", async () => {
+    const app = new H3Typed().get("/raw", () => "hi");
+    expect(await (await app.request("/raw")).text()).toBe("hi");
+    expectTypeOf<keyof InferRoutes<typeof app>>().toEqualTypeOf<never>();
+  });
+
+  it("applies the app-level onValidationError to a method def", async () => {
+    const app = new H3Typed({ onValidationError: () => ({ status: 422 }) }).post("/u", {
+      validate: { body: z.object({ name: z.string() }) },
+      handler: async (e) => await e.req.json(),
+    });
+    const res = await app.request("/u", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: 42 }),
+    });
+    expect(res.status).toBe(422);
+  });
+});
+
 describe("H3Typed.route — preserves inline response literals (no `as const`)", () => {
   it("enum literal and array return need no cast", () => {
     new H3Typed().route({
