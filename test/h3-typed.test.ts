@@ -226,7 +226,7 @@ describe("H3Typed.get/.post/… — object def: validated, typed, documented", (
         params: z.object({ id: z.coerce.number() }),
         validate: { response: z.object({ id: z.number() }) },
         handler: (e) => ({ id: e.context.params.id }),
-      }
+      },
     );
     const doc = await (await app.request("/openapi.json")).json();
     expect(doc.paths["/status/{id}"].get.responses["200"].content).toBeDefined();
@@ -255,6 +255,7 @@ describe("H3Typed.get/.post/… — function form stays plain h3", () => {
 });
 
 describe("H3Typed.route — preserves inline response literals (no `as const`)", () => {
+  // oxlint-disable-next-line vitest/expect-expect
   it("enum literal and array return need no cast", () => {
     new H3Typed().route({
       route: "/x",

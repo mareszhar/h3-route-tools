@@ -118,7 +118,7 @@ export type MethodHandler<
   P extends SchemaWithJSON | undefined,
   RH = InferMethodResponse<V>,
 > = (
-  event: MethodEvent<V, P>
+  event: MethodEvent<V, P>,
 ) =>
   | (RH & ConstResponse<InferMethodResponse<V>>)
   | Promise<RH & ConstResponse<InferMethodResponse<V>>>;
@@ -446,7 +446,7 @@ export function defineRouteHandler<
 >(
   def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, R> &
     Record<K, unknown>,
-  options: RouteHandlerOptions = {}
+  options: RouteHandlerOptions = {},
 ): RouteHandler<
   RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, R>,
   MethodsRecord<K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>
@@ -488,7 +488,7 @@ export function defineValidatedHandler<
   const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
 >(
   def: ValidatedHandlerDef<V, P, RH>,
-  options: RouteHandlerOptions = {}
+  options: RouteHandlerOptions = {},
 ): ValidatedHandler<ValidatedHandlerDef<V, P, RH>, Endpoint<V, P>> {
   const entry: RuntimeMethod = {
     validate: def.validate,
@@ -683,7 +683,7 @@ export function defineRoute<
   def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, RR> & {
     route: R;
   } & Record<K, unknown>,
-  options: RouteHandlerOptions = {}
+  options: RouteHandlerOptions = {},
 ): RoutePlugin<RouteRecord<R, K, P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect>> {
   const { route, ...rest } = def;
   const handler = defineRouteHandler(rest, options);
@@ -696,7 +696,7 @@ function makeDispatcher(
   methods: RuntimeMethods,
   options: RouteHandlerOptions,
   meta: H3RouteMeta | undefined,
-  onValidationError: OnValidationError | undefined
+  onValidationError: OnValidationError | undefined,
 ): EventHandlerWithFetch {
   return defineHandler({
     meta,
@@ -727,7 +727,7 @@ function makeDispatcher(
         entry,
         params,
         entry.onValidationError ?? onValidationError,
-        options.decode
+        options.decode,
       );
 
       // HEAD: the GET path ran for side effects/headers; the body is omitted.
@@ -746,7 +746,7 @@ async function runValidatedHandler(
   entry: RuntimeMethod,
   params: SchemaWithJSON | undefined,
   onValidationError: OnValidationError | undefined,
-  decode: boolean | undefined
+  decode: boolean | undefined,
 ): Promise<unknown> {
   await runRequestValidation(
     event,
@@ -754,7 +754,7 @@ async function runValidatedHandler(
     entry.validate,
     entry.stream,
     onValidationError,
-    decode
+    decode,
   );
   Reflect.set(event, "validated", makeValidatedView(event));
 
@@ -768,7 +768,7 @@ async function runValidatedHandler(
     entry.stream?.response,
     event.res.status,
     event,
-    onValidationError
+    onValidationError,
   );
 }
 
@@ -783,7 +783,7 @@ async function runRequestValidation(
   validate: AnyMethodValidate | undefined,
   stream: MethodStream | undefined,
   onValidationError: OnValidationError | undefined,
-  decode: boolean | undefined
+  decode: boolean | undefined,
 ): Promise<void> {
   const mk = (source: ValidateSource) => resolveOnError(source, event, onValidationError);
 
@@ -806,7 +806,7 @@ async function runRequestValidation(
     const req = validateBody(
       event.req,
       { body: validate?.body, stream: stream?.body },
-      { onError: mk("body") }
+      { onError: mk("body") },
     );
     Reflect.set(event, "req", req);
   }
@@ -873,8 +873,8 @@ function runResponseValidation(
   streamResponse: ResponseStreamMap | undefined,
   status: number | undefined,
   event: H3Event,
-  onValidationError: OnValidationError | undefined
-): Promise<unknown> | unknown {
+  onValidationError: OnValidationError | undefined,
+): unknown {
   const code = status ?? 200;
 
   // A status declared under `stream.response` is doc-only — never value-validated.
@@ -913,7 +913,7 @@ function isStreamLike(value: unknown): boolean {
  */
 function resolveResponseSchema(
   response: ResponseValidation,
-  status: number | undefined
+  status: number | undefined,
 ): SchemaWithJSON | undefined {
   if (isSchema(response)) return response;
   const code = status ?? 200;

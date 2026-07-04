@@ -28,7 +28,7 @@ export interface DefineSchemaOptions {
  */
 export function defineSchema<I, O>(
   schema: StandardSchemaV1<I, O>,
-  options: DefineSchemaOptions = {}
+  options: DefineSchemaOptions = {},
 ): StandardSchemaV1<I, O> & StandardJSONSchemaV1<I, O> {
   const inner = schema["~standard"];
   const innerJSON = (inner as Partial<StandardJSONSchemaV1<I, O>["~standard"]>).jsonSchema;

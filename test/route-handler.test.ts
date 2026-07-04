@@ -1,3 +1,5 @@
+// oxlint-disable vitest/expect-expect
+
 import { describe, it, expectTypeOf } from "vitest";
 import { z } from "zod";
 

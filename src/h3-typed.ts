@@ -89,7 +89,7 @@ export class H3Typed<Routes = {}> extends H3 {
    * @example app.register(defineRoute({ route: "/health", get: { handler: () => "ok" } }))
    */
   override register<P extends RoutePlugin>(
-    plugin: P
+    plugin: P,
   ): H3Typed<Prettify<MergePair<Routes, InferRouteTypes<P>>>>;
   override register(plugin: H3Plugin): this;
   override register(plugin: H3Plugin): this {
@@ -129,7 +129,7 @@ export class H3Typed<Routes = {}> extends H3 {
     def: RouteHandlerInput<P, Get, Put, Post, Del, Options, Head, Patch, Trace, Connect, RR> & {
       route: R;
     } & Record<K, unknown>,
-    options: RouteHandlerOptions = {}
+    options: RouteHandlerOptions = {},
   ): H3Typed<
     Prettify<
       MergePair<
@@ -141,7 +141,7 @@ export class H3Typed<Routes = {}> extends H3 {
     const { route, ...rest } = def;
     const handler = defineRouteHandler(
       { ...rest, onValidationError: rest.onValidationError ?? this.#onValidationError },
-      options
+      options,
     );
     mountRouteHandler(this, route, handler);
     return this;
@@ -168,12 +168,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "get", V, P>>>>;
   override get(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("GET", route, handlerOrDef, options);
   }
@@ -188,12 +188,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "post", V, P>>>>;
   override post(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("POST", route, handlerOrDef, options);
   }
@@ -208,12 +208,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "put", V, P>>>>;
   override put(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("PUT", route, handlerOrDef, options);
   }
@@ -228,12 +228,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "patch", V, P>>>>;
   override patch(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("PATCH", route, handlerOrDef, options);
   }
@@ -248,12 +248,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "delete", V, P>>>>;
   override delete(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("DELETE", route, handlerOrDef, options);
   }
@@ -268,12 +268,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "head", V, P>>>>;
   override head(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("HEAD", route, handlerOrDef, options);
   }
@@ -288,12 +288,12 @@ export class H3Typed<Routes = {}> extends H3 {
   >(
     route: R,
     def: ValidatedHandlerDef<V, P, RH>,
-    options?: RouteHandlerOptions
+    options?: RouteHandlerOptions,
   ): H3Typed<Prettify<MergePair<Routes, SingleMethodRecord<R, "options", V, P>>>>;
   override options(
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     return this.#mount("OPTIONS", route, handlerOrDef, options);
   }
@@ -302,7 +302,7 @@ export class H3Typed<Routes = {}> extends H3 {
     method: HTTPMethod,
     route: string,
     handlerOrDef: MethodInput,
-    options?: RouteOptions | RouteHandlerOptions
+    options?: RouteOptions | RouteHandlerOptions,
   ): this {
     if (isValidatedDef(handlerOrDef)) {
       const def = {

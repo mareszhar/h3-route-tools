@@ -19,10 +19,10 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
   it("emits per-method NitroMethodsOf entries for our multi-method route", () => {
     expect(dts).toContain(`'get': import("h3-route-tools/nitro").NitroMethodsOf<${POSTS}>['get']`);
     expect(dts).toContain(
-      `'post': import("h3-route-tools/nitro").NitroMethodsOf<${POSTS}>['post']`
+      `'post': import("h3-route-tools/nitro").NitroMethodsOf<${POSTS}>['post']`,
     );
     expect(dts).toContain(
-      `'delete': import("h3-route-tools/nitro").NitroMethodsOf<${POSTS}>['delete']`
+      `'delete': import("h3-route-tools/nitro").NitroMethodsOf<${POSTS}>['delete']`,
     );
   });
 
@@ -33,12 +33,13 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
   it("types a method-locked defineValidatedHandler from its response", () => {
     // `status.get.ts` → nitro locks it to GET; extendRouteTypes retypes it from the handler's response.
     expect(dts).toMatch(
-      /'get': import\("h3-route-tools\/nitro"\)\.NitroMethodsOf<typeof import\('[^']*status[^']*'\)\.default>\['get'\]/
+      /'get': import\("h3-route-tools\/nitro"\)\.NitroMethodsOf<typeof import\('[^']*status[^']*'\)\.default>\['get'\]/,
     );
   });
 
   // Unbiased: typecheck a transient file that uses nitro's OWN `$Fetch` over the real augmentation. A
   // wrong / `any` / missing-method augmentation makes tsgo fail (the `@ts-expect-error` guards `any`).
+  // oxlint-disable-next-line vitest/expect-expect
   it("types nitro's $fetch from our route contracts", () => {
     const checkFile = resolve(FIXTURE, ".fetch-check.ts");
     const checkTsconfig = resolve(FIXTURE, ".fetch-check.tsconfig.json");
@@ -63,7 +64,7 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
         `  // @ts-expect-error \`nope\` is not on the typed response (fails if the augmentation is \`any\`)`,
         `  return { nope: post.nope };`,
         `}`,
-      ].join("\n")
+      ].join("\n"),
     );
     writeFileSync(
       checkTsconfig,
@@ -71,7 +72,7 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
         extends: "nitro/tsconfig",
         compilerOptions: { types: [], noEmit: true },
         include: [".fetch-check.ts"],
-      })
+      }),
     );
     try {
       execFileSync(TSGO, ["-p", checkTsconfig], {
@@ -203,7 +204,7 @@ describe("nitro e2e — method-lock build check", () => {
         `  get: { validate: { response: v.object({ a: v.string() }) }, handler: () => ({ a: "x" }) },`,
         `  post: { validate: { response: v.object({ b: v.number() }) }, handler: () => ({ b: 1 }) },`,
         `});`,
-      ].join("\n")
+      ].join("\n"),
     );
     try {
       let error: { stdout?: Buffer; stderr?: Buffer } | undefined;

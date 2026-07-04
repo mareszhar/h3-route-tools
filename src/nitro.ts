@@ -115,7 +115,7 @@ export interface CollectedRouteHandler {
  */
 export async function collectRouteHandlers(
   routes: NitroTypes["routes"],
-  typesDir: string
+  typesDir: string,
 ): Promise<CollectedRouteHandler[]> {
   const collected: CollectedRouteHandler[] = [];
   for (const [routePath, methods] of Object.entries(routes)) {
@@ -159,7 +159,7 @@ export async function collectRouteHandlers(
  */
 export async function extendRouteTypes(
   routes: NitroTypes["routes"],
-  typesDir: string
+  typesDir: string,
 ): Promise<void> {
   const violations: string[] = [];
 
@@ -216,7 +216,7 @@ export async function extendRouteTypes(
 
   if (violations.length > 0) {
     throw new Error(
-      `[h3-route-tools] method-locked route file(s) declare unreachable methods:\n\n${violations.join("\n\n")}`
+      `[h3-route-tools] method-locked route file(s) declare unreachable methods:\n\n${violations.join("\n\n")}`,
     );
   }
 }
@@ -233,7 +233,7 @@ const NITRO_OPENAPI_BASE_ROUTE = "/_openapi.__h3rt-base.json";
  */
 export async function buildOpenAPIOverlay(
   routes: NitroTypes["routes"],
-  typesDir: string
+  typesDir: string,
 ): Promise<{ paths: Record<string, unknown>; schemas: Record<string, unknown> }> {
   const registered: RegisteredRoute[] = [];
   for (const [routePath, methods] of Object.entries(routes)) {
@@ -319,7 +319,7 @@ function overrideOpenAPI(nitro: Parameters<NitroModule["setup"]>[0], typesDir: s
   nitro.hooks.hook("build:before", () => {
     const route = nitro.options.openAPI?.route || "/_openapi.json";
     const nitroHandler = nitro.options.handlers.find(
-      (h) => h.route === route && String(h.handler).includes("internal/routes/openapi")
+      (h) => h.route === route && String(h.handler).includes("internal/routes/openapi"),
     );
     if (!nitroHandler) return;
     nitroHandler.route = NITRO_OPENAPI_BASE_ROUTE;

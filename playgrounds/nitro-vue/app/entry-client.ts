@@ -11,4 +11,4 @@ async function main() {
   app.mount("#root");
 }
 
-main();
+void main();

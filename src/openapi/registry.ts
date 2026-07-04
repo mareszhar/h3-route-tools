@@ -97,7 +97,7 @@ function isValidated(handler: unknown): handler is ValidatedHandler {
  */
 export function documentableFromValidated(
   handler: ValidatedHandler,
-  method: RouteMethod
+  method: RouteMethod,
 ): DocumentableRouteHandler {
   const def = handler["~validatedDef"];
   const routeDef: DocumentableRouteDef = { params: def.params, meta: def.meta };

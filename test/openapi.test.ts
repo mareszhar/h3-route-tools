@@ -38,10 +38,10 @@ describe("schemaToParameters", () => {
       in: "query",
     });
     expect(params).toContainEqual(
-      expect.objectContaining({ name: "limit", in: "query", required: true })
+      expect.objectContaining({ name: "limit", in: "query", required: true }),
     );
     expect(params).toContainEqual(
-      expect.objectContaining({ name: "q", in: "query", required: false })
+      expect.objectContaining({ name: "q", in: "query", required: false }),
     );
   });
 
@@ -81,7 +81,7 @@ describe("toOpenAPIOperation", () => {
     // The common valibot case: `pipe(string, toNumber)`. Its `input` is `string` (URL text);
     // its `output` (number) isn't representable and would degrade — request-side must use `input`.
     const params = toStandardJsonSchema(
-      v.object({ id: v.pipe(v.string(), v.toNumber()) })
+      v.object({ id: v.pipe(v.string(), v.toNumber()) }),
     ) as SchemaWithJSON;
     expect(schemaToParameters(params, { in: "path" })).toEqual([
       { name: "id", in: "path", required: true, schema: { type: "string" } },
@@ -218,7 +218,7 @@ describe("toOpenAPIOperation", () => {
       {
         validate: { body: z.object({ name: z.string() }), response: z.object({ ok: z.boolean() }) },
       },
-      { errors: false }
+      { errors: false },
     );
     expect(op.responses?.["400"]).toBeUndefined();
     expect(op.responses?.["500"]).toBeUndefined();
@@ -245,7 +245,7 @@ describe("toOpenAPIPathItem", () => {
     });
     const item = toOpenAPIPathItem(handler);
     expect(item.parameters).toContainEqual(
-      expect.objectContaining({ name: "id", in: "path", required: true })
+      expect.objectContaining({ name: "id", in: "path", required: true }),
     );
     expect(item.get).toBeDefined();
     expect(item.post?.requestBody).toBeDefined();
@@ -268,7 +268,7 @@ describe("toOpenAPIPathItem", () => {
 
   it("does not emit operations for head: false / options: false", () => {
     const item = toOpenAPIPathItem(
-      defineRouteHandler({ get: { handler: () => "g" }, head: false, options: false })
+      defineRouteHandler({ get: { handler: () => "g" }, head: false, options: false }),
     );
     expect(item.head).toBeUndefined();
     expect(item.options).toBeUndefined();
@@ -282,7 +282,7 @@ describe("toOpenAPIPathItem", () => {
           validate: { response: z.object({ ok: z.boolean() }) },
           handler: () => ({ ok: true }),
         },
-      })
+      }),
     );
     expect(item.options).toBeDefined();
     expect(item.options?.responses?.["200"]).toBeDefined();
@@ -335,7 +335,7 @@ describe("buildOpenAPIDocument", () => {
     const doc = buildOpenAPIDocument({ info, routes: routes({ route: "/users", handler }) });
     expect(doc.components?.schemas?.["ValidationError"]).toBeDefined();
     expect(
-      doc.paths["/users"]?.post?.responses?.["400"]?.content?.["application/json"]?.schema
+      doc.paths["/users"]?.post?.responses?.["400"]?.content?.["application/json"]?.schema,
     ).toEqual({ $ref: "#/components/schemas/ValidationError" });
   });
 

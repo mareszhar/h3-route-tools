@@ -75,6 +75,7 @@ describe("TypedFetch — typing over an H3Typed app source", () => {
     void check;
   });
 
+  // oxlint-disable-next-line vitest/expect-expect
   it("accepts the method in either case", () => {
     const check = async (api: TypedFetch<typeof app>) => {
       await api("/posts/:id", { method: "get", params: { id: 1 } });
@@ -97,6 +98,7 @@ describe("TypedFetch — typing over an H3Typed app source", () => {
     void check;
   });
 
+  // oxlint-disable-next-line vitest/expect-expect
   it("rejects an unknown route and an undeclared method", () => {
     const check = async (api: TypedFetch<typeof app>) => {
       // @ts-expect-error — /nope is not a route
@@ -107,6 +109,7 @@ describe("TypedFetch — typing over an H3Typed app source", () => {
     void check;
   });
 
+  // oxlint-disable-next-line vitest/expect-expect
   it("rejects a body on GET (RFC) and any excess option key", () => {
     const check = async (api: TypedFetch<typeof app>) => {
       // @ts-expect-error — GET takes no body
@@ -117,6 +120,7 @@ describe("TypedFetch — typing over an H3Typed app source", () => {
     void check;
   });
 
+  // oxlint-disable-next-line vitest/expect-expect
   it("rejects a mistyped body field", () => {
     const check = async (api: TypedFetch<typeof app>) => {
       await api("/posts/:id", {
@@ -167,7 +171,7 @@ describe("TypedFetch — response is typed as the wire shape, not the pre-serial
   it("the runtime value agrees: res.json().when is a string", async () => {
     const api = createTypedFetch<typeof datedApp>({ fetch: datedApp.request });
     const data = await api("/events/:id", { method: "get", params: { id: 1 } }).then((r) =>
-      r.json()
+      r.json(),
     );
     expect(typeof data.when).toBe("string");
     expect(data).toEqual({ id: 1, when: "1970-01-01T00:00:00.000Z" });

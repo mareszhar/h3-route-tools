@@ -61,7 +61,7 @@ describe("defineValidatedHandler — return stamp", () => {
         validate: { response: z.object({ id: z.number() }) },
         handler: (event) => ({ id: event.context.params.id }),
       },
-      { decode: true }
+      { decode: true },
     );
     expect(h["~validatedDef"].handler).toBeTypeOf("function");
     expect(h["~options"].decode).toBe(true);
@@ -84,7 +84,7 @@ describe("defineValidatedHandler — runtime", () => {
       defineValidatedHandler({
         params: z.object({ id: z.coerce.number() }),
         handler: (event) => ({ ctx: event.context.params.id, bag: event.validated.params.id }),
-      })
+      }),
     );
     expect(await (await app.request("/items/21")).json()).toEqual({ ctx: 21, bag: 21 });
     expect((await app.request("/items/abc")).status).toBe(400);
@@ -96,7 +96,7 @@ describe("defineValidatedHandler — runtime", () => {
       defineValidatedHandler({
         validate: { body: z.object({ name: z.string() }) },
         handler: async (event) => ({ received: (await event.req.json()).name }),
-      })
+      }),
     );
     const ok = await app.request("/users", {
       method: "POST",
@@ -120,7 +120,7 @@ describe("defineValidatedHandler — runtime", () => {
         validate: { response: z.object({ id: z.string() }) },
         // @ts-expect-error: deliberately wrong type to exercise the 500 path.
         handler: () => ({ id: 123 }),
-      })
+      }),
     );
     expect((await app.request("/broken")).status).toBe(500);
   });
@@ -141,7 +141,7 @@ describe("defineValidatedHandler — runtime", () => {
           calls.push("handler");
           return { limit: event.validated.query.limit };
         },
-      })
+      }),
     );
 
     // Valid: middleware then handler.
@@ -161,7 +161,7 @@ describe("defineValidatedHandler — runtime", () => {
         onValidationError: () => ({ status: 422, message: "Unprocessable" }),
         validate: { body: z.object({ name: z.string() }) },
         handler: async (event) => await event.req.json(),
-      })
+      }),
     );
     const res = await app.request("/custom", {
       method: "POST",
