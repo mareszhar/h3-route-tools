@@ -173,6 +173,26 @@ export interface RouteHandlerDef<
 }
 
 /**
+ * Definition for {@link defineValidatedHandler}: one method's validation slots (as in {@link PerMethodDef},
+ * minus the method-key nesting) plus route-level `params`/`middleware`. Method-agnostic — the handler
+ * serves whatever method it is mounted at and does not self-dispatch (no auto-HEAD/OPTIONS/405).
+ */
+export interface ValidatedHandlerDef<
+  V extends AnyMethodValidate = MethodValidate,
+  P extends SchemaWithJSON | undefined = SchemaWithJSON | undefined,
+  RH = InferMethodResponse<V>,
+> {
+  params?: P;
+  middleware?: Middleware[];
+  validate?: V;
+  stream?: MethodStream;
+  meta?: H3RouteMeta;
+  /** Shape the `HTTPError` thrown on this handler's validation failures. */
+  onValidationError?: OnValidationError;
+  handler: MethodHandler<V, P, RH>;
+}
+
+/**
  * Relaxes a type so a `const`-captured handler return (deeply `readonly`) still satisfies the schema's
  * mutable output: arrays/tuples become `readonly`, objects recurse, built-ins and functions pass through.
  */
@@ -275,6 +295,18 @@ export type RouteHandler<Def = RouteHandlerDef, Methods = unknown> = EventHandle
   readonly "~routeDef": Def;
   readonly "~options": RouteHandlerOptions;
   readonly "~inferMethods"?: Methods;
+};
+
+/**
+ * A validated `EventHandlerWithFetch` from {@link defineValidatedHandler}. Carries the method-agnostic
+ * contract (`~validatedDef`/`~options`) plus a **type-only** `~inferEndpoint` stamp — a single
+ * {@link Endpoint}, never present at runtime, keyed to a method by the mount (`H3Typed.get`, a nitro
+ * filename) since the handler itself is method-agnostic.
+ */
+export type ValidatedHandler<Def = ValidatedHandlerDef, E = unknown> = EventHandlerWithFetch & {
+  readonly "~validatedDef": Def;
+  readonly "~options": RouteHandlerOptions;
+  readonly "~inferEndpoint"?: E;
 };
 
 /** A method def projected for documentation — validation + meta, handler omitted. */
@@ -441,6 +473,45 @@ export function defineRouteHandler<
   };
   const dispatcher = makeDispatcher(def.params, methods, options, def.meta, def.onValidationError);
   return Object.assign(dispatcher, { "~routeDef": def, "~options": options });
+}
+
+/**
+ * Build a single-method, method-agnostic validated `EventHandlerWithFetch`. It runs the same pipeline as
+ * one method of {@link defineRouteHandler} — validate params/query/headers/body, expose the coerced data
+ * on `event.context`/`event.validated`, run `handler`, validate the response — but does **not**
+ * self-dispatch: mount it at one method (`app.get(route, h)`, a method-locked nitro file). Auto-HEAD/
+ * OPTIONS and 405 are owned by the mounting layer (`H3Typed`), not the handler. A lower-level primitive
+ * for simple routes or progressive migration; reach for `defineRouteHandler`/`defineRoute` for the full
+ * multi-method experience.
+ *
+ * @example
+ * export default defineValidatedHandler({
+ *   params: z.object({ id: z.coerce.number() }),
+ *   validate: { response: User },
+ *   handler: (event) => getUser(event.context.params.id),
+ * })
+ */
+export function defineValidatedHandler<
+  P extends SchemaWithJSON | undefined = undefined,
+  V extends AnyMethodValidate = MethodValidate,
+  const RH extends InferMethodResponse<V> = InferMethodResponse<V>,
+>(
+  def: ValidatedHandlerDef<V, P, RH>,
+  options: RouteHandlerOptions = {}
+): ValidatedHandler<ValidatedHandlerDef<V, P, RH>, Endpoint<V, P>> {
+  const entry: RuntimeMethod = {
+    validate: def.validate,
+    stream: def.stream,
+    meta: def.meta,
+    handler: def.handler,
+  };
+  const handler = defineHandler({
+    middleware: def.middleware,
+    meta: def.meta,
+    handler: (event: H3Event) =>
+      runValidatedHandler(event, entry, def.params, def.onValidationError, options.decode),
+  });
+  return Object.assign(handler, { "~validatedDef": def, "~options": options });
 }
 
 /**
@@ -650,33 +721,54 @@ function makeDispatcher(
 
       if (!isRuntimeMethod(entry)) return methodNotAllowed(computeAllow(event, methods));
 
-      await runRequestValidation(
+      const response = await runValidatedHandler(
         event,
+        entry,
         params,
-        entry.validate,
-        entry.stream,
         entry.onValidationError ?? onValidationError,
         options.decode
-      );
-      Reflect.set(event, "validated", makeValidatedView(event));
-
-      // @ts-expect-error: the event is request-validated at this point; its static type narrows
-      // context.params, req.body and `validated` beyond what h3's base H3Event proves here.
-      const result = await entry.handler(event);
-
-      const response = await runResponseValidation(
-        result,
-        entry.validate?.response,
-        entry.stream?.response,
-        event.res.status,
-        event,
-        entry.onValidationError ?? onValidationError
       );
 
       // HEAD: the GET path ran for side effects/headers; the body is omitted.
       return headRequest ? null : response;
     },
   });
+}
+
+/**
+ * Run one method's validation pipeline: coerce + validate the request, expose the `validated` view, invoke
+ * the handler, then validate its response. `onValidationError` is already resolved (route/app fallback
+ * applied by the caller). Shared by the multi-method dispatcher and {@link defineValidatedHandler}.
+ */
+async function runValidatedHandler(
+  event: H3Event,
+  entry: RuntimeMethod,
+  params: SchemaWithJSON | undefined,
+  onValidationError: OnValidationError | undefined,
+  decode: boolean | undefined
+): Promise<unknown> {
+  await runRequestValidation(
+    event,
+    params,
+    entry.validate,
+    entry.stream,
+    onValidationError,
+    decode
+  );
+  Reflect.set(event, "validated", makeValidatedView(event));
+
+  // @ts-expect-error: the event is request-validated at this point; its static type narrows
+  // context.{params,query,headers}, req.body and `validated` beyond what h3's base H3Event proves here.
+  const result = await entry.handler(event);
+
+  return runResponseValidation(
+    result,
+    entry.validate?.response,
+    entry.stream?.response,
+    event.res.status,
+    event,
+    onValidationError
+  );
 }
 
 /**

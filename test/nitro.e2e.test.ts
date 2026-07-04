@@ -30,6 +30,13 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
     expect(dts).not.toContain(`'default': Simplify<Serialize<Awaited<ReturnType<${POSTS}`);
   });
 
+  it("types a method-locked defineValidatedHandler from its response", () => {
+    // `status.get.ts` → nitro locks it to GET; extendRouteTypes retypes it from the handler's response.
+    expect(dts).toMatch(
+      /'get': import\("h3-route-tools\/nitro"\)\.NitroMethodsOf<typeof import\('[^']*status[^']*'\)\.default>\['get'\]/
+    );
+  });
+
   // Unbiased: typecheck a transient file that uses nitro's OWN `$Fetch` over the real augmentation. A
   // wrong / `any` / missing-method augmentation makes tsgo fail (the `@ts-expect-error` guards `any`).
   it("types nitro's $fetch from our route contracts", () => {
@@ -50,6 +57,9 @@ describe("nitro e2e — generated InternalApi + typed $fetch", () => {
         `  created.tagCount satisfies number;`,
         `  const health = await $fetch("/health");`,
         `  health.ok satisfies boolean;`,
+        `  const status = await $fetch("/status");`,
+        `  status.ok satisfies boolean;`,
+        `  status.service satisfies string;`,
         `  // @ts-expect-error \`nope\` is not on the typed response (fails if the augmentation is \`any\`)`,
         `  return { nope: post.nope };`,
         `}`,
@@ -137,6 +147,12 @@ describe("nitro e2e — runtime (built server serves our routes)", () => {
     expect(await (await fetch(`${base}/legacy`)).json()).toEqual({ legacy: true });
   });
 
+  it("GET /status — a method-locked defineValidatedHandler serves its route", async () => {
+    const res = await fetch(`${base}/status`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, service: "status" });
+  });
+
   // The module reroutes nitro's own OpenAPI handler and serves nitro's doc with our routes merged over it.
   describe("merged OpenAPI document at /_openapi.json", () => {
     it("enriches our routes from their contract (richer than nitro's bare entry)", async () => {
@@ -155,6 +171,11 @@ describe("nitro e2e — runtime (built server serves our routes)", () => {
       expect(doc.paths["/legacy"]).toBeDefined();
       // the internal route we reroute nitro's document to is not leaked into the result
       expect(doc.paths["/_openapi.__h3rt-base.json"]).toBeUndefined();
+    });
+
+    it("documents a method-locked defineValidatedHandler from its contract", async () => {
+      const doc = await (await fetch(`${base}/_openapi.json`)).json();
+      expect(doc.paths["/status"].get.responses["200"].content).toBeDefined();
     });
 
     it("reports `servers` from the real request origin (not the in-process sub-request)", async () => {

@@ -1,7 +1,14 @@
-export { defineRouteHandler, defineRoute, mountRouteHandler } from "./route-handler.ts";
+export {
+  defineRouteHandler,
+  defineValidatedHandler,
+  defineRoute,
+  mountRouteHandler,
+} from "./route-handler.ts";
 export type {
   RouteHandler,
   RouteHandlerDef,
+  ValidatedHandler,
+  ValidatedHandlerDef,
   RouteHandlerOptions,
   MountableRouteHandler,
   MethodValidate,

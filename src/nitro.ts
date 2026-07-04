@@ -1,14 +1,22 @@
 import { join, resolve } from "node:path";
 import type { NitroModule, NitroTypes, Serialize, Simplify } from "nitro/types";
-import { buildOpenAPIDocument, type RegisteredRoute, type RouteHandler } from "h3-route-tools";
+import {
+  buildOpenAPIDocument,
+  type RegisteredRoute,
+  type RouteHandler,
+  type ValidatedHandler,
+} from "h3-route-tools";
 
 /** Callable HTTP methods (mirrors the contract's `CallableMethod`; trace/connect are never fetchable). */
 const CALLABLE_METHODS = ["get", "head", "post", "put", "patch", "delete", "options"] as const;
 
 /**
- * The nitro `InternalApi` value for a route file whose `default` export is a {@link RouteHandler}: each
- * declared method maps to its response type, `Serialize`d the way it arrives over `$fetch` (e.g. `Date`
- * becomes `string`).
+ * The nitro `InternalApi` value for a route file whose `default` export is one of ours:
+ * - {@link RouteHandler} (multi-method): each declared method maps to its response type.
+ * - {@link ValidatedHandler} (single, method-agnostic): every method key — plus `default` for a
+ *   non-method file — maps to the one response type (the mount decides the method, not the handler).
+ *
+ * The response is `Serialize`d the way it arrives over `$fetch` (e.g. `Date` becomes `string`).
  */
 export type NitroMethodsOf<H> =
   H extends RouteHandler<infer _Def, infer Methods>
@@ -17,21 +25,36 @@ export type NitroMethodsOf<H> =
           Serialize<Methods[M] extends { response: infer R } ? R : unknown>
         >;
       }
-    : never;
+    : H extends ValidatedHandler<infer _VDef, infer E>
+      ? {
+          [M in (typeof CALLABLE_METHODS)[number] | "default"]: Simplify<
+            Serialize<E extends { response: infer R } ? R : unknown>
+          >;
+        }
+      : never;
 
 /** The `import('…')` specifier nitro put in a route's generated type string (relative to the types dir). */
 function routeImportSpecifier(typeStrings: string[] | undefined): string | undefined {
   return typeStrings?.[0]?.match(/import\('([^']+)'\)/)?.[1];
 }
 
-/** The route module's `~routeDef` if its `default` export is one of ours, else undefined (incl. import failures). */
-async function loadRouteDef(
-  spec: string,
-  typesDir: string
-): Promise<Record<string, unknown> | undefined> {
+/**
+ * A route module whose `default` export is one of ours, discriminated by which stamp it carries:
+ * `defineRouteHandler` (`~routeDef`, multi-method) or `defineValidatedHandler` (`~validatedDef`, single,
+ * method-agnostic). `def` is the stamp; `module` is the whole default export (for its `~options`).
+ */
+type HandlerMeta =
+  | { kind: "route"; def: Record<string, unknown>; module: Record<string, unknown> }
+  | { kind: "validated"; def: Record<string, unknown>; module: Record<string, unknown> };
+
+/** Load a route module's handler stamp if its `default` export is one of ours, else undefined (incl. import failures). */
+async function loadHandlerMeta(spec: string, typesDir: string): Promise<HandlerMeta | undefined> {
   try {
     const mod = await import(resolve(typesDir, `${spec}.ts`));
-    return mod.default?.["~routeDef"];
+    const d = mod.default;
+    if (d?.["~routeDef"]) return { kind: "route", def: d["~routeDef"], module: d };
+    if (d?.["~validatedDef"]) return { kind: "validated", def: d["~validatedDef"], module: d };
+    return undefined;
   } catch {
     return undefined;
   }
@@ -45,6 +68,15 @@ function declaredMethods(routeDef: Record<string, unknown>): string[] {
 /** The generated `InternalApi` type string for one method of one of our routes. */
 function methodType(spec: string, method: string): string {
   return `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('${spec}').default>['${method}']`;
+}
+
+/** Warns that a method-agnostic `defineValidatedHandler` in a non-method file gets only bare-minimum typing (no OpenAPI). */
+function nonMethodValidatedWarning(routePath: string, spec: string): string {
+  return [
+    `[h3-route-tools] "${routePath}" (${spec}.ts) default-exports a defineValidatedHandler in a non-method file.`,
+    `  It serves every method with one contract and is typed only by its response — no per-method precision, no OpenAPI operation.`,
+    `  For the full experience use a method-locked file (e.g. "${spec}.get.ts") or defineRouteHandler.`,
+  ].join("\n");
 }
 
 /** Diagnostic for a method-locked file (`x.get.ts`) whose handler declares methods nitro won't route. */
@@ -63,13 +95,18 @@ export interface CollectedRouteHandler {
   routePath: string;
   /** The route module's `import('…')` specifier, relative to `typesDir` (resolve to read the file). */
   importSpecifier: string;
-  /** The callable methods the handler declares (lowercase). */
+  /**
+   * The callable methods the handler serves (lowercase): a `defineRouteHandler`'s declared methods, a
+   * method-locked `defineValidatedHandler`'s single locked method, or `[]` for a non-method file (it
+   * serves every method).
+   */
   methods: string[];
 }
 
 /**
  * Read nitro's generated `routes` and return the route files whose `default` export is one of ours (a
- * `defineRouteHandler`), each with its `import('…')` specifier and declared methods. The building block
+ * `defineRouteHandler` or `defineValidatedHandler`), each with its `import('…')` specifier and methods.
+ * The building block
  * the module uses to type `$fetch`; exposed so an advanced consumer (a vite plugin, a Nuxt module, a
  * custom `types:extend` hook) can enumerate our routes and generate their own artifacts — e.g. a route
  * map type `{ [routePath]: typeof import('<importSpecifier>').default }` for a typed client. Routes that
@@ -83,15 +120,24 @@ export async function collectRouteHandlers(
   const collected: CollectedRouteHandler[] = [];
   for (const [routePath, methods] of Object.entries(routes)) {
     // A route entry references one module per method (method-locked files) or one `default` (catch-all).
-    const specifiers = new Set<string>();
-    for (const typeStrings of Object.values(methods)) {
+    const byImport = new Map<string, string[]>();
+    for (const [methodKey, typeStrings] of Object.entries(methods)) {
       const spec = routeImportSpecifier(typeStrings);
-      if (spec) specifiers.add(spec);
+      if (!spec) continue;
+      const meta = await loadHandlerMeta(spec, typesDir);
+      if (!meta) continue;
+      if (meta.kind === "route") {
+        // A defineRouteHandler self-describes its methods; read them once.
+        if (!byImport.has(spec)) byImport.set(spec, declaredMethods(meta.def));
+      } else {
+        // A defineValidatedHandler is method-agnostic: its method is the locked filename, or none for a
+        // non-method file (`default`, where it serves every method).
+        const derived = methodKey === "default" ? [] : [methodKey.toLowerCase()];
+        byImport.set(spec, [...(byImport.get(spec) ?? []), ...derived]);
+      }
     }
-    for (const importSpecifier of specifiers) {
-      const routeDef = await loadRouteDef(importSpecifier, typesDir);
-      if (!routeDef) continue;
-      collected.push({ routePath, importSpecifier, methods: declaredMethods(routeDef) });
+    for (const [importSpecifier, m] of byImport) {
+      collected.push({ routePath, importSpecifier, methods: m });
     }
   }
   return collected;
@@ -99,14 +145,17 @@ export async function collectRouteHandlers(
 
 /**
  * Rewrite the generated route types for our routes so nitro's `$fetch`/internal `fetch` is typed from the
- * handler contract via {@link NitroMethodsOf} instead of nitro's `ReturnType` of the self-dispatcher:
- * - catch-all files (`x.ts`, generated as a single `default` entry) become one entry per declared method;
- * - method-locked files (`x.get.ts`, generated as a single method entry) are typed from that method's
- *   contract, and validated to declare exactly that method — a multi-method or mismatched handler in a
- *   locked file would be silently unreachable, so it throws (failing `nitro prepare`/`build`).
+ * handler contract via {@link NitroMethodsOf} instead of nitro's `ReturnType`:
+ * - `defineRouteHandler` catch-all files (`x.ts`, one `default` entry) become one entry per declared
+ *   method; method-locked files (`x.get.ts`) are typed from that method's contract and validated to
+ *   declare exactly that method — a multi-method or mismatched handler in a locked file would be silently
+ *   unreachable, so it throws (failing `nitro prepare`/`build`).
+ * - `defineValidatedHandler` (method-agnostic) is typed from its single response — in a method-locked
+ *   file from that method (never a lock violation, it's inherently single-method), in a non-method file
+ *   from the `default` entry, with a warning (no per-method precision, no OpenAPI).
  *
- * `typesDir` is the base for each route's `import('…')` specifier. Routes that aren't ours (no `~routeDef`)
- * or whose module can't be imported are left untouched.
+ * `typesDir` is the base for each route's `import('…')` specifier. Routes that aren't ours or whose module
+ * can't be imported are left untouched.
  */
 export async function extendRouteTypes(
   routes: NitroTypes["routes"],
@@ -116,13 +165,21 @@ export async function extendRouteTypes(
 
   for (const [routePath, methods] of Object.entries(routes)) {
     if (methods.default) {
-      // Catch-all file: nitro generated one `default` entry from the self-dispatcher's ReturnType.
+      // Catch-all / non-method file: nitro generated one `default` entry from the handler's ReturnType.
       const spec = routeImportSpecifier(methods.default);
       if (!spec) continue;
-      const routeDef = await loadRouteDef(spec, typesDir);
-      if (!routeDef) continue;
+      const meta = await loadHandlerMeta(spec, typesDir);
+      if (!meta) continue;
 
-      const declared = declaredMethods(routeDef);
+      if (meta.kind === "validated") {
+        // Method-agnostic handler in a non-method file: serves every method with one contract. Type the
+        // `default` entry from its response (bare minimum) and warn — no per-method precision, no OpenAPI.
+        console.warn(nonMethodValidatedWarning(routePath, spec));
+        routes[routePath] = { default: [methodType(spec, "default")] };
+        continue;
+      }
+
+      const declared = declaredMethods(meta.def);
       if (declared.length === 0) continue;
       routes[routePath] = Object.fromEntries(declared.map((m) => [m, [methodType(spec, m)]]));
       continue;
@@ -133,14 +190,20 @@ export async function extendRouteTypes(
     for (const [methodKey, typeStrings] of Object.entries(methods)) {
       if (!typeStrings) continue;
       const spec = routeImportSpecifier(typeStrings);
-      const routeDef = spec ? await loadRouteDef(spec, typesDir) : undefined;
-      if (!spec || !routeDef) {
+      const meta = spec ? await loadHandlerMeta(spec, typesDir) : undefined;
+      if (!spec || !meta) {
         rewritten[methodKey] = typeStrings;
         continue;
       }
 
       const lock = methodKey.toLowerCase();
-      const declared = declaredMethods(routeDef);
+      if (meta.kind === "validated") {
+        // Inherently single-method — it serves whatever method it's locked to, so nothing is unreachable.
+        rewritten[methodKey] = [methodType(spec, lock)];
+        continue;
+      }
+
+      const declared = declaredMethods(meta.def);
       if (declared.length !== 1 || declared[0] !== lock) {
         violations.push(methodLockMessage(spec, lock, declared));
         rewritten[methodKey] = typeStrings;
@@ -163,8 +226,10 @@ const NITRO_OPENAPI_BASE_ROUTE = "/_openapi.__h3rt-base.json";
 
 /**
  * Build the OpenAPI `paths` + component `schemas` for our routes (rich, from each handler's contract),
- * to merge over nitro's document. `routes`/`typesDir` come from the `types:extend` payload, as in
- * {@link collectRouteHandlers}. Routes that aren't ours or can't be imported are skipped.
+ * to merge over nitro's document. `defineRouteHandler` files contribute every declared method; a
+ * `defineValidatedHandler` contributes its one method only in a method-locked file (a non-method file is
+ * skipped). `routes`/`typesDir` come from the `types:extend` payload, as in {@link collectRouteHandlers};
+ * routes that aren't ours or can't be imported are skipped.
  */
 export async function buildOpenAPIOverlay(
   routes: NitroTypes["routes"],
@@ -172,17 +237,43 @@ export async function buildOpenAPIOverlay(
 ): Promise<{ paths: Record<string, unknown>; schemas: Record<string, unknown> }> {
   const registered: RegisteredRoute[] = [];
   for (const [routePath, methods] of Object.entries(routes)) {
-    const specifiers = new Set<string>();
-    for (const typeStrings of Object.values(methods)) {
+    const routeHandlerSpecs = new Set<string>();
+    for (const [methodKey, typeStrings] of Object.entries(methods)) {
       const spec = routeImportSpecifier(typeStrings);
-      if (spec) specifiers.add(spec);
-    }
-    for (const spec of specifiers) {
+      if (!spec) continue;
+      let mod;
       try {
-        const mod = await import(resolve(typesDir, `${spec}.ts`));
-        if (mod.default?.["~routeDef"]) registered.push({ route: routePath, handler: mod.default });
+        mod = await import(resolve(typesDir, `${spec}.ts`));
       } catch {
         continue;
+      }
+      const d = mod.default;
+      if (d?.["~routeDef"]) {
+        // A defineRouteHandler self-describes every method; register the file once.
+        if (!routeHandlerSpecs.has(spec)) {
+          routeHandlerSpecs.add(spec);
+          registered.push({ route: routePath, handler: d });
+        }
+      } else if (d?.["~validatedDef"] && methodKey !== "default") {
+        // A defineValidatedHandler documents only when its method is known (a locked filename); its
+        // contract, keyed to that method, becomes a single-method path item. A non-method file (`default`)
+        // is skipped — bare minimum, warned during type generation.
+        const vdef = d["~validatedDef"];
+        registered.push({
+          route: routePath,
+          handler: {
+            "~routeDef": {
+              params: vdef.params,
+              meta: vdef.meta,
+              [methodKey.toLowerCase()]: {
+                validate: vdef.validate,
+                stream: vdef.stream,
+                meta: vdef.meta,
+              },
+            },
+            "~options": d["~options"],
+          },
+        });
       }
     }
   }
@@ -252,8 +343,10 @@ function overrideOpenAPI(nitro: Parameters<NitroModule["setup"]>[0], typesDir: s
 /**
  * The h3-route-tools nitro module — add to `nitro.config.ts` `modules: ["h3-route-tools/nitro"]`.
  * Build-time only:
- * - types nitro's `$fetch`/internal `fetch` for routes whose `default` export is a `defineRouteHandler`;
- * - fails the build on a method-locked file (`x.get.ts`) whose handler declares unreachable methods;
+ * - types nitro's `$fetch`/internal `fetch` for routes whose `default` export is a `defineRouteHandler`
+ *   or `defineValidatedHandler`;
+ * - fails the build on a method-locked file (`x.get.ts`) whose `defineRouteHandler` declares unreachable
+ *   methods;
  * - when nitro's OpenAPI is enabled (`experimental.openAPI`), enriches its document with our routes'
  *   contracts while keeping nitro's entries for plain/legacy routes.
  */

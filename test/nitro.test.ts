@@ -1,9 +1,9 @@
-import { describe, it, expect, expectTypeOf } from "vitest";
+import { describe, it, expect, expectTypeOf, vi } from "vitest";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { NitroTypes } from "nitro/types";
 
-import { defineRouteHandler } from "../src/route-handler.ts";
+import { defineRouteHandler, defineValidatedHandler } from "../src/route-handler.ts";
 import {
   buildOpenAPIOverlay,
   collectRouteHandlers,
@@ -34,6 +34,30 @@ describe("NitroMethodsOf — RouteHandler → nitro InternalApi value", () => {
 
   it("is never for a non-RouteHandler", () => {
     expectTypeOf<NitroMethodsOf<() => string>>().toEqualTypeOf<never>();
+  });
+});
+
+describe("NitroMethodsOf — ValidatedHandler → nitro InternalApi value", () => {
+  const handler = defineValidatedHandler({
+    params: z.object({ id: z.coerce.number() }),
+    validate: { response: z.object({ id: z.number(), when: z.date() }) },
+    handler: (event) => ({ id: event.context.params.id, when: new Date(0) }),
+  });
+
+  it("maps any method key (and `default`) to the one response, Serialized (Date → string)", () => {
+    // Method-agnostic: the mount decides the method, so every key yields the same response.
+    expectTypeOf<NitroMethodsOf<typeof handler>["get"]>().toEqualTypeOf<{
+      id: number;
+      when: string;
+    }>();
+    expectTypeOf<NitroMethodsOf<typeof handler>["post"]>().toEqualTypeOf<{
+      id: number;
+      when: string;
+    }>();
+    expectTypeOf<NitroMethodsOf<typeof handler>["default"]>().toEqualTypeOf<{
+      id: number;
+      when: string;
+    }>();
   });
 });
 
@@ -80,6 +104,22 @@ describe("extendRouteTypes — rewrites our routes' generated InternalApi entrie
     const routes: NitroTypes["routes"] = { "/x": {} };
     await extendRouteTypes(routes, typesDir);
     expect(routes["/x"]).toEqual({});
+  });
+
+  it("retypes a non-method defineValidatedHandler's `default` from its response, with a warning", async () => {
+    const routes: NitroTypes["routes"] = { "/status": nitroEntry("./nitro-validated-get") };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await extendRouteTypes(routes, typesDir);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("non-method file"));
+    warn.mockRestore();
+
+    const byMethod = Object.fromEntries(
+      Object.entries(routes["/status"] ?? {}).map(([method, strings]) => [method, strings?.[0]])
+    );
+    expect(Object.keys(byMethod)).toEqual(["default"]);
+    expect(byMethod.default).toBe(
+      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-validated-get').default>['default']`
+    );
   });
 });
 
@@ -132,6 +172,19 @@ describe("extendRouteTypes — method-locked files (`*.get.ts`)", () => {
     await extendRouteTypes(routes, typesDir);
     expect(routes).toEqual(before);
   });
+
+  it("types a method-locked defineValidatedHandler from its response (never a lock violation)", async () => {
+    const routes: NitroTypes["routes"] = { "/status": lockedEntry("get", "./nitro-validated-get") };
+    await extendRouteTypes(routes, typesDir);
+
+    const byMethod = Object.fromEntries(
+      Object.entries(routes["/status"] ?? {}).map(([method, strings]) => [method, strings?.[0]])
+    );
+    expect(Object.keys(byMethod)).toEqual(["get"]);
+    expect(byMethod.get).toBe(
+      `import("h3-route-tools/nitro").NitroMethodsOf<typeof import('./nitro-validated-get').default>['get']`
+    );
+  });
 });
 
 describe("collectRouteHandlers — programmatic route enumeration (advanced API)", () => {
@@ -163,6 +216,23 @@ describe("collectRouteHandlers — programmatic route enumeration (advanced API)
       { routePath: "/ours", importSpecifier: "./nitro-route-get", methods: ["get"] },
     ]);
   });
+
+  it("derives a validated handler's methods from the filename (locked → [method], non-method → [])", async () => {
+    const lockedEntry = (method: string, spec: string): NitroTypes["routes"][string] => ({
+      [method]: [`Simplify<Serialize<Awaited<ReturnType<typeof import('${spec}').default>>>>`],
+    });
+    expect(
+      await collectRouteHandlers(
+        { "/status": lockedEntry("get", "./nitro-validated-get") },
+        typesDir
+      )
+    ).toEqual([
+      { routePath: "/status", importSpecifier: "./nitro-validated-get", methods: ["get"] },
+    ]);
+    expect(
+      await collectRouteHandlers({ "/status": nitroEntry("./nitro-validated-get") }, typesDir)
+    ).toEqual([{ routePath: "/status", importSpecifier: "./nitro-validated-get", methods: [] }]);
+  });
 });
 
 describe("buildOpenAPIOverlay — rich OpenAPI paths from our routes' contracts", () => {
@@ -191,5 +261,28 @@ describe("buildOpenAPIOverlay — rich OpenAPI paths from our routes' contracts"
       typesDir
     );
     expect(paths).toEqual({});
+  });
+
+  it("emits an operation for a method-locked validated handler, skips a non-method one", async () => {
+    const lockedEntry = (method: string, spec: string): NitroTypes["routes"][string] => ({
+      [method]: [`Simplify<Serialize<Awaited<ReturnType<typeof import('${spec}').default>>>>`],
+    });
+    const { paths } = await buildOpenAPIOverlay(
+      { "/status/:id": lockedEntry("get", "./nitro-validated-get") },
+      typesDir
+    );
+    expect(paths["/status/{id}"]).toMatchObject({
+      parameters: expect.arrayContaining([
+        expect.objectContaining({ name: "id", in: "path", required: true }),
+      ]),
+      get: { responses: { "200": { content: expect.anything() } } },
+    });
+
+    // Non-method file: no method to key the operation on → no OpenAPI (bare minimum).
+    const nonMethod = await buildOpenAPIOverlay(
+      { "/status/:id": nitroEntry("./nitro-validated-get") },
+      typesDir
+    );
+    expect(nonMethod.paths).toEqual({});
   });
 });
