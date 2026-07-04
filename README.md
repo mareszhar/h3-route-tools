@@ -9,7 +9,7 @@ Routes are validated with any [Standard Schema](https://standardschema.dev) vali
 
 ## Plain h3
 
-Define routes with per-method validation. `event.validated` is typed from the schemas, and the response is validated too; validation failures return `400` automatically.
+Define routes with per-method validation. The validated `params`/`query`/`headers` are written — typed — to `event.context` (and mirrored read-only on `event.validated`); the response is validated too, and failures return `400` automatically.
 
 ```ts
 import { serve } from "srvx";
@@ -21,14 +21,14 @@ const app = new H3Typed().route({
   params: v.object({ id: v.pipe(v.string(), v.toNumber()) }),
   get: {
     validate: { response: v.object({ id: v.number(), title: v.string() }) },
-    handler: (event) => ({ id: event.validated.params.id, title: "Hello" }),
+    handler: (event) => ({ id: event.context.params.id, title: "Hello" }),
   },
   post: {
     validate: {
       body: v.object({ title: v.string() }),
       response: v.object({ id: v.number() }),
     },
-    handler: (event) => ({ id: event.validated.params.id }),
+    handler: (event) => ({ id: event.context.params.id }),
   },
 });
 
@@ -49,7 +49,7 @@ const res = await api("/posts/:id", { method: "post", params: { id: 1 }, body: {
 const created = await res.json(); // typed: { id: number }
 ```
 
-`res.json()` is typed as the **wire shape**: a `v.date()` / `z.date()` response field comes back as `string` (that is what JSON gives you), not `Date`.
+Requests are serialized to match what the server decodes: `params` are substituted into the pattern, a `Date` param/query value goes out as an ISO `string`, and an array as repeated keys (`?tags=a&tags=b`). `res.json()` is typed as the **wire shape**: a `v.date()` / `z.date()` response field comes back as `string` (that is what JSON gives you), not `Date`.
 
 ## Custom validation errors
 
@@ -87,7 +87,7 @@ const app = new H3Typed({
     },
     handler: async (event) => {
       const { title } = await event.req.json();
-      return { id: event.validated.params.id, title };
+      return { id: event.context.params.id, title };
     },
   },
 });
@@ -134,7 +134,7 @@ export default defineRouteHandler({
 
 One thing to keep in mind: a **response** failure always stays `500` (it's a server-side contract breach — your `message`/`data` are used, the status is not).
 
-> `onValidationError` shapes the **runtime** response only. The OpenAPI error-response schema is separate — override it with the route's `errors` option if you change the envelope and want the document to match.
+> `onValidationError` shapes the **runtime** response only. The OpenAPI error-response schema is separate — set it (or turn it off) globally via `defineOpenAPI({ errors })` if you change the envelope and want the document to match.
 
 ## Nitro v3
 
@@ -160,11 +160,11 @@ export default defineRouteHandler({
   params: v.object({ id: v.pipe(v.string(), v.toNumber()) }),
   get: {
     validate: { response: v.object({ id: v.number(), title: v.string() }) },
-    handler: (event) => ({ id: event.validated.params.id, title: "Hello" }),
+    handler: (event) => ({ id: event.context.params.id, title: "Hello" }),
   },
   post: {
     validate: { body: v.object({ title: v.string() }), response: v.object({ id: v.number() }) },
-    handler: (event) => ({ id: event.validated.params.id }),
+    handler: (event) => ({ id: event.context.params.id }),
   },
 });
 ```
@@ -174,6 +174,20 @@ The same handler serves every declared method (it self-dispatches), so a multi-m
 - types nitro's `InternalApi` (what `$fetch` and a `$Fetch`-typed client read) per method, from each route's contract;
 - **fails the build** if a multi-method handler sits in a method-locked file (`posts.get.ts`), where the other methods would be silently unreachable;
 - enriches nitro's OpenAPI document (below).
+
+For a single method, `defineValidatedHandler` is a leaner primitive — method-agnostic, no self-dispatch — so it drops straight into a method-locked file:
+
+```ts
+// routes/posts/[id].get.ts
+import { defineValidatedHandler } from "h3-route-tools";
+import * as v from "valibot";
+
+export default defineValidatedHandler({
+  params: v.object({ id: v.pipe(v.string(), v.toNumber()) }),
+  validate: { response: v.object({ id: v.number(), title: v.string() }) },
+  handler: (event) => ({ id: event.context.params.id, title: "Hello" }),
+});
+```
 
 ### Typed client in nitro
 
@@ -204,21 +218,80 @@ export default defineConfig({
 });
 ```
 
-## JSON Schema for OpenAPI
+Per-operation prose (`defineOperation`) and per-schema overrides (`defineSchema`) travel with the handlers, so they appear here too — see **OpenAPI** below.
 
-Validation and TypeScript types work with **any** [Standard Schema](https://standardschema.dev) validator. OpenAPI generation needs one thing more: the schema must also expose a JSON Schema through the Standard Schema `~standard.jsonSchema` extension. That's the only thing checked — no per-library special-casing.
+## OpenAPI
 
-- **zod** (v4) — implements it natively; works out of the box.
-- **valibot** — does **not** on its own. Wrap each schema with [`@valibot/to-json-schema`](https://github.com/fabian-hiller/valibot/tree/main/packages/to-json-schema)'s `toStandardJsonSchema()`. A bare `v.object(...)` emits an empty schema (`{}`) — validation and TS types are unaffected, only the document is.
+OpenAPI lives in its own opt-in entry, `h3-route-tools/openapi` — the core stays document-agnostic. With `H3Typed`, pass an `openapi` block and the document is served (default `/openapi.json`):
 
-Schemas are documented in the right **direction**: a request uses the schema's **input** (what the caller sends), a response its **output**. So a coercion like `v.pipe(v.string(), v.toNumber())` on a param documents correctly as `string` — the transform is irrelevant to the wire, only the accepted input matters.
+```ts
+import { H3Typed } from "h3-route-tools";
 
-Two things still can't be represented and degrade to `{}` (any library):
+const app = new H3Typed({
+  openapi: { info: { title: "API", version: "1.0.0" } },
+}).route(/* … */);
+// GET /openapi.json → the generated 3.1 document
+```
 
-- a **`Date`** field — JSON Schema has no date type (it's a `string` on the wire; the typed client already models that);
-- a **response** produced by a `transform` — the post-transform shape isn't derivable from the schema.
+For a plain `H3` app, register the plugin over your `defineRoute` handlers:
 
-For those the emitted schema is `{}`; document them by hand if you need the detail.
+```ts
+import { defineOpenAPI } from "h3-route-tools/openapi";
+
+app.register(defineOpenAPI({ info: { title: "API", version: "1.0.0" } }));
+```
+
+The document is built from each route's schemas — requests from a schema's **input**, responses from its **output** (so a coercion like `v.pipe(v.string(), v.toNumber())` on a param shows as `string`; only the accepted input reaches the wire) — with `400`/`415`/`500` responses added where relevant.
+
+### Customizing
+
+Customization is central, in three tiers by scope.
+
+**Global** — `document` (a full replacement value, or a `(doc, ctx) => doc` transform for what the generator can't infer, like servers or security schemes) and `errors` (opt out of / override the auto error responses):
+
+```ts
+new H3Typed({
+  openapi: {
+    info: { title: "API", version: "1.0.0" },
+    errors: false,
+    document: (doc) => ({ ...doc, servers: [{ url: "https://api.example.com" }] }),
+  },
+});
+```
+
+**Per operation** — prose (`summary`, `tags`, `deprecated`, …) via `defineOperation` on a route/method `meta.openapi`; it merges over the generated operation:
+
+```ts
+import { defineOperation } from "h3-route-tools/openapi";
+
+defineRoute({
+  route: "/posts",
+  get: {
+    meta: { openapi: defineOperation({ summary: "List posts", tags: ["posts"] }) },
+    handler,
+  },
+});
+```
+
+**Per schema** — override a schema's emitted JSON Schema with `defineSchema` (which also assigns `$id`, lifting the schema into `components`). This is how you describe a shape the library can't infer:
+
+```ts
+import { defineSchema } from "h3-route-tools/openapi";
+
+// a Date has no JSON Schema type — give it the wire form:
+const When = defineSchema(v.date(), { jsonSchema: { type: "string", format: "date-time" } });
+```
+
+`defineSchema` wraps a whole slot (a `body`/`response`/`params` schema), not a nested field. For a nested field use your validator's metadata — zod's `.meta({ … })` merges into the output at any depth — or patch the assembled slot with the function form, `defineSchema(schema, { jsonSchema: (auto) => ({ ...auto, … }) })`.
+
+### JSON Schema support
+
+Validation and TypeScript types work with **any** Standard Schema validator. OpenAPI generation needs one thing more: the schema must expose a JSON Schema through `~standard.jsonSchema`. That's the only thing checked — no per-library special-casing.
+
+- **zod** (v4) — native; works out of the box, and `.meta()` merges arbitrary keywords into the output.
+- **valibot** — not on its own; wrap schemas with [`@valibot/to-json-schema`](https://github.com/fabian-hiller/valibot/tree/main/packages/to-json-schema)'s `toStandardJsonSchema()`. Its adapter drops arbitrary metadata, so describe un-inferrable shapes with `defineSchema` (which works even on a bare valibot schema).
+
+A `Date`, a `transform`'s output, and other un-representable types emit `{}` — an empty, permissive schema — leaving validation and TS types untouched, only the document. Give them a shape with `defineSchema` / `.meta()` / the `document` hook above.
 
 ## License
 
