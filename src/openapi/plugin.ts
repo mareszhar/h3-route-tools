@@ -1,10 +1,11 @@
 import type { H3, H3Plugin } from "h3";
 
-import { attachRegistry, harvestRoutes } from "./registry.ts";
+import { attachRegistry, getRouteTable, harvestRoutes } from "./registry.ts";
 import {
   applyDocumentHook,
   buildOpenAPIDocument,
   type ErrorResponsesOption,
+  type OpenAPIDocument,
   type OpenAPIDocumentHook,
   type OpenAPIInfo,
 } from "./document.ts";
@@ -22,8 +23,8 @@ export interface OpenAPIPluginOptions {
 
 /**
  * H3 plugin that records the OpenAPI config on the app and serves the generated document.
- * The document is built per request by harvesting the app's routes (order-independent), then passed
- * through the optional `document` hook.
+ * The document is generated from the app's routes (order-independent) and memoized until the route
+ * set changes, then passed through the optional `document` hook.
  *
  * @example
  * app.register(defineOpenAPI({
@@ -45,10 +46,31 @@ export function defineOpenAPI(options: OpenAPIPluginOptions): H3Plugin {
       document: options.document,
     });
 
+    // The doc is a pure function of the (fixed) config and the route set, so memoize it and rebuild
+    // only when the route table changes — the expensive schema→JSON-Schema pass runs once, not per request.
+    let cache: { routes: readonly unknown[]; doc: OpenAPIDocument } | undefined;
+
     h3.get(path, () => {
+      const table = getRouteTable(h3);
+      if (cache && sameRoutes(cache.routes, table)) return cache.doc;
+
       const routes = harvestRoutes(h3);
-      const doc = buildOpenAPIDocument({ info: options.info, routes, errors: options.errors });
-      return applyDocumentHook(doc, options.document, routes);
+      const doc = applyDocumentHook(
+        buildOpenAPIDocument({ info: options.info, routes, errors: options.errors }),
+        options.document,
+        routes,
+      );
+      cache = { routes: table.slice(), doc };
+      return doc;
     });
   };
+}
+
+/** Element-wise identity equality — the route table only grows/shrinks, so refs never change in place. */
+function sameRoutes(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }

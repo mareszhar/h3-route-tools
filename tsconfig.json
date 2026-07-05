@@ -19,6 +19,6 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts"],
   "exclude": ["node_modules", "dist", "skills", "test/fixtures/nitro-app"]
 }

@@ -61,6 +61,22 @@ describe("defineOpenAPI — e2e", () => {
     expect((await fetchDoc()).paths["/late"]).toBeDefined();
   });
 
+  it("memoizes the document across requests yet still reflects newly bound routes", async () => {
+    app.register(defineOpenAPI({ info }));
+    app.register(defineRoute({ route: "/first", get: { handler: () => "1" } }));
+
+    // Repeated fetches with no route change hit the cache: identical content.
+    const a = await fetchDoc();
+    const b = await fetchDoc();
+    expect(b).toEqual(a);
+    expect(Object.keys(b.paths)).toEqual(["/first"]);
+
+    // Binding another route changes the table fingerprint, invalidating the memo.
+    app.register(defineRoute({ route: "/second", post: { handler: () => "2" } }));
+    const c = await fetchDoc();
+    expect(Object.keys(c.paths).sort()).toEqual(["/first", "/second"]);
+  });
+
   it("hoists $id schemas into components", async () => {
     const User = defineSchema(z.object({ id: z.string(), name: z.string() }), { id: "User" });
     app.register(defineOpenAPI({ info }));

@@ -83,6 +83,16 @@ export function harvestRoutes(h3: H3): RegisteredRoute[] {
   return out;
 }
 
+/**
+ * The live route-table array on an H3 instance. Its entries are only pushed (or spliced by
+ * `removeRoute`), so an element-wise identity snapshot of it is a faithful, cheap change key —
+ * used to invalidate the served OpenAPI document memo.
+ */
+export function getRouteTable(h3: H3): readonly unknown[] {
+  const routes = Reflect.get(h3, ROUTES_KEY);
+  return Array.isArray(routes) ? routes : [];
+}
+
 function isDocumentable(handler: unknown): handler is DocumentableRouteHandler {
   return typeof handler === "function" && "~routeDef" in handler;
 }
