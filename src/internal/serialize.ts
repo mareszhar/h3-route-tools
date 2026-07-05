@@ -51,3 +51,23 @@ type SerializeTuple<T extends [unknown, ...unknown[]]> = {
 type SerializeObject<T extends object> = {
   [K in keyof Omit<T, FilterKeys<T, NonJsonPrimitive>>]: Serialize<T[K]>;
 };
+
+/**
+ * `Simplify<T>` — deeply resolve a type to its concrete shape, purely for display. It changes no
+ * type-checking behavior (`Simplify<T>` is structurally identical to `T`); it forces TypeScript to
+ * eagerly evaluate nested mapped/conditional types so IDE hovers and errors show the wire shape
+ * (`{ created: string }`) instead of the lazy wrapper (`Serialize<{ created: Date }>`).
+ *
+ * The deep counterpart of {@link Prettify} (which flattens one level). Meant to wrap a {@link Serialize}
+ * result: that output is already plain JSON (no `Date`/function/class members left), so the recursion
+ * only walks plain objects and can't mangle anything. Arrays are passed through to preserve tuple arity
+ * and element types; non-objects (primitives, `unknown`) pass through untouched — mapping over their
+ * `keyof` would otherwise turn `unknown` into `{}`.
+ *
+ * @see https://github.com/ianstormtaylor/superstruct — the original of this deep-simplify type.
+ */
+export type Simplify<T> = T extends unknown[] | Date
+  ? T
+  : T extends object
+    ? { [K in keyof T]: Simplify<T[K]> }
+    : T;
