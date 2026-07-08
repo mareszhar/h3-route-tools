@@ -1,6 +1,7 @@
 import type { Prettify } from './internal/schema-types.ts'
 import type { Serialize } from './internal/serialize.ts'
 import type { InferRoutes, InferRoutesInput } from './routes.ts'
+import { serializeRequestScalar } from './internal/request-scalar.ts'
 
 /** A `Response` whose `json()` resolves to the typed body `T`; everything else is the native `Response`. */
 export interface TypedResponse<T> extends Omit<Response, 'json' | 'clone'> {
@@ -86,7 +87,7 @@ interface RuntimeOptions {
   params?: Record<string, unknown>
   query?: Record<string, unknown>
   body?: unknown
-  headers?: Record<string, string>
+  headers?: Record<string, unknown>
 }
 
 /** A fetch-compatible transport: the global `fetch`, or an `H3DuxApp`'s `request`, etc. */
@@ -120,7 +121,7 @@ export function createTypedFetch<Source>(
     let path = route
     if (opts.params) {
       for (const [key, value] of Object.entries(opts.params)) {
-        const encoded = encodeURIComponent(String(value))
+        const encoded = encodeURIComponent(serializeRequestScalar(value))
         path = path.replace(`**:${key}`, encoded).replace(`:${key}`, encoded)
       }
     }
@@ -129,8 +130,17 @@ export function createTypedFetch<Source>(
     if (opts.query) {
       const search = new URLSearchParams()
       for (const [key, value] of Object.entries(opts.query)) {
-        if (value !== undefined && value !== null)
-          search.set(key, String(value))
+        if (value !== undefined && value !== null) {
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              if (item !== undefined && item !== null)
+                search.append(key, serializeRequestScalar(item))
+            }
+          }
+          else {
+            search.append(key, serializeRequestScalar(value))
+          }
+        }
       }
       const qs = search.toString()
       if (qs)
@@ -139,7 +149,10 @@ export function createTypedFetch<Source>(
 
     const headers = new Headers(baseHeaders)
     if (opts.headers) {
-      for (const [key, value] of Object.entries(opts.headers)) headers.set(key, value)
+      for (const [key, value] of Object.entries(opts.headers)) {
+        if (value !== undefined && value !== null)
+          headers.set(key, serializeRequestScalar(value))
+      }
     }
     const init: RequestInit = { method: opts.method.toUpperCase(), headers }
     if (opts.body !== undefined) {

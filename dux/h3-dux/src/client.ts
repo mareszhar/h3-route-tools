@@ -7,6 +7,7 @@ import type {
   TypedResponse,
 } from './typed-fetch.ts'
 import { H3DuxHTTPError } from './errors.ts'
+import { serializeRequestScalar } from './internal/request-scalar.ts'
 import { H3DuxCall, parseEventStream } from './sse.ts'
 
 // ── reconstructing the per-verb option/return shapes ──────────────────────────
@@ -259,7 +260,7 @@ interface RuntimeOptions extends H3DuxClientTransportOptions {
   params?: Record<string, unknown>
   query?: Record<string, unknown>
   body?: unknown
-  headers?: Record<string, string>
+  headers?: Record<string, unknown>
 }
 
 interface ResolvedRetry {
@@ -282,11 +283,11 @@ function serializeQuery(query: Record<string, unknown>, serializer: QuerySeriali
     if (Array.isArray(value)) {
       for (const item of value) {
         if (item !== undefined && item !== null)
-          search.append(key, String(item))
+          search.append(key, serializeRequestScalar(item))
       }
       continue
     }
-    search.set(key, String(value))
+    search.append(key, serializeRequestScalar(value))
   }
   return search.toString()
 }
@@ -296,7 +297,7 @@ function applyParams(route: string, params: Record<string, unknown> | undefined)
   if (!params)
     return path
   for (const [key, value] of Object.entries(params)) {
-    const encoded = encodeURIComponent(String(value))
+    const encoded = encodeURIComponent(serializeRequestScalar(value))
     path = path.replace(`**:${key}`, encoded).replace(`:${key}`, encoded)
   }
   return path
@@ -389,8 +390,10 @@ function createDuxFetch(options: CreateClientOptions): (route: string, opts: Run
 
     const headers = new Headers(baseHeaders)
     if (opts.headers) {
-      for (const [key, value] of Object.entries(opts.headers))
-        headers.set(key, value)
+      for (const [key, value] of Object.entries(opts.headers)) {
+        if (value !== undefined && value !== null)
+          headers.set(key, serializeRequestScalar(value))
+      }
     }
     let body: BodyInit | undefined
     if (opts.body !== undefined) {
@@ -458,7 +461,7 @@ export function createClient<App>(options: CreateClientOptions = {}): Client<App
       (route: string, opts: Record<string, unknown> = {}) => new H3DuxCall(
         () => call(route, { ...opts, method } as RuntimeOptions),
         async function* () {
-          const headers = { accept: 'text/event-stream', ...(opts.headers as Record<string, string>) }
+          const headers = { accept: 'text/event-stream', ...(opts.headers as Record<string, unknown>) }
           const res = await call(route, { ...opts, method, headers } as RuntimeOptions)
           // A failed stream surfaces as a thrown H3DuxError, not a silent empty iterator.
           if (!res.ok)

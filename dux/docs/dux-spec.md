@@ -834,6 +834,7 @@ await api.get('/orders', {
 - **Retry is conservative.** Safe methods (`GET`, `HEAD`, `OPTIONS`) may retry by default. `POST`/`PUT`/`PATCH`/`DELETE` retry only when explicitly configured, and non-replayable streamed bodies never retry by default. `Retry-After` is respected for `429`/`503` when present.
 - **Cancellation is authoritative.** A caller-provided `signal` always wins. `timeout` composes through an internal abort controller and covers the whole call, including retries, unless a future option explicitly adds per-attempt timeouts.
 - **Query serialization has one default and one escape hatch.** Named presets cover common behavior (`repeat` by default); a `(params) => string | URLSearchParams` function covers bracket/comma/custom formats without adding more API surface.
+- **Default request scalars are explicit.** Params, query values, and headers serialize strings, numbers, booleans, bigints, and `Date`s; arrays repeat query keys; nullish values are omitted. Object-shaped query formats belong in the custom serializer instead of silently becoming `[object Object]`.
 - **`H3DuxCall` is single-request on the JSON/raw path.** The transport pipeline (including retry) lives in the memoized fetch closure described under delta 8, so multiple consumers of the same handle share one in-flight request and parse clones.
 
 **Status:** ☑ done (phase 10). Runtime, type, lint, and build planes are green; `H3DuxCall` memoization landed before retry so one handle never fires duplicate JSON/raw requests.
