@@ -203,4 +203,4 @@ catch (error) {
 }
 
 clearReleaseState()
-log.log(`release v${releasedVersion} complete. Review, then: git push && git push --tags`)
+log.log(`release v${releasedVersion} complete. Review, then push the dux branch. The public subtree tag was already pushed; do not push local tags to the fork.`)
