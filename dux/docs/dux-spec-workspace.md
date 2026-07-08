@@ -168,7 +168,7 @@ Run from `dux/`.
 | `bun run demo:main:standalone` | focused h3-dux standalone demo trip |
 | `bun run demo:main:nitro` | focused h3-dux Nitro demo server |
 | `bun run prepublish:verify` | shared gate, standalone: build · lint · typecheck · test |
-| `bun run publish:sdk:dry-run` | gate + packaging rehearsal (`npm publish --dry-run`); no bump, nothing published |
+| `bun run publish:sdk:dry-run` | gate + package-tarball rehearsal (`npm pack --dry-run`); no bump, nothing published |
 | `bun run publish:sdk:patch` / `:minor` / `:major` | the release: gate → bump → build → `npm publish` → commit + tag → subtree squash |
 | `bun run publish:subtree:squash` | ad hoc: squash-push `h3-dux/` to the public repo on its own |
 
@@ -189,6 +189,6 @@ There is no demo-deploy step and no workspace-dependency pinning dance: h3-dux h
 3. **Build, then `npm publish --access public`.** A failure up to and including this step restores the original `package.json`; nothing is recorded as released.
 4. Once published, the bump is permanent. The remaining steps are guarded by an in-flight **release record** (`scripts/publish/lib/release-state.ts`, gitignored under `dux/.dux/`) so a later failure resumes from the first incomplete step instead of re-publishing or re-bumping: wait for npm registry propagation, commit `🔖 release v<version>` and tag it, then squash-push the public subtree (`scripts/publish/publish-subtree.ts`) with the same message.
 
-`bun run publish:sdk:dry-run` rehearses the gate and packaging (`npm publish --dry-run`) without bumping or publishing anything. `bun run publish:subtree:squash` runs the squash on its own — useful for re-pushing the public mirror without cutting a new npm version; it opens `$GIT_EDITOR` on a prefilled `🔖 release v<version>` message unless `--message` is passed.
+`bun run publish:sdk:dry-run` rehearses the gate and package tarball (`npm pack --dry-run`) without bumping or publishing anything, so it stays repeatable even when the current version is already on npm. `bun run publish:subtree:squash` runs the squash on its own — useful for re-pushing the public mirror without cutting a new npm version; it opens `$GIT_EDITOR` on a prefilled `🔖 release v<version>` message unless `--message` is passed.
 
 The gitmoji convention (`🔖 release vX.Y.Z`), the squash-to-public-repo model, and the resumable release-state machinery follow the same maintainer mechanics across every dux fork.

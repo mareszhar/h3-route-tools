@@ -121,10 +121,10 @@ runPrepublishGates({ logger: log })
 
 const originalRaw = fs.readFileSync(PKG_JSON, 'utf8')
 
-// ── Dry run: build → publish --dry-run. No bump, no side effects.
+// ── Dry run: build → pack --dry-run. No bump, no side effects.
 if (dryRun) {
   log.log('packaging rehearsal — no version bump, nothing published.')
-  run('npm', ['publish', '--access', 'public', '--dry-run'], { cwd: PKG_DIR, env: npmEnv })
+  run('npm', ['pack', '--dry-run'], { cwd: PKG_DIR, env: npmEnv })
   log.log('dry-run complete.')
   process.exit(0)
 }
