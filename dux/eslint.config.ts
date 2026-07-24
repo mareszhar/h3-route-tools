@@ -11,6 +11,9 @@ export default antfu(
       '**/.output/**',
       '**/.turbo/**',
       '**/packs/**',
+      '**/__archive__/**',
+      '**/__references__/**',
+      '**/__temp__/**',
     ],
   },
   {
