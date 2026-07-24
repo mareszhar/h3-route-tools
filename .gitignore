@@ -77,3 +77,6 @@ $RECYCLE.BIN/
 .profile
 
 # Project specific
+__archive__/
+__references__/
+__temp__/
