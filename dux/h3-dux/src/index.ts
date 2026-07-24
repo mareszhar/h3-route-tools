@@ -45,6 +45,7 @@ export type {
   MiddlewareSpec,
   TypedMiddleware,
 } from './middleware.ts'
+export { toNitroHandler } from './nitro-handler.ts'
 export { buildOpenAPI, toOpenAPI } from './openapi.ts'
 export type { H3DuxOpenAPIDocument, ToOpenAPIOptions } from './openapi.ts'
 export {

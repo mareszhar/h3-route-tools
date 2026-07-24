@@ -129,6 +129,18 @@ The outer reference can track h3-route-tools or other h3 ecosystem proposals, bu
 
 Generalizable ideas can still be proposed back to the h3 ecosystem, but h3-dux does not wait on that process to improve.
 
+### Upstream watch (recheck on h3/Nitro bumps)
+
+Known upstream conditions h3-dux works *around* rather than owns. Each has a **trigger** to re-test on the next h3/Nitro bump; when a trigger clears, delete the row and simplify the workaround it justifies.
+
+| # | Condition | Impact on dux | Workaround in dux | Recheck trigger |
+| - | --- | --- | --- | --- |
+| U1 | **Two h3 copies under Nitro.** `nitro@3.0.0` pins `h3` to *exactly* `2.0.1-rc.2`; h3-dux's peer floor is `>=2.0.1-rc.22`. An exact pin below the floor can't dedupe, so a Nitro+dux install runs two h3 builds side by side, and an event built by one can be shape-incompatible with a helper from the other (e.g. `handleCors` → `event.res.errHeaders` missing → 500). | Programmatic-app mounts that used `app.native.handler(event)` crashed on h3 helpers. | `toNitroHandler(app)` re-enters via dux's own h3 (`app.native.request(event.req, undefined, event.context)`), forwarding context — correct under one *or* two copies, so it needs no version alignment. Kept regardless of U1's status: it is the honest boundary. | Re-check when a stable Nitro pins `h3` into `>=2.0.1-rc.22` (the current `latest` beta pins `rc.22`; `3.0.0` stable still pins `rc.2`). When a single h3 resolves in a real Nitro+dux install, note it here — `toNitroHandler` stays, but the dual-copy *hazard* is gone. |
+| U2 | **Nitro cloudflare-dev `plugin.dev` path.** `preset: 'cloudflare-module'` on `nitro@3.0.0` fails to resolve `…/runtime/plugin.dev` (real path moved under `dist/presets/cloudflare/runtime/`). | None on dux — a Nitro dev-only bug. | None needed in dux; consumers patch it in `nitro.config.ts` until a Nitro release ships the fix (present in betas). | Drop when the consuming project's Nitro no longer needs the config patch. |
+| U3 | **Bare `unstorage` import in the Nitro dev bundle.** `.nitro/dev/index.mjs` imports bare `unstorage`, which pnpm doesn't hoist; dev 500s until `unstorage` is a direct dep. Reproduces on the node preset too. | None on dux — Nitro-dev + pnpm hoisting. | None needed in dux. | Drop when a Nitro release stops emitting the un-hoistable import. |
+
+The pin/peer facts and the original runtime repro that established U1–U3 came from a downstream Nitro monorepo; the two dux-relevant behaviors (U1's crash and the false-positive inspect warning) are locked by `nitro-handler.test.ts` and `nitro-inspect.test.ts`.
+
 ---
 
 ## 7. Changes outside dux

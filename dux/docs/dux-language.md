@@ -109,6 +109,7 @@ Every name h3-dux coins or adopts, with the baseline / standard term it maps to 
 | `createRouter(prefix?, options?)` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([dux-patterns.md §9](./dux-patterns.md#9-composition--scope)) |
 | `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
 | `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3DuxApp` escape hatch; clearer than `.app` |
+| `toNitroHandler(app)` | h3 `toNodeHandler` / `toWebHandler` | the supported way to mount a programmatic dux app as a Nitro catch-all; re-enters through dux's own h3 and forwards `event.context`, so it survives Nitro↔dux h3 version skew where `app.native.handler(event)` crashes ([spec §13 · Mounting a programmatic app under Nitro](./dux-spec.md#mounting-a-programmatic-app-under-nitro)) |
 | `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
 | `H3DuxEvent<Bindings>` | h3 `H3Event` | the route-agnostic handler event a userland utility annotates — the dux counterpart of importing `H3Event`; carries `event.error`/`bindings`/request aliases at their loosest honest types |
 | `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |

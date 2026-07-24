@@ -633,6 +633,22 @@ export const api = createClient<Routes>({ baseURL })
 const { data, error } = await api.get(`/fruits/${id}`)
 ```
 
+### Mounting a programmatic app under Nitro
+
+File routes are the Nitro-native path, but a whole `createServer()` app can also be mounted as a Nitro catch-all — a `createServer()` in `app.ts` that also exports `type App` for a typed client, served through one Nitro entry. Mount it with **`toNitroHandler(app)`**, never `app.native.handler(event)`:
+
+```ts
+// server/routes/[...].ts
+import { toNitroHandler } from '@mszr/h3-dux'
+import { app } from '../app.ts'
+
+export default toNitroHandler(app)
+```
+
+**Why not `app.native.handler(event)`.** Nitro pins h3 to an *exact* version (`nitro@3.0.0` → `h3@2.0.1-rc.2`); h3-dux resolves its own, newer h3. When the two don't dedupe, one install runs two h3 builds side by side, and Nitro builds the incoming event with *its* h3. `app.native.handler(event)` forwards that foreign event straight into dux's newer h3 helpers — so a middleware calling `handleCors` reaches for a response field (`errHeaders`) the older event never had and the request 500s at `undefined.append`. `toNitroHandler` re-dispatches by the raw `Request` (`app.native.request(event.req, undefined, event.context)`), so dux builds a native event from *its own* h3 — every helper sees the shape it expects — while forwarding `event.context` so Nitro's request scope (Cloudflare `env`/`waitUntil`, `cf`, staged bindings) survives, which a bare `app.fetch(event.req)` would drop. It is version-skew-proof: correct whether one or two h3 copies are installed. See the upstream watch in [dux-spec-workspace.md §6](./dux-spec-workspace.md#upstream-watch-recheck-on-h3nitro-bumps) for when the two-copy condition itself can be retired.
+
+The Nitro module (`modules: ['@mszr/h3-dux/nitro']`) is a **file-route** concern: it generates `#h3-dux/routes` and the OpenAPI overlay from scanned `defineFileRoute` files. A pure programmatic app has no file routes, so it needs only `toNitroHandler` at the entry — registering the module is harmless but adds nothing.
+
 ### Contract
 
 Phase 9 delivers five connected pieces:
@@ -694,6 +710,7 @@ Each step leaves a testable surface and preserves one implementation of the rout
 - **The flat handler is method-neutral; codegen binds the method.** A flat handler is authored without knowing its filename, so its brand carries the source (`FlatSource`) and codegen re-keys it per method via `FileFlatContract` — applying the *same* `H3DuxEndpoint` method rules the standalone builder uses (`HEAD`/`204`/`205` answer empty), not a re-encoding. Body-on-bodyless is the one method fact the cursor can't enforce (no filename), so it is a generation diagnostic.
 - **The honest filename boundary holds, and is now enforced both ways.** With a `validate.params` schema the handler and client get the coerced type; without one the source type is `Record<string, string>` and codegen substitutes the exact filename params via `WithFilenameParams`. A declared schema that *disagrees* with the filename now fails project typecheck (`AssertFileRoute`), so it can no longer quietly win over filename truth. The generated module references `import('<file>').default` (the kernel is resolved/schema-free), re-linking to source on every regenerate rather than flattening to literals.
 - **Runtime form detection imports route modules at generation time.** Reading the authoring form needs the value, so the module imports each route file once during `types:extend`. This is type-generation-only (never bundled) and degrades safely — a module that fails to import is warned about and omitted, not silently dropped. A fully import-free generator would require the definer to infer a single authoring form instead of the current union; that is a later refinement, kept out of phase 9 to avoid destabilizing the Selenita-locked diagnostic inference.
+- **Only scanned file routes are inspected.** The import above is restricted to Nitro's own `scannedHandlers` — the filesystem routes under `routes/`/`api/`, the sole place a dux file route can live. A programmatic `handlers: [{ handler: './server' }]` catch-all and Nitro's internal routes (`node_modules/.../runtime/internal/routes/*`) are *not* scanned, so they are never imported and never warned about. This is what makes the `could not inspect` warning precise: it fires only for a genuine file route whose import threw (its client entry really is missing), not for every non-dux module a programmatic app happens to register. The candidacy filter (`duxRouteCandidates`/`isDuxCandidate`) is locked in `nitro-inspect.test.ts`.
 - **OpenAPI enrichment for dux file routes is deferred to phase 10:** the handlers carry `~routeDef` schemas, so an overlay is straightforward, but phase 10 is where the OpenAPI generator is refined against the kernel. Phase 9 intentionally stops at `#h3-dux/routes` plus Nitro `InternalApi`/`$fetch` success typing. Plain Nitro and baseline handlers remain omitted from the dux client map; baseline handlers keep their Nitro `InternalApi` projection.
 
 ### Deferred intentionally

@@ -138,6 +138,20 @@ export const api = createClient<Routes>({ baseURL: '/api' })
 
 The filename owns the path and method; h3-dux owns the contract projected from the route definition. No hand-written `Routes` interface.
 
+### Mounting a whole app under Nitro
+
+Prefer file routes above, but you can also serve a full `createServer()` app through one Nitro catch-all. Mount it with `toNitroHandler(app)` — **not** `app.native.handler(event)`:
+
+```ts
+// server/routes/[...].ts
+import { toNitroHandler } from '@mszr/h3-dux'
+import { app } from '../app.ts'
+
+export default toNitroHandler(app)
+```
+
+`toNitroHandler` re-enters the app through dux's own h3 while forwarding Nitro's `event.context`. Nitro pins an exact, older h3 than h3-dux resolves, so a raw `app.native.handler(event)` hands Nitro's event into newer h3 helpers and a `handleCors`-style middleware can crash on a response field that event never had; re-entering by the `Request` sidesteps the skew and keeps Cloudflare bindings / `waitUntil` intact. The `@mszr/h3-dux/nitro` module is only for file routes — a pure programmatic app doesn't need it.
+
 ## Get Started
 
 > Check out our minimal demo! ([public link](https://github.com/mareszhar/h3-route-tools/tree/dux/dux/sandbox/demo-main) | [local fork path](../sandbox/demo-main))

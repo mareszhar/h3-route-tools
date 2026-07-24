@@ -72,6 +72,40 @@ function routeImportSpecifier(typeStrings: RouteMethodTypes): string | undefined
   return typeStrings?.[0]?.match(/import\('([^']+)'\)/)?.[1]
 }
 
+const ROUTE_MODULE_EXTENSIONS = ['.ts', '.mts', '.cts', '.tsx', '.js', '.mjs', '.cjs', '.jsx']
+
+/** Drop a trailing module extension so a scanned handler path and a route import specifier compare equal. */
+function stripRouteExtension(path: string): string {
+  const ext = ROUTE_MODULE_EXTENSIONS.find(candidate => path.endsWith(candidate))
+  return ext ? path.slice(0, -ext.length) : path
+}
+
+/**
+ * The set of modules that could be dux **file routes** — Nitro's own scanned
+ * filesystem handlers, normalized to extension-less absolute paths. Dux file
+ * routes are, by definition, scanned from `routes/`/`api/` (spec §13); config
+ * `handlers` and Nitro's internal routes never are. Restricting inspection to
+ * this set is what stops the module from importing — and then warning about —
+ * a programmatic catch-all or a `node_modules` internal that was never a dux
+ * candidate in the first place.
+ */
+export function duxRouteCandidates(scannedHandlers: readonly { handler: string }[], rootDir: string): Set<string> {
+  const candidates = new Set<string>()
+  for (const { handler } of scannedHandlers) {
+    if (typeof handler !== 'string')
+      continue
+    candidates.add(stripRouteExtension(resolve(rootDir, handler)))
+  }
+  return candidates
+}
+
+/** Is this route import specifier a scanned dux file-route candidate (vs a config handler or a `node_modules` internal)? */
+export function isDuxCandidate(spec: string, typesDir: string, candidates: Set<string>): boolean {
+  if (spec.includes('node_modules'))
+    return false
+  return candidates.has(stripRouteExtension(resolve(typesDir, spec)))
+}
+
 const CALLABLE_METHODS = ['get', 'head', 'post', 'put', 'patch', 'delete', 'options'] as const
 
 function declaredMethods(routeDef: Record<string, unknown>): string[] {
@@ -100,11 +134,14 @@ async function loadDuxMarkers(spec: string, typesDir: string): Promise<H3DuxFile
 /**
  * Walk Nitro's route table and collect the dux file routes. Per path, each specifier
  * is mapped to the method(s) it serves — `'all'` for the unsuffixed catch-all (Nitro's
- * `default` key), else the specific method keys — then imported to read its form. A
- * module that fails to import is recorded in `unreadable` (a visible warning), never
- * dropped without a trace; a module that imports but isn't a dux route is skipped.
+ * `default` key), else the specific method keys. Only specifiers that are scanned dux
+ * **file-route** candidates ({@link duxRouteCandidates}) are imported to read their form:
+ * a programmatic config handler or a `node_modules` internal is skipped without a load, so
+ * it can never be mistaken for a broken dux route. A candidate that fails to import is
+ * recorded in `unreadable` (a visible warning) — that is a real file route absent from
+ * `#h3-dux/routes` — while a candidate that imports but isn't a dux route is skipped.
  */
-export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: string): Promise<CollectResult> {
+export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: string, candidates: Set<string>): Promise<CollectResult> {
   const infos: H3DuxFileRouteInfo[] = []
   const baseline: BaselineRouteInfo[] = []
   const unreadable: string[] = []
@@ -114,7 +151,7 @@ export async function collectFileRoutes(routes: NitroTypes['routes'], typesDir: 
     const served = new Map<string, Set<string> | 'all'>()
     for (const [method, typeStrings] of Object.entries(table)) {
       const spec = routeImportSpecifier(typeStrings)
-      if (!spec)
+      if (!spec || !isDuxCandidate(spec, typesDir, candidates))
         continue
       if (method === 'default') {
         served.set(spec, 'all')
@@ -363,14 +400,17 @@ export const h3Dux: NitroModule = {
       overrideOpenAPI(nitro, () => overlayJSON)
 
     nitro.hooks.hook('types:extend', async (types: NitroTypes) => {
-      const { infos, baseline, unreadable } = await collectFileRoutes(types.routes, typesDir)
-      // Never drop a route in silence: if a module could not be inspected (it likely
-      // imports server-only code that can't run at type generation), say so loudly.
+      const candidates = duxRouteCandidates(nitro.scannedHandlers ?? [], nitro.options.rootDir)
+      const { infos, baseline, unreadable } = await collectFileRoutes(types.routes, typesDir, candidates)
+      // Never drop a *file route* in silence: a scanned route module that can't be
+      // imported is absent from #h3-dux/routes, so its client types go missing with no
+      // other trace. Only scanned file routes reach here — config handlers and Nitro
+      // internals are filtered out before load — so this is always actionable.
       for (const spec of unreadable) {
         const warn = nitro.logger?.warn ?? console.warn
         warn(
-          `[h3-dux] could not inspect route module '${spec}' — if it is a dux file route, it is absent from #h3-dux/routes.\n`
-          + `  The import threw at type generation (it may pull in server-only code). Keep its inspectable parts importable, or move that work behind a runtime guard.`,
+          `[h3-dux] could not inspect route file '${spec}' — it is absent from #h3-dux/routes, so its typed client entry is missing.\n`
+          + `  The import threw at type generation (it may pull in server-only code). Keep its top level importable, or move that work behind a runtime guard.`,
         )
       }
       const { source, diagnostics } = generateRoutesModule(infos)
