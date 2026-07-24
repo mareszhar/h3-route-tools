@@ -209,6 +209,26 @@ type EventWithParams = Omit<H3Event, 'context'> & {
 
 That shape accepts plain h3 params (`Record<string, string>`) and h3-dux routes whose params schema coerces values.
 
+## Transport Middleware (CORS, and friends)
+
+Cross-cutting transport concerns — CORS, auth, compression — attach as ordinary h3 middleware with `.use()`. h3-dux adds no primitive for them: an allowed origin is a `handleCors` call, a protected route is `middleware: [...]`. Three patterns keep them predictable, whatever your file layout.
+
+**A middleware that can answer early must return its response.** h3 reaches the route only if no middleware returns a value; a middleware short-circuits by returning a response. `handleCors` follows this protocol — it returns h3's `204` for a preflight and `false` otherwise — so return the truthy value, or preflight `OPTIONS` requests fall through to routing (a 404/405) while simple requests still succeed and hide the gap:
+
+```ts
+import { handleCors } from 'h3'
+
+app.use((event) => {
+  const preflight = handleCors(event, { origin: ['https://app.example.com'], methods: ['GET', 'POST'] })
+  if (preflight)
+    return preflight
+})
+```
+
+**Per-deployment policy belongs at the entry, not on the shared app.** An *app* is the routes you build (and may export a type from for a client); an *entry* is where you mount or serve it. When those are one object in one place, there is nothing to separate. When one app value is reused across entries — a typed-client export, several deployments — register deployment-specific middleware (CORS origins, trusted proxies) at each entry, so one deployment's policy is not frozen into the value the others share.
+
+**Keep a single h3.** Any h3 helper that touches the event's response — `handleCors` among them — must come from the same h3 that built the event. [`toNitroHandler`](#mounting-a-whole-app-under-nitro) guarantees the event is dux's own; resolving one h3 in your install keeps the helpers you import matched to it, and rules out the missing-response-field crash a duplicated h3 can cause.
+
 ## The One Hard Contract
 
 **h3-dux owes behavioral compatibility to h3 and Nitro, not API compatibility to any SDK.** Everything it emits is something h3/Nitro already understand. Inside that envelope, h3-dux is free to make the authoring and client experience more delightful.
