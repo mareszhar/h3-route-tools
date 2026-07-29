@@ -14,6 +14,18 @@ export default defineBuildConfig({
       },
     },
     {
+      // The client plane on its own subpath. Its graph carries no runtime `h3`
+      // value import, so this bundle resolves in any consumer — h3 v1, v2, or
+      // none (e.g. a Nuxt 4 / Nitro v2 app talking to a dux API). `h3` stays
+      // external only as a belt-and-suspenders; the client never imports it.
+      type: 'bundle',
+      input: ['./src/client.ts'],
+      rolldown: {
+        platform: 'neutral',
+        external: ['h3'],
+      },
+    },
+    {
       type: 'bundle',
       input: ['./src/codegen.ts'],
       rolldown: {

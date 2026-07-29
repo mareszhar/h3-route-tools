@@ -83,17 +83,19 @@ The canon. When two pull against each other, the earlier one wins.
 
 ## 4. Architecture
 
-### 4.1 One package, three entrypoints
+### 4.1 One package, four entrypoints
 
 ```
 @mszr/h3-dux           the standalone plane: createServer (typed route builder), createClient
                        (typed fetch), defineRoute, defineFileRoute, sse, validation types,
                        response-kind helpers, the typed-fetch types
+@mszr/h3-dux/client    the client plane alone — createClient / createTypedFetch and the error
+                       classes, with no runtime h3 value import; bundles in any consumer
 @mszr/h3-dux/nitro     the Nitro module for file-based routes + its codegen glue
 @mszr/h3-dux/codegen   the route-types / OpenAPI generators the module and CLI use
 ```
 
-The root is where authoring happens; `/nitro` and `/codegen` are explicit build-time/server-framework planes. Keep the entrypoint count minimal — every subpath is a maintenance and docs surface.
+The root is where authoring happens; `/nitro` and `/codegen` are explicit build-time/server-framework planes. `/client` is the client plane made a real module boundary (principle 7): the client depends on h3 only for *types*, so a subpath whose runtime graph never imports h3 lets a consumer on a *different* h3 line — a frontend, or a Nuxt 4 app on h3 v1 / Nitro v2 — bundle it cleanly while still talking to a dux API. Keep the entrypoint count minimal — every subpath is a maintenance and docs surface — but this one earns its place: it removes a whole bundler-failure class rather than a symptom, and it is the same `createClient` the root already exports.
 
 ### 4.2 Three planes, one source of truth
 

@@ -487,3 +487,17 @@ export function createTestClient<App>(
 ): Client<App> {
   return createClient<App>({ fetch: app.request })
 }
+
+// ── the client plane, also published as `@mszr/h3-dux/client` ──────────────────
+// This module is the whole client surface, and — critically — nothing it imports
+// pulls a runtime value from `h3` (only `import type`). That is what lets the
+// `/client` entry bundle in any consumer, including an h3 v1 / Nitro v2 app
+// (Nuxt 4) that resolves the bare `h3` specifier to a build without h3 v2's
+// `HTTPError`/`H3`. The client speaks the wire (`fetch`/`Response`) and its own
+// `H3DuxHTTPError`; it depends on the server only for the `App` *type*, which is
+// erased. Keep this file h3-value-free — `client-plane.test.ts` locks it.
+export { H3DuxHTTPError, H3DuxTransportError } from './errors.ts'
+export type { H3DuxError } from './errors.ts'
+export type { EndpointContract, ResponseKind } from './internal/contract.ts'
+export { createTypedFetch } from './typed-fetch.ts'
+export type { CreateTypedFetchOptions, FetchLike, NormalizeRoutes, TypedFetch, TypedResponse } from './typed-fetch.ts'

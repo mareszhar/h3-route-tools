@@ -43,6 +43,7 @@ One package, three entrypoints. The root is the runtime authoring and client sur
 | Entrypoint | What it is |
 | --- | --- |
 | `@mszr/h3-dux` | `createServer`, `createRouter`, `createClient`, `defineFileRoute`, `defineMiddleware`, `typedResponse`, `sse`, validation/error helpers, response-kind helpers, typed-fetch types |
+| `@mszr/h3-dux/client` | the typed client alone (`createClient`, `createTypedFetch`, the error classes) — **no runtime dependency on `h3`**, so it bundles in any consumer, including an h3 v1 / Nitro v2 app |
 | `@mszr/h3-dux/nitro` | the Nitro module for generated file-route types and OpenAPI overlay |
 | `@mszr/h3-dux/codegen` | route declaration and OpenAPI file writers for build tooling |
 
@@ -107,6 +108,19 @@ const created = await api.post('/fruits', { body: mango }).orThrow()
 for await (const tick of api.get(`/fruits/${id}/ripen`))
   console.log(tick.ripeness)
 ```
+
+### Consuming the client from another app
+
+`createClient` is a typed `fetch` wrapper — at runtime it speaks the wire (`fetch`/`Response`) and its own `H3DuxHTTPError`; it needs `h3` only for *types*, which are erased at build. When the API and its client live in the same h3 v2 project, import both from `@mszr/h3-dux`. When the **consumer is a separate app** — a frontend, or anything on a different h3 / Nitro line, such as a **Nuxt 4 app (h3 v1 / Nitro v2)** — import the client from the `@mszr/h3-dux/client` subpath:
+
+```ts
+import { createClient } from '@mszr/h3-dux/client'
+import type { App } from '@your-scope/api' // the server's `typeof app`, type-only
+
+const api = createClient<App>({ baseURL })
+```
+
+It is the same `createClient` with the same behavior — only the entrypoint differs. The `/client` bundle carries no runtime `h3` value import, so it bundles cleanly no matter which `h3` (v1, v2, or none) the consuming app resolves. The root `@mszr/h3-dux` entry pulls in the server surface (which does depend on h3 v2), so a consumer on a different h3 line should import the client from `/client`, not from the root.
 
 ## Nitro File Routes
 
