@@ -38,7 +38,7 @@ npm install @mszr/h3-dux h3
 
 ## The Shape
 
-One package, three entrypoints. The root is the runtime authoring and client surface; Nitro and codegen stay in explicit subpaths.
+One package, four entrypoints. The root is the runtime authoring and client surface; the client plane, Nitro, and codegen stay in explicit subpaths.
 
 | Entrypoint | What it is |
 | --- | --- |

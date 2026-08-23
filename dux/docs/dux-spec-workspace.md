@@ -57,8 +57,8 @@ The outer repo uses **ox** (oxlint + oxfmt). Inside `dux/` we use **ESLint** (`@
 
 `@mszr/h3-dux` is an independent h3 route kit.
 
-- **Build:** obuild emits three bundle entries (`index`, `nitro`, `codegen`) to `dist/*.mjs` + `*.d.mts`. `h3` stays external as the required peer; `nitro` and `typescript` stay external in the subpaths that need them.
-- **Exports:** `.`, `./nitro`, `./codegen`, all named, `sideEffects: false` for tree-shaking.
+- **Build:** obuild emits four bundle entries (`index`, `client`, `nitro`, `codegen`) to `dist/*.mjs` + `*.d.mts`. `h3` stays external as the required peer; `nitro` and `typescript` stay external in the subpaths that need them.
+- **Exports:** `.`, `./client`, `./nitro`, `./codegen`, all named, `sideEffects: false` for tree-shaking. `./client` is the h3-value-free client plane (vision §4.1), so a consumer on a different h3 line can bundle it.
 - **Owned baseline:** route definition, validation, typed fetch, Nitro route typing, and OpenAPI helpers live in `h3-dux/src/`. The outer `src/` tree is reference material, not a package dependency.
 - **Peers:** `h3` is the one needed by every user → it stays a required peer. `nitro` is needed only by `/nitro` → optional peer. `typescript` is needed only by `/codegen` route flattening → optional peer. The rule: needed by everyone → required peer; needed by a subpath → optional peer.
 - **Manifest stays npm-only.** `h3-dux/package.json` carries no `scripts` — only what npm needs to describe and resolve the published artifact (name, exports, files, peer/runtime deps, the devDependencies that pull build/test tools into `h3-dux/node_modules`). The orchestrator (`dux/package.json`, [§8](#8-scripts)) is the one place that controls how the package is built, linted, tested, and published, invoking those tools directly (`cd h3-dux && bun x <tool>`) rather than through package-local scripts.
@@ -85,34 +85,15 @@ One runner (Vitest), three assertion planes, one fixture set. No delta is "done"
 
 `vitest run --typecheck` locks all three. Tests collocate beside the code they exercise; the larger Orchard comparison schemas live in `sandbox/demo-comparisons/fixtures/`. Reference comparisons belong in sandbox demos and review, not as a runtime package contract.
 
-### Diagnostics are a contract, not an accident (Generation 2)
+### The editor-DX plane locks the message, not just the error
 
-The editor-DX plane is the bar that the rest of the field doesn't test (delta 6) — so it is promoted from "an error exists" to a **quality contract**. `expect(errors).toHaveError(/not assignable/)` proves a failure fires, not that it helps; the contract asserts the message a human reads:
-
-- **exactly one** diagnostic (not the doubled "Overload 1 of 2 … 2 of 2");
-- it **names the offending field** (`stockKg`);
-- it says **missing / required**;
-- it **lands on** the `body` literal, not the call;
-- the hover stays a **readable public type** (no `ObjectSchema<…>` wall);
-- source-mode completions and hovers stay readable and leak-free.
-
-Because every Generation-2 delta adds generic complexity, the diagnostic contract is also a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor.
+`expect(errors).toHaveError(/not assignable/)` proves a failure fires, not that it helps. The DX plane asserts the *message a human reads* — the exact diagnostic, the named field, the leak-free hover — so each delta's diagnostic guarantees are a contract, specced with the delta (e.g. [dux-spec.md §6](./dux-spec.md#6-cleaner-inference--diagnostics-as-contract)) rather than restated here. Because every Generation-2 delta adds generic complexity, that plane doubles as a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor.
 
 Two hardening planes stay intentionally tracked after the publish gate: Selenita source-vs-built declaration parity, and type-performance checks at 100 / 500 / 1000 routes. They are valuable, but they are not allowed to make the current docs imply unverified behavior is already part of the release gate.
 
 ### Nitro codegen harness (phase W5)
 
-Phase 9 adds a real Nitro fixture rather than testing generated strings in isolation. The harness runs `nitro prepare`, typechecks the generated project, and exercises dev regeneration. It covers:
-
-- method-locked flat handlers and unsuffixed shared/method-map handlers;
-- validation modes, typed errors, every response kind, SSE, and route-local bindings;
-- file-route factory `.use()`/`.requires()`/`.compose()` capability flow;
-- generated exact client params for nested, optional, and catch-all filesystem segments;
-- explicit params-schema agreement with the normalized path;
-- duplicate path+method, method-lock mismatch, unresolved requirements, binding collisions, and invalid body-bearing shared handlers;
-- add, remove, and rename regeneration without restarting from a clean build;
-- `#h3-dux/routes` source/built declaration parity and leak guards (no schema implementation types);
-- graceful coexistence with plain Nitro and owned baseline handlers, while untyped routes remain omitted from the h3-dux client map.
+The Nitro tests run a real Nitro fixture, not string assertions over generated code: `nitro prepare`, then a typecheck of the generated project. This exercises the full delta-13 surface end-to-end through the actual codegen ([dux-spec.md §13](./dux-spec.md#13-nitro-deltas-via-codegen)) — every handler shape, the standalone behaviors carried into file routes, factory capability flow, generated client params, and the generation diagnostics. Three things only a live harness can check: add/remove/rename **dev-regeneration** without a clean rebuild, `#h3-dux/routes` **source/built declaration parity** with leak guards, and **coexistence** with plain Nitro and owned baseline handlers (untyped routes stay out of the h3-dux client map).
 
 Nuxt integration is not a W5 target. It begins only after Nuxt 5 publishes a stable h3 v2/Nitro v3 module and type-generation contract.
 
