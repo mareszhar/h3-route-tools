@@ -2,7 +2,7 @@
 
 The cross-cutting law: the few behavioral rules that make every h3-dux surface work the same way, regardless of which file or plane you're reading. [dux-vision.md](./dux-vision.md) principles 2, 3, and 5 are the *why* — boilerplate is harm, errors belong at the cursor, learn one surface and know the rest; this doc is the *what*. The words these patterns are described in — vocabulary, naming, doc style — live in [dux-language.md](./dux-language.md).
 
-Each pattern is a contract every plane (server, client, Nitro, OpenAPI) honors identically. [dux-spec.md](./dux-spec.md) is where each pattern was introduced as a delta; this doc is where the settled rule lives once it has shipped, so a later delta references it instead of re-deriving it.
+Each pattern is a contract every plane (server, client, Nitro, OpenAPI) honors identically. [dux-spec-sdk.md](./dux-spec-sdk.md) is where each pattern was introduced as a delta; this doc is where the settled rule lives once it has shipped, so a later delta references it instead of re-deriving it.
 
 - [1. The validated-data model](#1-the-validated-data-model)
 - [2. Server ↔ client symmetry](#2-server--client-symmetry)
@@ -31,7 +31,7 @@ A request-validation failure is **`422` regardless of mode** ([§4](#4-validatio
 
 We **drop `event.validated`** from the surface — from the *types*, not just the docs. `event.valid('body')` reads as the deliberate action it is; eager direct reads use `event.body` (or its `event.context.body` alias). The dux `MethodEvent` does not expose a second validated-data bag.
 
-`eager: false` lives **inside the `validate` block**, next to the schemas it governs. So does `params`: on the dux verb surface `validate.params` is where you declare the param schema, so the whole request contract reads from one block — even though params are *route-level* underneath (one schema per path, shared across methods), which is where they live for multi-method routes and grouped routers ([§9](#9-composition--scope)). Full contract and the pipeline order: [dux-spec.md §5](./dux-spec.md).
+`eager: false` lives **inside the `validate` block**, next to the schemas it governs. So does `params`: on the dux verb surface `validate.params` is where you declare the param schema, so the whole request contract reads from one block — even though params are *route-level* underneath (one schema per path, shared across methods), which is where they live for multi-method routes and grouped routers ([§9](#9-composition--scope)). Full contract and the pipeline order: [dux-spec-sdk.md §5](./dux-spec-sdk.md).
 
 ---
 
@@ -56,7 +56,7 @@ createRouter('/ping').get('/', () => ok)           // routers too
 export default defineFileRoute(e => listOrders())  // and Nitro file routes / factories
 ```
 
-It is **one signature with a `options | handler` union parameter**, never a second overload — so a malformed options object still reports a single diagnostic at the offending property, never the "No overload matches this call" wall ([dux-spec.md §6](./dux-spec.md#6-cleaner-inference--diagnostics-as-contract)). The shorthand is for the defaults-only case; reach for `{ … }` the moment you need any option. (The client stays options-only: a call's `params`/`body`/`query` are data, not a callback.)
+It is **one signature with a `options | handler` union parameter**, never a second overload — so a malformed options object still reports a single diagnostic at the offending property, never the "No overload matches this call" wall ([dux-spec-sdk.md §6](./dux-spec-sdk.md#6-cleaner-inference--diagnostics-as-contract)). The shorthand is for the defaults-only case; reach for `{ … }` the moment you need any option. (The client stays options-only: a call's `params`/`body`/`query` are data, not a callback.)
 
 ---
 
@@ -66,7 +66,7 @@ Response typing is **hybrid**, and the default is zero-ceremony:
 
 - **Inferred by default.** With no `validate.response`, the handler's return *is* the client's type. This is the Hono/Elysia parity that kills the hand-written `request<Receipt>(…)` assertion.
 - **Validated on opt-in.** Declaring `validate.response` does two things: it type-checks the handler's return against the schema (it can't lie), and it runtime-validates the response before sending (→ `500` on a breach).
-- **Streamed via `sse()`.** `sse(schema)` is the streaming form of `validate.response`: it brands the endpoint so the client returns `AsyncGenerator<T>` instead of a JSON body ([dux-spec.md §4](./dux-spec.md)).
+- **Streamed via `sse()`.** `sse(schema)` is the streaming form of `validate.response`: it brands the endpoint so the client returns `AsyncGenerator<T>` instead of a JSON body ([dux-spec-sdk.md §4](./dux-spec-sdk.md)).
 - **Per-status when you want it.** `validate.response` accepts a status map (`{ 200: Fruit, 404: NotFound }`) and `errors` declares failure schemas — the success projection becomes `data`, the rest become a typed `error` ([§6](#6-the-honest-client), [§7](#7-typed-errors--results)).
 
 Client response types are the **wire shape**: a `v.date()` / `z.date()` field arrives as `string`, because that is what JSON gives you. The *kind* of a response — JSON, plain text, empty (`204`), a stream, or binary — is part of the contract too, so the client decodes it correctly without a guess ([§8](#8-response-kinds)).

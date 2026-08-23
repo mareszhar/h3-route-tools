@@ -4,7 +4,7 @@
  * errors, the root event accessors, and typed middleware bindings — into a Nitro
  * filesystem route, whose path and (when suffixed) method come from the filename.
  * `createFileRouteFactory()` produces the same definition surface with accumulated
- * middleware capabilities, composable across files. See docs/dux-spec.md §13.
+ * middleware capabilities, composable across files. See docs/dux-spec-sdk.md §13.
  *
  * Two authoring shapes, picked by the def:
  *  - **flat** — one handler (`{ validate?, handler, … }`). A `*.post.ts` filename

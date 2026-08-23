@@ -23,7 +23,7 @@ This is the dux maintainer area inside the **h3-route-tools** fork.
 - **The hub:** [`docs/dux-vision.md`](./docs/dux-vision.md) — what h3-dux is, the principles, the roadmap
 - The words: [`docs/dux-language.md`](./docs/dux-language.md)
 - The cross-cutting law: [`docs/dux-patterns.md`](./docs/dux-patterns.md)
-- The deltas, contract by contract: [`docs/dux-spec.md`](./docs/dux-spec.md)
+- The deltas, contract by contract: [`docs/dux-spec-sdk.md`](./docs/dux-spec-sdk.md)
 - Maintainer manual: [`docs/dux-spec-workspace.md`](./docs/dux-spec-workspace.md)
 - Package front door: [`h3-dux/README.md`](./h3-dux/README.md)
 

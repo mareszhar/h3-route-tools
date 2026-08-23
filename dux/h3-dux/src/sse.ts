@@ -14,7 +14,7 @@ export interface EventStream<T> {
 /**
  * Mark a response schema as a Server-Sent Events stream: the server handler
  * yields validated `T`s (an async generator), and the client receives an
- * `AsyncGenerator<T>` instead of a JSON body. See docs/dux-spec.md §4.
+ * `AsyncGenerator<T>` instead of a JSON body. See docs/dux-spec-sdk.md §4.
  */
 export function sse<S extends StandardSchemaV1>(
   schema: S,

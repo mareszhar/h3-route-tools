@@ -188,7 +188,7 @@ type VerbArgs<E, WithParams extends boolean> = HasRequired<VerbOptions<E, WithPa
  *
  * One signature (not an overload pair) is deliberate: TypeScript reports a bad
  * call against *this* shape directly, instead of the doubled, unreadable
- * "No overload matches this call" wall (see docs/dux-spec.md delta 6). The
+ * "No overload matches this call" wall (see docs/dux-spec-sdk.md delta 6). The
  * response is the wire shape; options are required only when the endpoint needs
  * them, so a bare `api.get('/health')` works.
  *

@@ -58,8 +58,8 @@ These words carry exactly these meanings across the server, client, and Nitro su
 | **staged values** | middleware-private preparation returned by `staged`; visible only to that middleware's `bindings` and `handler` callbacks ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
 | **bindings** | request-scoped values a typed middleware publishes to downstream middleware and handlers as `event.bindings` ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
 | **requirements** | middleware or parent-path capabilities that a middleware, router, or endpoint consumes without registering them again ([dux-patterns.md §9](./dux-patterns.md#9-composition--scope), [dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
-| **file route** | a Nitro filesystem route whose path and optional method come from its filename, authored with `defineFileRoute` or a derived file-route factory ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
-| **file-route factory** | a callable route definition utility created by `createFileRouteFactory`; it carries typed middleware capabilities into independently authored Nitro route files ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
+| **file route** | a Nitro filesystem route whose path and optional method come from its filename, authored with `defineFileRoute` or a derived file-route factory ([spec §13](./dux-spec-sdk.md#13-nitro-deltas-via-codegen)) |
+| **file-route factory** | a callable route definition utility created by `createFileRouteFactory`; it carries typed middleware capabilities into independently authored Nitro route files ([spec §13](./dux-spec-sdk.md#13-nitro-deltas-via-codegen)) |
 
 `params`, `query`, `body`, `headers`, `response` keep their h3 / fetchdts meanings ([§2](#2-the-fetchdts-alignment)). Validated request values live canonically on `event.context` and are exposed through the root aliases `event.params`, `event.query`, and `event.body`; the client uses the same request names.
 
@@ -70,7 +70,7 @@ These words carry exactly these meanings across the server, client, and Nitro su
 The typed client speaks [fetchdts](https://github.com/unjs/fetchdts) — the type-level vocabulary a Nuxt-core contributor is standardizing. We stay inside it so the client realigns cheaply if fetchdts ships more.
 
 - Per-endpoint metadata keys are **`query`, `headers`, `body`, `response`, `responseHeaders`** — note it is **`response`, not `output`**.
-- Paths are **string literals**, and dynamic segments are **template-literal** paths (`/fruits/${string}`). That is what lets interpolation (`api.get(\`/fruits/${id}\`)`, [delta 3](./dux-spec.md)) typecheck on the client.
+- Paths are **string literals**, and dynamic segments are **template-literal** paths (`/fruits/${string}`). That is what lets interpolation (`api.get(\`/fruits/${id}\`)`, [delta 3](./dux-spec-sdk.md)) typecheck on the client.
 - The client surface is **verb + literal path** (`api.get('/fruits/:id', …)`), not an Eden-style proxy chain.
 
 ---
@@ -109,13 +109,13 @@ Every name h3-dux coins or adopts, with the baseline / standard term it maps to 
 | `createRouter(prefix?, options?)` | `defineRoute` + `register` | delta-carrying composition unit; an optional literal prefix belongs to the domain and participates in param inference ([dux-patterns.md §9](./dux-patterns.md#9-composition--scope)) |
 | `app.mount(router)` / `app.mount(outerPrefix, router)` | `H3.mount` / `app.register` | merge a router as declared, optionally adding an outer prefix |
 | `app.native` | `H3DuxServer.app` (renamed) | the underlying `H3DuxApp` escape hatch; clearer than `.app` |
-| `toNitroHandler(app)` | h3 `toNodeHandler` / `toWebHandler` | the supported way to mount a programmatic dux app as a Nitro catch-all; re-enters through dux's own h3 and forwards `event.context`, so it survives Nitro↔dux h3 version skew where `app.native.handler(event)` crashes ([spec §13 · Mounting a programmatic app under Nitro](./dux-spec.md#mounting-a-programmatic-app-under-nitro)) |
+| `toNitroHandler(app)` | h3 `toNodeHandler` / `toWebHandler` | the supported way to mount a programmatic dux app as a Nitro catch-all; re-enters through dux's own h3 and forwards `event.context`, so it survives Nitro↔dux h3 version skew where `app.native.handler(event)` crashes ([spec §13 · Mounting a programmatic app under Nitro](./dux-spec-sdk.md#mounting-a-programmatic-app-under-nitro)) |
 | `defineMiddleware(fn \| options)` | h3 `Middleware` | ordinary middleware plus optional `staged` preparation, downstream `bindings`, and checked `requires` ([dux-patterns.md §10](./dux-patterns.md#10-typed-middleware-bindings)) |
 | `H3DuxEvent<Bindings>` | h3 `H3Event` | the route-agnostic handler event a userland utility annotates — the dux counterpart of importing `H3Event`; carries `event.error`/`bindings`/request aliases at their loosest honest types |
 | `event.bindings` | `event.context.bindings` | request-scoped capabilities published by typed middleware |
 | `event.staged` | `event.context.staged` | temporary values private to one middleware's `bindings`/`handler` lifecycle |
 | `.requires(provider)` / `requires: […]` | — (new) | consume already-registered middleware capabilities without executing the middleware again |
-| `defineFileRoute(def)` | Nitro `defineHandler` / baseline `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec.md#13-nitro-deltas-via-codegen)) |
+| `defineFileRoute(def)` | Nitro `defineHandler` / baseline `defineRouteHandler` | route-free dux handler whose path and optional method come from the Nitro filename; carries the kernel and phase-8 event model ([spec §13](./dux-spec-sdk.md#13-nitro-deltas-via-codegen)) |
 | `createFileRouteFactory()` | — (new) | derive reusable file-route definers with typed middleware providers and requirements |
 | `factory.compose(feature)` | router `.mount()` | satisfy a feature factory's external capabilities and return a callable file-route factory; checks the same laws as `.mount` (requirements present and assignable, registered providers don't collide) and doesn't re-run required middleware |
 | `#h3-dux/routes` | Nitro generated route types | generated, type-only kernel route map consumed by `createClient<Routes>()` |

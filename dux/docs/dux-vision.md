@@ -53,7 +53,7 @@ So we forked, then graduated. The reference implementation outside `dux/` stays 
 | Typed SSE streaming | ◑ doc-only `stream` slot; client return is JSON | **add** (client + brand) |
 | Eager-sequential / manual validation modes | ◑ validates all, fixed order, no manual | **add** (modes) |
 
-The five **add** rows are [§5](#5-the-deltas); each is specified in [dux-spec.md](./dux-spec.md).
+The five **add** rows are [§5](#5-the-deltas); each is specified in [dux-spec-sdk.md](./dux-spec-sdk.md).
 
 ---
 
@@ -138,7 +138,7 @@ One normalized contract, read identically by the client (success → `data`, non
 
 ## 5. The deltas
 
-The work that makes h3-dux more than a rename. Each is a contract in [dux-spec.md](./dux-spec.md); this is the status view, in two generations.
+The work that makes h3-dux more than a rename. Each is a contract in [dux-spec-sdk.md](./dux-spec-sdk.md); this is the status view, in two generations.
 
 ### Generation 1 — the authoring surface (shipped)
 
@@ -168,7 +168,7 @@ Generation 1 made authoring delightful and reached *Hono-level* end-to-end safet
 | 13 | **Nitro deltas via codegen** — `defineFileRoute` + capability-carrying factories; generate the kernel route map; filename-derived client params | 9 | ☑ done |
 | 14 | **Symmetry extras** — dux-aware OpenAPI for standalone + Nitro; client transport hooks / `signal` / timeout / retry / query serialization | 10 | ☑ done |
 
-Per-delta contracts, usage, and phasing: [dux-spec.md](./dux-spec.md).
+Per-delta contracts, usage, and phasing: [dux-spec-sdk.md](./dux-spec-sdk.md).
 
 ---
 
@@ -204,7 +204,7 @@ One hub (this), one language doc, one patterns doc, one deltas spec, one maintai
 | [dux-vision.md](./dux-vision.md) | **the hub** — philosophy, principles, architecture, scope, sustainability |
 | [dux-language.md](./dux-language.md) | the words: vocabulary, fetchdts alignment, doc style, the naming map |
 | [dux-patterns.md](./dux-patterns.md) | the cross-cutting law: the validated-data model, the kernel, the honest client, composition, middleware bindings |
-| [dux-spec.md](./dux-spec.md) | the five deltas, each as *why → proposed approach → status*, with its usage snippet |
+| [dux-spec-sdk.md](./dux-spec-sdk.md) | every delta across both generations, each as *why → proposed approach → status*, with its usage snippet |
 | [dux-spec-workspace.md](./dux-spec-workspace.md) | maintainer manual: layout, build, boundaries, testing, fork-rebase, publishing |
 
 Specs are **contract-driven**: each entry headlines the desired behavior and why it matters, then proposes an implementation. If reality teaches a better implementation, the proposal moves; the contract above it stays.

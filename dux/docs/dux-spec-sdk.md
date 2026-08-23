@@ -1,4 +1,4 @@
-# h3-dux — spec
+# h3-dux — sdk spec
 
 The deltas that make h3-dux more than a rename, in two generations. Each is **contract-driven**: it headlines the desired behavior and why, shows the intended usage, then proposes an implementation. The contract is the commitment; the proposed approach can move if reality teaches a better one.
 

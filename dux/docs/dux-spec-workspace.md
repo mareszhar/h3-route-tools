@@ -1,6 +1,6 @@
 # h3-dux — workspace spec
 
-The maintainer manual: how h3-dux is laid out, built, linted, tested, kept aligned with the h3 ecosystem, and shipped. User-facing behavior is specced in [dux-spec.md](./dux-spec.md); this documents the infrastructure that keeps it honest.
+The maintainer manual: how h3-dux is laid out, built, linted, tested, kept aligned with the h3 ecosystem, and shipped. User-facing behavior is specced in [dux-spec-sdk.md](./dux-spec-sdk.md); this documents the infrastructure that keeps it honest.
 
 ## Implementation status
 
@@ -32,7 +32,7 @@ dux/
   .gitignore              ignores `.dux/` (release-machinery scratch state)
   scripts/                maintainer scripts (git-hook install, publishing, …)
     publish/              prepublish gate, npm release, subtree squash ([§9](#9-publishing))
-  docs/                   vision · language · patterns · spec · this manual
+  docs/                   vision · language · patterns · sdk spec · this manual
   h3-dux/                 the published package, @mszr/h3-dux
   sandbox/
     demo-main/            focused h3-dux demo, split into standalone and Nitro
@@ -87,13 +87,13 @@ One runner (Vitest), three assertion planes, one fixture set. No delta is "done"
 
 ### The editor-DX plane locks the message, not just the error
 
-`expect(errors).toHaveError(/not assignable/)` proves a failure fires, not that it helps. The DX plane asserts the *message a human reads* — the exact diagnostic, the named field, the leak-free hover — so each delta's diagnostic guarantees are a contract, specced with the delta (e.g. [dux-spec.md §6](./dux-spec.md#6-cleaner-inference--diagnostics-as-contract)) rather than restated here. Because every Generation-2 delta adds generic complexity, that plane doubles as a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor.
+`expect(errors).toHaveError(/not assignable/)` proves a failure fires, not that it helps. The DX plane asserts the *message a human reads* — the exact diagnostic, the named field, the leak-free hover — so each delta's diagnostic guarantees are a contract, specced with the delta (e.g. [dux-spec-sdk.md §6](./dux-spec-sdk.md#6-cleaner-inference--diagnostics-as-contract)) rather than restated here. Because every Generation-2 delta adds generic complexity, that plane doubles as a **regression gate**: a kernel or composition change that re-leaks schema internals fails here before it reaches an editor.
 
 Two hardening planes stay intentionally tracked after the publish gate: Selenita source-vs-built declaration parity, and type-performance checks at 100 / 500 / 1000 routes. They are valuable, but they are not allowed to make the current docs imply unverified behavior is already part of the release gate.
 
 ### Nitro codegen harness (phase W5)
 
-The Nitro tests run a real Nitro fixture, not string assertions over generated code: `nitro prepare`, then a typecheck of the generated project. This exercises the full delta-13 surface end-to-end through the actual codegen ([dux-spec.md §13](./dux-spec.md#13-nitro-deltas-via-codegen)) — every handler shape, the standalone behaviors carried into file routes, factory capability flow, generated client params, and the generation diagnostics. Three things only a live harness can check: add/remove/rename **dev-regeneration** without a clean rebuild, `#h3-dux/routes` **source/built declaration parity** with leak guards, and **coexistence** with plain Nitro and owned baseline handlers (untyped routes stay out of the h3-dux client map).
+The Nitro tests run a real Nitro fixture, not string assertions over generated code: `nitro prepare`, then a typecheck of the generated project. This exercises the full delta-13 surface end-to-end through the actual codegen ([dux-spec-sdk.md §13](./dux-spec-sdk.md#13-nitro-deltas-via-codegen)) — every handler shape, the standalone behaviors carried into file routes, factory capability flow, generated client params, and the generation diagnostics. Three things only a live harness can check: add/remove/rename **dev-regeneration** without a clean rebuild, `#h3-dux/routes` **source/built declaration parity** with leak guards, and **coexistence** with plain Nitro and owned baseline handlers (untyped routes stay out of the h3-dux client map).
 
 Nuxt integration is not a W5 target. It begins only after Nuxt 5 publishes a stable h3 v2/Nitro v3 module and type-generation contract.
 

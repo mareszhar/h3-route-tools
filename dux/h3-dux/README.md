@@ -260,4 +260,4 @@ The public `h3-dux` repo is the package face. Design docs, maintainer scripts, a
 - `dux-vision.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-vision.md) | [local fork path](../docs/dux-vision.md)) — philosophy, principles, architecture, scope
 - `dux-language.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-language.md) | [local fork path](../docs/dux-language.md)) — vocabulary, naming rules, doc style
 - `dux-patterns.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-patterns.md) | [local fork path](../docs/dux-patterns.md)) — validated data, honest client, errors, composition, middleware bindings
-- `dux-spec.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-spec.md) | [local fork path](../docs/dux-spec.md)) — shipped behavior by delta
+- `dux-spec-sdk.md` ([public link](https://github.com/mareszhar/h3-route-tools/blob/dux/dux/docs/dux-spec-sdk.md) | [local fork path](../docs/dux-spec-sdk.md)) — shipped behavior by delta
