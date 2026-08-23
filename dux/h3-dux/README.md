@@ -122,6 +122,10 @@ const api = createClient<App>({ baseURL })
 
 It is the same `createClient` with the same behavior — only the entrypoint differs. The `/client` bundle carries no runtime `h3` value import, so it bundles cleanly no matter which `h3` (v1, v2, or none) the consuming app resolves. The root `@mszr/h3-dux` entry pulls in the server surface (which does depend on h3 v2), so a consumer on a different h3 line should import the client from `/client`, not from the root.
 
+### Publishing a package that re-exports the contract
+
+A package can re-export an inferred h3-dux type for downstream consumers — `export const app = createServer(...)`, then `export type App = typeof app` — and emit declarations for it. `tsc --declaration` / `--emitDeclarationOnly`, TypeScript project references (`composite`), and `isolatedDeclarations` all resolve `typeof app`, because the kernel endpoint it is built from (`H3DuxEndpoint`) is a named public export — no `TS4023 … cannot be named`, and nothing to annotate by hand.
+
 ## Nitro File Routes
 
 ```ts

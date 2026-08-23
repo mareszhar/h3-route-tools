@@ -28,7 +28,12 @@ export type {
 export { H3DuxApp } from './h3-app.ts'
 export type { H3DuxAppConfig } from './h3-app.ts'
 export type { EndpointContract, ResponseKind } from './internal/contract.ts'
-export type { H3DuxEvent } from './internal/route-types.ts'
+// `H3DuxEndpoint` is the kernel-carrying endpoint every `createServer`/`createRouter`
+// return structurally *is* (§4.4), so `typeof app` cannot be emitted to a `.d.ts`
+// without naming it. Exporting it type-only is what lets a consumer run
+// `tsc --emitDeclarationOnly` over a re-exported app/router type without TS4023;
+// declaration-emit.test.ts guards the whole nameability class.
+export type { H3DuxEndpoint, H3DuxEvent } from './internal/route-types.ts'
 export type {
   BodyValidation,
   InferInput,
